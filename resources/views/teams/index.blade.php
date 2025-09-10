@@ -1,109 +1,110 @@
 <x-layouts.dashboard>
-    <h1 class="text-2xl font-bold mb-4">Ploegen</h1>
+    <div class="md:p-6">
 
-    <!-- Knop om nieuwe ploeg modal te openen -->
-    <button type="button" onclick="openCreateModal()"
-        class="mb-6 bg-[#283142] text-white px-4 py-2 rounded hover:bg-[#B51D2D]">
-        Nieuwe Ploeg
-    </button>
-
-    <table class="w-full border-collapse border border-gray-300">
-        <thead>
-            <tr class="bg-gray-200">
-                <th class="p-2 border">Naam</th>
-                <th class="p-2 border">Leden</th>
-                <th class="p-2 border">Rol</th>
-                <th class="p-2 border">Acties</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach ($teams as $team)
-                <tr class="text-center">
-                    <td class="p-2 border">{{ $team->name }}</td>
-                    <td class="p-2 border">{{ $team->members }}</td>
-                    <td class="p-2 border">{{ $team->role }}</td>
-                    <td class="p-2 border">
-                        <a href="{{ route('teams.edit', $team->id) }}" class="text-blue-600 hover:text-blue-800 mr-2">
-                            Bewerken
-                        </a>
-                        <!-- Delete knop opent modal -->
-                        <button type="button" class="text-red-600 hover:text-red-800"
-                            onclick="openDeleteModal({{ $team->id }})">
-                            Verwijderen
-                        </button>
-
-                        <!-- Verborgen formulier -->
-                        <form id="delete-form-{{ $team->id }}" action="{{ route('teams.destroy', $team->id) }}"
-                            method="POST" class="hidden">
-                            @csrf
-                            @method('DELETE')
-                        </form>
-                    </td>
+        <h1 class="text-2xl font-bold mb-4">Bekijk hier jouw ploegen</h1>
+    
+        <button type="button" onclick="openCreateModal()"
+            class="mb-6 bg-[#283142] text-white px-4 py-2 rounded hover:bg-[#B51D2D]">
+            Nieuwe Ploeg
+        </button>
+    
+        <table class="w-full border-collapse border border-gray-300">
+            <thead>
+                <tr class="bg-gray-200">
+                    <th class="p-2 border">Naam</th>
+                    <th class="p-2 border">Leden</th>
+                    <th class="p-2 border">Rol</th>
+                    <th class="p-2 border">Acties</th>
                 </tr>
-            @endforeach
-        </tbody>
-    </table>
-
-    <!-- Create Modal -->
-    <div id="createModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-lg w-full max-w-lg p-6">
-            <h2 class="text-lg font-semibold mb-4">Nieuwe Ploeg Toevoegen</h2>
-
-            @if (session('success'))
-                <div class="mb-2 text-green-600">{{ session('success') }}</div>
-            @endif
-
-            <form action="{{ url('/teams') }}" method="POST" class="space-y-4">
-                @csrf
-                <div>
-                    <label class="block text-sm font-medium">Ploegnaam</label>
-                    <input type="text" name="name" required class="w-full border px-3 py-2 rounded">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium">Wachtwoord</label>
-                    <input type="password" name="password" required class="w-full border px-3 py-2 rounded">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium">Rol</label>
-                    <select name="role" class="w-full border px-3 py-2 rounded">
-                        <option value="team" selected>team</option>
-                        <option value="admin">admin</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium">Leden (komma gescheiden)</label>
-                    <input type="text" name="members" class="w-full border px-3 py-2 rounded"
-                        placeholder="Emre, Jan, ...">
-                </div>
-
-                <div class="flex justify-center gap-3">
-                    <button type="button" onclick="closeCreateModal()"
+            </thead>
+            <tbody>
+                @foreach ($teams as $team)
+                    <tr class="text-center">
+                        <td class="p-2 border">{{ $team->name }}</td>
+                        <td class="p-2 border">{{ $team->members }}</td>
+                        <td class="p-2 border">{{ $team->role }}</td>
+                        <td class="p-2 border">
+                            <a href="{{ route('teams.edit', $team->id) }}" class="text-blue-600 hover:text-blue-800 mr-2">
+                                Bewerken
+                            </a>
+                            
+                            <button type="button" class="text-red-600 hover:text-red-800"
+                                onclick="openDeleteModal({{ $team->id }})">
+                                Verwijderen
+                            </button>
+    
+                            <form id="delete-form-{{ $team->id }}" action="{{ route('teams.destroy', $team->id) }}"
+                                method="POST" class="hidden">
+                                @csrf
+                                @method('DELETE')
+                            </form>
+                        </td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    
+        
+        <div id="createModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+            <div class="bg-white rounded-lg shadow-lg w-full max-w-lg p-6">
+                <h2 class="text-lg font-semibold mb-4">Nieuwe Ploeg Toevoegen</h2>
+    
+                @if (session('success'))
+                    <div class="mb-2 text-green-600">{{ session('success') }}</div>
+                @endif
+    
+                <form action="{{ url('/teams') }}" method="POST" class="space-y-4">
+                    @csrf
+                    <div>
+                        <label class="block text-sm font-medium">Ploegnaam</label>
+                        <input type="text" name="name" required class="w-full border px-3 py-2 rounded">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Wachtwoord</label>
+                        <input type="password" name="password" required class="w-full border px-3 py-2 rounded">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Rol</label>
+                        <select name="role" class="w-full border px-3 py-2 rounded">
+                            <option value="team" selected>team</option>
+                            <option value="admin">admin</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Leden (komma gescheiden)</label>
+                        <input type="text" name="members" class="w-full border px-3 py-2 rounded"
+                            placeholder="Emre, Jan, ...">
+                    </div>
+    
+                    <div class="flex justify-center gap-3">
+                        <button type="button" onclick="closeCreateModal()"
+                            class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">
+                            Annuleren
+                        </button>
+                        <button type="submit" class="bg-[#283142] text-white px-4 py-2 rounded hover:bg-[#284142]">
+                            Ploeg Toevoegen
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    
+        <!-- Delete Modal -->
+        <div id="deleteModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+            <div class="bg-white rounded-lg shadow-lg w-full max-w-sm p-6">
+                <h2 class="text-lg font-semibold mb-4">Bevestig verwijderen</h2>
+                <p class="mb-6 text-gray-600">Weet je zeker dat je dit team wilt verwijderen? Deze actie kan niet ongedaan
+                    worden gemaakt.</p>
+                <div class="flex justify-end gap-3">
+                    <button type="button" onclick="closeDeleteModal()"
                         class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">
                         Annuleren
                     </button>
-                    <button type="submit" class="bg-[#283142] text-white px-4 py-2 rounded hover:bg-[#284142]">
-                        Ploeg Toevoegen
+                    <button type="button" id="confirmDeleteBtn"
+                        class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
+                        Verwijderen
                     </button>
                 </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Delete Modal -->
-    <div id="deleteModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-lg w-full max-w-sm p-6">
-            <h2 class="text-lg font-semibold mb-4">Bevestig verwijderen</h2>
-            <p class="mb-6 text-gray-600">Weet je zeker dat je dit team wilt verwijderen? Deze actie kan niet ongedaan
-                worden gemaakt.</p>
-            <div class="flex justify-end gap-3">
-                <button type="button" onclick="closeDeleteModal()"
-                    class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">
-                    Annuleren
-                </button>
-                <button type="button" id="confirmDeleteBtn"
-                    class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
-                    Verwijderen
-                </button>
             </div>
         </div>
     </div>
