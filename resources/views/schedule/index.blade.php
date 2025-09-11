@@ -21,7 +21,6 @@
                         </option>
                     @endforeach
                 </select>
-
             </div>
         @endif
 
@@ -40,7 +39,6 @@
 
                 <form action="{{ route('schedule.store') }}" method="POST" class="space-y-4">
                     @csrf
-
                     @if (Auth::user()->role === 'admin')
                         <div>
                             <label class="block text-sm font-medium">Ploeg</label>
@@ -59,8 +57,8 @@
 
                     <div>
                         <label class="block text-sm font-medium">Adres (*)</label>
-                        <input list="addresses" name="address_name" class="w-full border px-3 py-2 rounded"
-                            placeholder="Typ hier een straat..." required>
+                        <input list="addresses" name="address_name" id="createAddress"
+                            class="w-full border px-3 py-2 rounded" placeholder="Typ hier een straat..." required>
                         <datalist id="addresses">
                             @foreach ($addresses as $address)
                                 <option value="{{ $address->street }}">{{ $address->number }}, {{ $address->zipcode }},
@@ -71,18 +69,28 @@
 
                     <div>
                         <label class="block text-sm font-medium">Nummer (*)</label>
-                        <input type="text" name="address_number" class="w-full border px-3 py-2 rounded" required>
+                        <input type="text" name="address_number" id="createNumber"
+                            class="w-full border px-3 py-2 rounded" required>
                     </div>
 
                     <div>
                         <label class="block text-sm font-medium">Postcode (*)</label>
-                        <input type="text" name="address_zipcode" class="w-full border px-3 py-2 rounded" required>
+                        <input type="text" name="address_zipcode" id="createZip"
+                            class="w-full border px-3 py-2 rounded" required>
                     </div>
 
                     <div>
                         <label class="block text-sm font-medium">Stad (*)</label>
-                        <input type="text" name="address_city" class="w-full border px-3 py-2 rounded" required>
+                        <input type="text" name="address_city" id="createCity"
+                            class="w-full border px-3 py-2 rounded" required>
                     </div>
+
+                    <div>
+                        <label class="block text-sm font-medium">Opmerking</label>
+                        <div id="createNoteDisplay" class="w-full border px-3 py-2 rounded bg-gray-100 min-h-[60px]">
+                        </div>
+                    </div>
+
 
                     <div class="flex justify-end gap-3 mt-4">
                         <button type="button" onclick="closeCreateModal()"
@@ -108,9 +116,23 @@
                     <p><strong>Nummer:</strong> <span id="viewNumber"></span></p>
                     <p><strong>Postcode:</strong> <span id="viewZip"></span></p>
                     <p><strong>Stad:</strong> <span id="viewCity"></span></p>
+                    <p><strong>Opmerking:</strong> <span id="viewNote"></span></p>
                 </div>
 
-                <div class="flex justify-end mt-4">
+                <div class="flex justify-end mt-4 gap-2">
+                    <button id="editTaskBtn" type="button"
+                        class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 hidden">
+                        Bewerken
+                    </button>
+
+                    <form id="deleteTaskForm" method="POST" action="" class="inline-block hidden">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">
+                            Verwijderen
+                        </button>
+                    </form>
+
                     <button type="button" onclick="closeViewModal()"
                         class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">
                         Sluiten
@@ -131,22 +153,18 @@
         var calendarEl = document.getElementById('calendar');
 
         var calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: 'dayGridMonth', // standaard maandweergave
+            initialView: 'dayGridMonth',
             selectable: true,
-
-            // Header met buttons om view te switchen
             headerToolbar: {
                 left: 'prev,next',
                 center: 'title',
                 right: 'dayGridMonth,timeGridWeek,timeGridDay'
             },
 
-            // Klik op dag → nieuwe taak modal
             dateClick: function(info) {
                 openCreateModal(info.dateStr);
             },
 
-            // Klik op event → view modal
             eventClick: function(info) {
                 openViewModal(info.event);
             },
@@ -154,6 +172,7 @@
             events: [
                 @foreach ($tasks as $task)
                     {
+                        id: "{{ $task->id }}",
                         title: "{{ $task->address->street }} {{ $task->address->number ?? '' }}",
                         start: "{{ $task->time }}",
                         color: "blue",
@@ -162,7 +181,9 @@
                             address_name: "{{ $task->address->street }}",
                             address_number: "{{ $task->address->number ?? '' }}",
                             zipcode: "{{ $task->address->zipcode ?? '' }}",
-                            city: "{{ $task->address->city ?? '' }}"
+                            city: "{{ $task->address->city ?? '' }}",
+                            note: "{{ $task->note ?? '' }}",
+                            team_id: {{ $task->team_id }}
                         }
                     },
                 @endforeach
@@ -186,32 +207,82 @@
         @endif
     });
 
-    // Modals
     function openCreateModal(dateStr = null) {
-        document.getElementById('createModal').classList.remove('hidden');
-        document.getElementById('createModal').classList.add('flex');
+    document.getElementById('createModal').classList.remove('hidden');
+    document.getElementById('createModal').classList.add('flex');
 
-        if (dateStr) {
-            let input = document.querySelector('input[name="time"]');
-            input.value = dateStr + "T09:00";
+    // Reset velden
+    document.getElementById('createAddress').value = '';
+    document.getElementById('createNumber').value = '';
+    document.getElementById('createZip').value = '';
+    document.getElementById('createCity').value = '';
+    document.getElementById('createNoteDisplay').textContent = '';
+
+    if (dateStr) {
+        let input = document.querySelector('input[name="time"]');
+        input.value = dateStr + "T09:00";
+    }
+
+    function fetchNote() {
+        let street = document.getElementById('createAddress').value;
+        let number = document.getElementById('createNumber').value;
+
+        if(street && number) {
+            fetch(`/schedule/task-note?street=${encodeURIComponent(street)}&number=${encodeURIComponent(number)}`)
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('createNoteDisplay').textContent = data.note || '';
+                });
+        } else {
+            document.getElementById('createNoteDisplay').textContent = '';
         }
     }
+
+    document.getElementById('createAddress').addEventListener('input', fetchNote);
+    document.getElementById('createNumber').addEventListener('input', fetchNote);
+}
+
+
+
 
     function closeCreateModal() {
         document.getElementById('createModal').classList.add('hidden');
         document.getElementById('createModal').classList.remove('flex');
     }
 
-    function openViewModal(event) {
-        document.getElementById('viewModal').classList.remove('hidden');
-        document.getElementById('viewModal').classList.add('flex');
+   function openViewModal(event) {
+    document.getElementById('viewModal').classList.remove('hidden');
+    document.getElementById('viewModal').classList.add('flex');
 
-        document.getElementById('viewTime').textContent = event.extendedProps.time || '';
-        document.getElementById('viewAddress').textContent = event.extendedProps.address_name || '';
-        document.getElementById('viewNumber').textContent = event.extendedProps.address_number || '';
-        document.getElementById('viewZip').textContent = event.extendedProps.zipcode || '';
-        document.getElementById('viewCity').textContent = event.extendedProps.city || '';
-    }
+    document.getElementById('viewTime').textContent = event.extendedProps.time || '';
+    document.getElementById('viewAddress').textContent = event.extendedProps.address_name || '';
+    document.getElementById('viewNumber').textContent = event.extendedProps.address_number || '';
+    document.getElementById('viewZip').textContent = event.extendedProps.zipcode || '';
+    document.getElementById('viewCity').textContent = event.extendedProps.city || '';
+    document.getElementById('viewNote').textContent = event.extendedProps.note || ''; // <--- note toegevoegd
+
+    const editBtn = document.getElementById('editTaskBtn');
+    const deleteForm = document.getElementById('deleteTaskForm');
+
+    editBtn.onclick = function() {
+        window.location.href = `/schedule/${event.id}/edit`;
+    };
+    deleteForm.action = `/schedule/${event.id}`;
+
+    @if(Auth::user()->role === 'admin')
+        editBtn.classList.remove('hidden');
+        deleteForm.classList.remove('hidden');
+    @else
+        if(event.extendedProps.team_id == {{ Auth::id() }}) {
+            editBtn.classList.remove('hidden');
+            deleteForm.classList.remove('hidden');
+        } else {
+            editBtn.classList.add('hidden');
+            deleteForm.classList.add('hidden');
+        }
+    @endif
+}
+
 
     function closeViewModal() {
         document.getElementById('viewModal').classList.add('hidden');

@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\TaskController;
 
 Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [LoginController::class, 'login']);
@@ -39,4 +40,14 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/schedule', [ScheduleController::class, 'store'])->name('schedule.store');
     Route::get('/schedule/tasks', [ScheduleController::class, 'tasks'])->name('schedule.tasks');
     Route::get('/schedule/tasks/{team}', [ScheduleController::class, 'getTasksByTeam'])->name('schedule.teamTasks');
+    Route::get('/schedule/{task}/edit', [ScheduleController::class, 'edit'])->name('schedule.edit');
+    Route::put('/schedule/{task}', [ScheduleController::class, 'update'])->name('schedule.update');
+    Route::delete('/schedule/{task}', [ScheduleController::class, 'destroy'])->name('schedule.destroy');
+   Route::get('/schedule/task-note', [ScheduleController::class, 'getTaskNoteByAddress']);
+
+
+});
+
+Route::middleware(['auth'])->group(function () {
+    Route::post('/tasks/{task}/finish', [TaskController::class, 'finish'])->name('tasks.finish');
 });
