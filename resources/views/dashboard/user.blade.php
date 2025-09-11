@@ -24,7 +24,7 @@
                                 {{ \Carbon\Carbon::parse($task->time)->format('H:i') }}
                             </td>
                             <td class="border px-4 py-2">
-                                {{ $task->address->street }} {{ $task->address->number ?? '' }}
+                                {{ $task->address->street }} {{ $task->address->number ?? '' }}, {{ $task->address->zipcode ?? '' }} {{ $task->address->city ?? '' }}
                             </td>
                             <td class="border px-4 py-2 capitalize">
                                 {{ $task->status }}
