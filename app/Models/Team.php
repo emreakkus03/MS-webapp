@@ -27,4 +27,9 @@ class Team extends Authenticatable
     {
         $this->attributes['password'] = bcrypt($password);
     }
+
+    public function tasks()
+    {
+        return $this->hasMany(Task::class, 'team_id');
+    }
 }

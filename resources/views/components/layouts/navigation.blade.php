@@ -43,15 +43,15 @@
         <nav class="mt-6 ml-4">
             <ul class="space-y-1">
                 <li>
-                    <a href="/"
-                       class="flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition">
-                        <img src="{{ asset('images/icon/home.svg') }}" alt="Logo"
-                             class="w-7 h-7 text-gray-500">
-                        Dashboard
-                    </a>
-                </li>
+    <a href="{{ Auth::user()->role === 'admin' ? route('dashboard.admin') : route('dashboard.user') }}"
+       class="flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition">
+        <img src="{{ asset('images/icon/home.svg') }}" alt="Logo"
+             class="w-7 h-7 text-gray-500">
+        Dashboard
+    </a>
+</li>
                 <li>
-                    <a href="#"
+                    <a href="/schedule"
                        class="flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-md transition">
                         <img src="{{ asset('images/icon/schedule.svg') }}" alt="Logo"
                              class="w-7 h-7 text-gray-500">

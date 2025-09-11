@@ -18,19 +18,28 @@ class LoginController extends Controller
         return view('signin.signin', compact('teams'));
     }
 
-    public function login(Request $request)
-    {
-        $credentials = $request->only('name', 'password');
+   public function login(Request $request)
+{
+    $credentials = $request->only('name', 'password');
 
-        if (Auth::guard('web')->attempt($credentials)) {
-            $request->session()->regenerate();
-            return redirect()->intended('/');
+    if (Auth::guard('web')->attempt($credentials)) {
+        $request->session()->regenerate();
+
+        $user = Auth::user();
+
+        // Redirect op basis van rol
+        if ($user->role === 'admin') {
+            return redirect()->route('dashboard.admin');
+        } else {
+            return redirect()->route('dashboard.user');
         }
-
-        return back()->withErrors([
-            'name' => 'De inloggegevens zijn niet correct.',
-        ]);
     }
+
+    return back()->withErrors([
+        'name' => 'De inloggegevens zijn niet correct.',
+    ]);
+}
+
 
     public function logout(Request $request)
     {

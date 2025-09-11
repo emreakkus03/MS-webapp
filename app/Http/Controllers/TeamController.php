@@ -31,30 +31,43 @@ class TeamController extends Controller
         return view('teams.index', compact('teams'));
     }
 
-    public function store(Request $request)
-    {
-        /** @var \App\Models\User|null $team */
-        $team = auth()->guard()->user();
-        abort_unless($team && $team->role === 'admin', 403);
+   public function store(Request $request)
+{
+    /** @var \App\Models\User|null $team */
+    $team = auth()->guard()->user();
+    abort_unless($team && $team->role === 'admin', 403);
 
-        // Validatie
-        $request->validate([
-            'name' => 'required|string|unique:teams,name',
-            'password' => 'required|string|min:6',
-            'role' => 'required|string',
-            'members' => 'nullable|string',
-        ]);
+    // Validatie
+    $request->validate([
+        'name' => 'required|string|unique:teams,name',
+        'password' => 'required|string|min:6',
+        'role' => 'required|string',
+        'members' => 'nullable|string',
+    ]);
 
-        // Nieuwe team aanmaken
-        Team::create([
-            'name' => $request->name,
-            'password' => $request->password,
-            'role' => $request->role,
-            'members' => $request->members,
-        ]);
+    // Teamnaam met hoofdletter
+    $teamName = ucfirst(strtolower($request->name));
 
-        return redirect()->back()->with('success', 'Nieuwe ploeg succesvol aangemaakt!');
+    // Members elke naam met hoofdletter
+    $members = null;
+    if ($request->members) {
+        // Split op spaties, ucfirst voor elk woord, dan weer samenvoegen
+        $members = collect(explode(' ', $request->members))
+            ->map(fn($name) => ucfirst(strtolower($name)))
+            ->implode(' ');
     }
+
+    // Nieuwe team aanmaken
+    Team::create([
+        'name' => $teamName,
+        'password' => $request->password,
+        'role' => $request->role,
+        'members' => $members,
+    ]);
+
+    return redirect()->back()->with('success', 'Nieuwe ploeg succesvol aangemaakt!');
+}
+
 
     public function edit($id)
     {
