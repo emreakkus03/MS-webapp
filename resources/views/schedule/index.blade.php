@@ -24,15 +24,18 @@
             </div>
         @endif
 
-        <button type="button" onclick="openCreateModal()"
-            class="mb-6 bg-[#283142] text-white px-4 py-2 rounded hover:bg-[#B51D2D]">
-            Nieuwe Taak
-        </button>
+        @if (Auth::user()->role === 'admin')
+    <button type="button" onclick="openCreateModal()"
+        class="mb-6 bg-[#283142] text-white px-4 py-2 rounded hover:bg-[#B51D2D]">
+        Nieuwe Taak
+    </button>
+@endif
 
         <!-- Kalender -->
         <div id="calendar" class="mb-6"></div>
 
         <!-- Modal voor nieuwe taak -->
+        @if (Auth::user()->role === 'admin')
         <div id="createModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
             <div class="bg-white rounded-lg shadow-lg w-full max-w-lg p-6">
                 <h2 class="text-lg font-semibold mb-4">Nieuwe Taak Toevoegen</h2>
@@ -55,14 +58,18 @@
                         <input type="datetime-local" name="time" required class="w-full border px-3 py-2 rounded">
                     </div>
 
+                    <!-- Waarschuwing voor dubbele tijd -->
+                    <div id="timeWarning" class="text-red-600 mb-2 hidden">
+                        Er is al een taak ingepland op dit tijdstip!
+                    </div>
+
                     <div>
                         <label class="block text-sm font-medium">Adres (*)</label>
                         <input list="addresses" name="address_name" id="createAddress"
                             class="w-full border px-3 py-2 rounded" placeholder="Typ hier een straat..." required>
                         <datalist id="addresses">
                             @foreach ($addresses as $address)
-                                <option value="{{ $address->street }}">{{ $address->number }}, {{ $address->zipcode }},
-                                    {{ $address->city }}</option>
+                                <option value="{{ $address->street }}">{{ $address->number }}, {{ $address->zipcode }}, {{ $address->city }}</option>
                             @endforeach
                         </datalist>
                     </div>
@@ -87,10 +94,8 @@
 
                     <div>
                         <label class="block text-sm font-medium">Opmerking</label>
-                        <div id="createNoteDisplay" class="w-full border px-3 py-2 rounded bg-gray-100 min-h-[60px]">
-                        </div>
+                        <div id="createNoteDisplay" class="w-full border px-3 py-2 rounded bg-gray-100 min-h-[60px]"></div>
                     </div>
-
 
                     <div class="flex justify-end gap-3 mt-4">
                         <button type="button" onclick="closeCreateModal()"
@@ -104,6 +109,7 @@
                 </form>
             </div>
         </div>
+        @endif
 
         <!-- Modal om taak te bekijken -->
         <div id="viewModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
@@ -144,70 +150,69 @@
     </div>
 </x-layouts.dashboard>
 
-<!-- FullCalendar CSS & JS -->
 <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var calendarEl = document.getElementById('calendar');
+document.addEventListener('DOMContentLoaded', function() {
+    var calendarEl = document.getElementById('calendar');
 
-        var calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: 'dayGridMonth',
-            selectable: true,
-            headerToolbar: {
-                left: 'prev,next',
-                center: 'title',
-                right: 'dayGridMonth,timeGridWeek,timeGridDay'
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        selectable: true,
+        width: '100px',
+        headerToolbar: {
+            left: 'prev,next',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
+        },
+
+        dateClick: function(info) {
+            openCreateModal(info.dateStr);
+        },
+
+        eventClick: function(info) {
+            openViewModal(info.event);
+        },
+
+        events: [
+            @foreach ($tasks as $task)
+            {
+                id: "{{ $task->id }}",
+                title: "{{ $task->address->street }} {{ $task->address->number ?? '' }}",
+                start: "{{ $task->time }}",
+                color: "blue",
+                extendedProps: {
+                    time: "{{ \Carbon\Carbon::parse($task->time)->format('H:i') }}",
+                    address_name: "{{ $task->address->street }}",
+                    address_number: "{{ $task->address->number ?? '' }}",
+                    zipcode: "{{ $task->address->zipcode ?? '' }}",
+                    city: "{{ $task->address->city ?? '' }}",
+                    note: "{{ $task->note ?? '' }}",
+                    team_id: {{ $task->team_id }}
+                }
             },
-
-            dateClick: function(info) {
-                openCreateModal(info.dateStr);
-            },
-
-            eventClick: function(info) {
-                openViewModal(info.event);
-            },
-
-            events: [
-                @foreach ($tasks as $task)
-                    {
-                        id: "{{ $task->id }}",
-                        title: "{{ $task->address->street }} {{ $task->address->number ?? '' }}",
-                        start: "{{ $task->time }}",
-                        color: "blue",
-                        extendedProps: {
-                            time: "{{ \Carbon\Carbon::parse($task->time)->format('H:i') }}",
-                            address_name: "{{ $task->address->street }}",
-                            address_number: "{{ $task->address->number ?? '' }}",
-                            zipcode: "{{ $task->address->zipcode ?? '' }}",
-                            city: "{{ $task->address->city ?? '' }}",
-                            note: "{{ $task->note ?? '' }}",
-                            team_id: {{ $task->team_id }}
-                        }
-                    },
-                @endforeach
-            ]
-        });
-
-        calendar.render();
-
-        // Admin: update kalender bij team select
-        @if (Auth::user()->role === 'admin')
-            document.getElementById('teamSelect').addEventListener('change', function() {
-                var teamId = this.value;
-                fetch('/schedule/tasks/' + teamId)
-                    .then(res => res.json())
-                    .then(events => {
-                        calendar.removeAllEvents();
-                        calendar.addEventSource(events);
-                    })
-                    .catch(err => console.error(err));
-            });
-        @endif
+            @endforeach
+        ]
     });
 
-    function openCreateModal(dateStr = null) {
+    calendar.render();
+
+    @if (Auth::user()->role === 'admin')
+    document.getElementById('teamSelect').addEventListener('change', function() {
+        var teamId = this.value;
+        fetch('/schedule/tasks/' + teamId)
+            .then(res => res.json())
+            .then(events => {
+                calendar.removeAllEvents();
+                calendar.addEventSource(events);
+            })
+            .catch(err => console.error(err));
+    });
+    @endif
+});
+
+function openCreateModal(dateStr = null) {
     document.getElementById('createModal').classList.remove('hidden');
     document.getElementById('createModal').classList.add('flex');
 
@@ -217,40 +222,70 @@
     document.getElementById('createZip').value = '';
     document.getElementById('createCity').value = '';
     document.getElementById('createNoteDisplay').textContent = '';
+    document.getElementById('timeWarning').classList.add('hidden');
 
     if (dateStr) {
         let input = document.querySelector('input[name="time"]');
         input.value = dateStr + "T09:00";
     }
 
-    function fetchNote() {
+    // Functie om adres-velden en note in te vullen
+    function fillAddressFields() {
         let street = document.getElementById('createAddress').value;
-        let number = document.getElementById('createNumber').value;
 
-        if(street && number) {
-            fetch(`/schedule/task-note?street=${encodeURIComponent(street)}&number=${encodeURIComponent(number)}`)
+        if (street) {
+            fetch(`/schedule/address-details?street=${encodeURIComponent(street)}`)
                 .then(res => res.json())
                 .then(data => {
-                    document.getElementById('createNoteDisplay').textContent = data.note || '';
+                    if (data.address) {
+                        document.getElementById('createNumber').value = data.address.number ?? '';
+                        document.getElementById('createZip').value = data.address.zipcode ?? '';
+                        document.getElementById('createCity').value = data.address.city ?? '';
+                        document.getElementById('createNoteDisplay').textContent = data.note ?? '';
+                    } else {
+                        document.getElementById('createNumber').value = '';
+                        document.getElementById('createZip').value = '';
+                        document.getElementById('createCity').value = '';
+                        document.getElementById('createNoteDisplay').textContent = '';
+                    }
                 });
-        } else {
-            document.getElementById('createNoteDisplay').textContent = '';
         }
     }
 
-    document.getElementById('createAddress').addEventListener('input', fetchNote);
-    document.getElementById('createNumber').addEventListener('input', fetchNote);
+    // Event listener voor adresselectie
+    document.getElementById('createAddress').addEventListener('change', fillAddressFields);
+
+    // Live check bij submit
+    document.querySelector('#createModal form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        let timeInput = this.querySelector('input[name="time"]');
+        let selectedTime = timeInput.value;
+
+        // Ploeg-id ophalen (admin)
+        let teamSelect = this.querySelector('select[name="team_id"]');
+        let teamId = teamSelect ? teamSelect.value : {{ Auth::id() }};
+
+        fetch(`/schedule/check-time?time=${encodeURIComponent(selectedTime)}&team_id=${teamId}`)
+            .then(res => res.json())
+            .then(data => {
+                if(data.exists) {
+                    document.getElementById('timeWarning').classList.remove('hidden');
+                } else {
+                    document.getElementById('timeWarning').classList.add('hidden');
+                    this.submit();
+                }
+            })
+            .catch(err => console.error(err));
+    });
 }
 
 
+function closeCreateModal() {
+    document.getElementById('createModal').classList.add('hidden');
+    document.getElementById('createModal').classList.remove('flex');
+}
 
-
-    function closeCreateModal() {
-        document.getElementById('createModal').classList.add('hidden');
-        document.getElementById('createModal').classList.remove('flex');
-    }
-
-   function openViewModal(event) {
+function openViewModal(event) {
     document.getElementById('viewModal').classList.remove('hidden');
     document.getElementById('viewModal').classList.add('flex');
 
@@ -259,7 +294,7 @@
     document.getElementById('viewNumber').textContent = event.extendedProps.address_number || '';
     document.getElementById('viewZip').textContent = event.extendedProps.zipcode || '';
     document.getElementById('viewCity').textContent = event.extendedProps.city || '';
-    document.getElementById('viewNote').textContent = event.extendedProps.note || ''; // <--- note toegevoegd
+    document.getElementById('viewNote').textContent = event.extendedProps.note || '';
 
     const editBtn = document.getElementById('editTaskBtn');
     const deleteForm = document.getElementById('deleteTaskForm');
@@ -270,22 +305,17 @@
     deleteForm.action = `/schedule/${event.id}`;
 
     @if(Auth::user()->role === 'admin')
-        editBtn.classList.remove('hidden');
-        deleteForm.classList.remove('hidden');
-    @else
-        if(event.extendedProps.team_id == {{ Auth::id() }}) {
-            editBtn.classList.remove('hidden');
-            deleteForm.classList.remove('hidden');
-        } else {
-            editBtn.classList.add('hidden');
-            deleteForm.classList.add('hidden');
-        }
-    @endif
+    editBtn.classList.remove('hidden');
+    deleteForm.classList.remove('hidden');
+@else
+    editBtn.classList.add('hidden');
+    deleteForm.classList.add('hidden');
+@endif
+
 }
 
-
-    function closeViewModal() {
-        document.getElementById('viewModal').classList.add('hidden');
-        document.getElementById('viewModal').classList.remove('flex');
-    }
+function closeViewModal() {
+    document.getElementById('viewModal').classList.add('hidden');
+    document.getElementById('viewModal').classList.remove('flex');
+}
 </script>

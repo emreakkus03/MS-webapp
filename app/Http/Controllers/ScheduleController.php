@@ -38,6 +38,11 @@ class ScheduleController extends Controller
     {
         $user = Auth::user();
 
+        // ✅ Alleen admins mogen taken inplannen
+        if ($user->role !== 'admin') {
+            abort(403, 'Alleen admins kunnen taken inplannen.');
+        }
+
         $request->validate([
             'time' => 'required|date',
             'team_id' => 'nullable|exists:teams,id',
@@ -48,7 +53,13 @@ class ScheduleController extends Controller
             'note' => 'nullable|string|max:500',
         ]);
 
-        // Adres ophalen of aanmaken
+        $existingTask = Task::where('time', $request->time)->first();
+        if ($existingTask) {
+            return redirect()->back()
+                ->withErrors(['time' => 'Er is al een taak ingepland op dit tijdstip!'])
+                ->withInput();
+        }
+
         $address = Address::firstOrCreate(
             [
                 'street' => ucfirst(strtolower($request->address_name)),
@@ -60,24 +71,44 @@ class ScheduleController extends Controller
             ]
         );
 
-        // Note bepalen: als ingevuld gebruik dat, anders laatste note voor dat adres
         $note = $request->note;
         if (!$note) {
             $note = Task::where('address_id', $address->id)->latest()->value('note');
         }
 
-        // Taak opslaan
+        // Kijk of er al een taak voor dit adres bestaat
+$lastTask = Task::where('address_id', $address->id)->latest()->first();
+
+$status = $lastTask ? $lastTask->status : 'open';
+
         Task::create([
-            'team_id' => $user->role === 'admin' && $request->filled('team_id')
-                ? $request->team_id
-                : $user->id,
+            'team_id' => $request->filled('team_id') ? $request->team_id : $user->id,
             'address_id' => $address->id,
             'time' => $request->time,
-            'status' => 'open',
+            'status' => $status,
             'note' => $note,
         ]);
 
         return redirect()->route('schedule.index')->with('success', 'Taak toegevoegd!');
+    }
+
+    public function checkTime(Request $request)
+    {
+        $time = $request->query('time');
+        $teamId = $request->query('team_id');
+
+        if (!$time || !$teamId) {
+            return response()->json(['exists' => false]);
+        }
+
+        $date = \Carbon\Carbon::parse($time)->toDateString();
+
+        $exists = Task::where('team_id', $teamId)
+            ->whereDate('time', $date)
+            ->whereTime('time', \Carbon\Carbon::parse($time)->format('H:i:s'))
+            ->exists();
+
+        return response()->json(['exists' => $exists]);
     }
 
     public function getTasksByTeam($teamId)
@@ -108,20 +139,20 @@ class ScheduleController extends Controller
     }
 
     public function edit(Task $task)
-    {
-        $user = Auth::user();
-        if ($user->role !== 'admin' && $task->team_id !== $user->id) abort(403);
+{
+    $user = Auth::user();
+    if ($user->role !== 'admin') abort(403);
 
-        $teams = Team::orderBy('name')->get();
-        $addresses = Address::orderBy('street')->get();
+    $teams = Team::orderBy('name')->get();
+    $addresses = Address::orderBy('street')->get();
 
-        return view('schedule.edit', compact('task', 'teams', 'addresses'));
-    }
+    return view('schedule.edit', compact('task', 'teams', 'addresses'));
+}
 
     public function update(Request $request, Task $task)
     {
         $user = Auth::user();
-        if ($user->role !== 'admin' && $task->team_id !== $user->id) abort(403);
+        if ($user->role !== 'admin') abort(403);
 
         $request->validate([
             'time' => 'required|date',
@@ -132,6 +163,16 @@ class ScheduleController extends Controller
             'address_city' => 'nullable|string|max:100',
             'note' => 'nullable|string|max:500',
         ]);
+
+        $existingTask = Task::where('time', $request->time)
+            ->where('id', '!=', $task->id)
+            ->first();
+
+        if ($existingTask) {
+            return redirect()->back()
+                ->withErrors(['time' => 'Er is al een andere taak ingepland op dit tijdstip!'])
+                ->withInput();
+        }
 
         $address = Address::firstOrCreate(
             [
@@ -144,7 +185,6 @@ class ScheduleController extends Controller
             ]
         );
 
-        // Note bijwerken van de taak
         $task->update([
             'team_id' => $user->role === 'admin' && $request->filled('team_id')
                 ? $request->team_id
@@ -160,7 +200,7 @@ class ScheduleController extends Controller
     public function destroy(Task $task)
     {
         $user = Auth::user();
-        if ($user->role !== 'admin' && $task->team_id !== $user->id) abort(403);
+        if ($user->role !== 'admin') abort(403);
 
         $task->delete();
         return redirect()->route('schedule.index')->with('success', 'Taak verwijderd!');
@@ -179,5 +219,24 @@ class ScheduleController extends Controller
 
         $note = Task::where('address_id', $address->id)->latest()->value('note');
         return response()->json(['note' => $note ?? '']);
+    }
+
+    public function getAddressDetails(Request $request)
+    {
+        $street = $request->query('street');
+
+        $address = Address::where('street', ucfirst(strtolower($street)))->first();
+        if (!$address) return response()->json(['address' => null, 'note' => null]);
+
+        $note = Task::where('address_id', $address->id)->latest()->value('note');
+
+        return response()->json([
+            'address' => [
+                'number' => $address->number,
+                'zipcode' => $address->zipcode,
+                'city' => ucfirst(strtolower($address->city)),
+            ],
+            'note' => $note,
+        ]);
     }
 }

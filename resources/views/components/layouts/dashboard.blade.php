@@ -10,9 +10,9 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 
-<body class="flex">
+<body  class="flex min-h-screen">
     <x-layouts.navigation></x-layouts.navigation>
-    <main>
+    <main class="flex-1 min-h-screen p-6 overflow-y-auto">
         {{ $slot }}
     </main>
 </body>

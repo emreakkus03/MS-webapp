@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\LoginController;
-// use App\Http\Controllers\Auth\TeamController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\DashboardController;
@@ -23,8 +22,7 @@ Route::get('/signin', function () {
 Route::get('/teams', [TeamController::class, 'index'])->name('teams.index');
 Route::post('/teams', [TeamController::class, 'store']);
 Route::middleware(['auth'])->group(function () {
-    Route::delete('/teams/{team}', [TeamController::class, 'destroy'])
-        ->name('teams.destroy');
+    Route::delete('/teams/{team}', [TeamController::class, 'destroy'])->name('teams.destroy');
 });
 
 Route::get('/teams/{id}/edit', [TeamController::class, 'edit'])->name('teams.edit');
@@ -37,15 +35,15 @@ Route::middleware('auth')->group(function () {
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/schedule', [ScheduleController::class, 'index'])->name('schedule.index');
-    Route::post('/schedule', [ScheduleController::class, 'store'])->name('schedule.store');
+    Route::post('/schedule', [ScheduleController::class, 'store'])->name('schedule.store'); // ✅ alleen admin mag dit in controller
     Route::get('/schedule/tasks', [ScheduleController::class, 'tasks'])->name('schedule.tasks');
     Route::get('/schedule/tasks/{team}', [ScheduleController::class, 'getTasksByTeam'])->name('schedule.teamTasks');
     Route::get('/schedule/{task}/edit', [ScheduleController::class, 'edit'])->name('schedule.edit');
     Route::put('/schedule/{task}', [ScheduleController::class, 'update'])->name('schedule.update');
     Route::delete('/schedule/{task}', [ScheduleController::class, 'destroy'])->name('schedule.destroy');
-   Route::get('/schedule/task-note', [ScheduleController::class, 'getTaskNoteByAddress']);
-
-
+    Route::get('/schedule/task-note', [ScheduleController::class, 'getTaskNoteByAddress']);
+    Route::get('/schedule/check-time', [ScheduleController::class, 'checkTime']);
+    Route::get('/schedule/address-details', [ScheduleController::class, 'getAddressDetails']);
 });
 
 Route::middleware(['auth'])->group(function () {

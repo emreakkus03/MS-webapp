@@ -10,13 +10,28 @@ class TaskController extends Controller
     public function finish(Request $request, Task $task)
     {
         $request->validate([
-            'note' => 'nullable|string|max:1000',
+            'damage' => 'required|in:none,damage',
+            'note'   => 'nullable|string|max:1000',
         ]);
 
-        $task->update([
-            'note'   => ucfirst($request->note),
-            'status' => 'finished',
-        ]);
+        if ($task->status === 'open') {
+            // Eerste keer → altijd "in behandeling"
+            $task->status = 'in behandeling';
+            $task->note   = $request->damage === 'damage' ? ucfirst($request->note) : null;
+
+        } elseif ($task->status === 'in behandeling') {
+            if ($request->damage === 'none') {
+                // Geen schade meer → klaar
+                $task->status = 'finished';
+                $task->note   = null;
+            } else {
+                // Nog steeds schade → blijft in behandeling
+                $task->status = 'in behandeling';
+                $task->note   = ucfirst($request->note);
+            }
+        }
+
+        $task->save();
 
         return redirect()->back()->with('success', 'Taak is afgerond!');
     }
