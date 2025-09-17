@@ -47,5 +47,13 @@ Route::middleware(['auth'])->group(function () {
 });
 
 Route::middleware(['auth'])->group(function () {
+    // Taken overzicht
+    Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
     Route::post('/tasks/{task}/finish', [TaskController::class, 'finish'])->name('tasks.finish');
+
+    // Alleen admin mag een taak heropenen (PATCH)
+    Route::patch('/tasks/{task}/reopen', [TaskController::class, 'reopen'])
+        ->name('tasks.reopen');
+    Route::get('/tasks/filter', [TaskController::class, 'filter'])->name('tasks.filter');
+
 });
