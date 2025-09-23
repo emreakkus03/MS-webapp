@@ -11,13 +11,9 @@ Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [LoginController::class, 'login']);
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
-Route::get('/', function () {
-    return redirect()->route('login');
-});
+Route::get('/', fn() => redirect()->route('login'));
 
-Route::get('/signin', function () {
-    return view('signin.signin');
-});
+Route::get('/signin', fn() => view('signin.signin'));
 
 Route::get('/teams', [TeamController::class, 'index'])->name('teams.index');
 Route::post('/teams', [TeamController::class, 'store']);
@@ -35,7 +31,7 @@ Route::middleware('auth')->group(function () {
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/schedule', [ScheduleController::class, 'index'])->name('schedule.index');
-    Route::post('/schedule', [ScheduleController::class, 'store'])->name('schedule.store'); // ✅ alleen admin mag dit in controller
+    Route::post('/schedule', [ScheduleController::class, 'store'])->name('schedule.store');
     Route::get('/schedule/tasks', [ScheduleController::class, 'tasks'])->name('schedule.tasks');
     Route::get('/schedule/tasks/{team}', [ScheduleController::class, 'getTasksByTeam'])->name('schedule.teamTasks');
     Route::get('/schedule/{task}/edit', [ScheduleController::class, 'edit'])->name('schedule.edit');
@@ -47,13 +43,19 @@ Route::middleware(['auth'])->group(function () {
 });
 
 Route::middleware(['auth'])->group(function () {
-    // Taken overzicht
     Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
     Route::post('/tasks/{task}/finish', [TaskController::class, 'finish'])->name('tasks.finish');
-
-    // Alleen admin mag een taak heropenen (PATCH)
-    Route::patch('/tasks/{task}/reopen', [TaskController::class, 'reopen'])
-        ->name('tasks.reopen');
+    Route::patch('/tasks/{task}/reopen', [TaskController::class, 'reopen'])->name('tasks.reopen');
     Route::get('/tasks/filter', [TaskController::class, 'filter'])->name('tasks.filter');
 
+    // 🔹 Cascade API voor Dropbox
+    Route::get('/dropbox/percelen', [TaskController::class, 'listPercelen']);
+    Route::get('/dropbox/regios', [TaskController::class, 'listRegios']);
+    Route::get('/dropbox/adressen', [TaskController::class, 'listAdressen']);
+
+    Route::get('/dropbox/members', [TaskController::class, 'listTeamMembers']);
+
+    Route::post('/dropbox/create-adres', [TaskController::class, 'createAdresFolder'])->name('dropbox.create_adres');
+    Route::post('/dropbox/upload-adres-photos', [TaskController::class, 'uploadAdresPhotos']);
+    Route::post('/tasks/{id}/upload-photo', [TaskController::class, 'uploadPhoto']);
 });
