@@ -35,7 +35,8 @@
                                 data-city="{{ $task->address->city }}"
                                 data-time="{{ \Carbon\Carbon::parse($task->time)->format('Y-m-d H:i') }}"
                                 data-status="{{ $task->status }}"
-                                data-note="{{ $task->note ?? '' }}"
+                                data-note="{{ $task->current_note ?? '' }}"
+                                data-previous-notes='@json($task->previous_notes)'
                                 data-damage="{{ $task->note ? 'damage' : 'none' }}">
                                 <td class="border px-4 py-2">
                                     {{ \Carbon\Carbon::parse($task->time)->format('H:i') }}

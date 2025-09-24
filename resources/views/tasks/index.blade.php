@@ -42,6 +42,8 @@
                         <th class="border px-3 py-2 text-left">Adres</th>
                         <th class="border px-3 py-2 text-left">Team</th>
                         <th class="border px-3 py-2 text-left">Status</th>
+                        <th class="border px-3 py-2 text-left">Notitie</th>
+                        <th class="border px-3 py-2 text-left">Foto's</th>
                         <th class="border px-3 py-2 text-left">Acties</th>
                     </tr>
                 </thead>
@@ -54,10 +56,33 @@
 </div>
         </div>
     </div>
+
+    <!-- Foto Lightbox -->
+<div id="photoModal" class="fixed inset-0 bg-black bg-opacity-75 hidden items-center justify-center z-50">
+    <!-- Sluitknop -->
+    <span onclick="closePhotoModal()" 
+          class="absolute top-5 right-8 text-white text-3xl cursor-pointer">&times;</span>
+
+    <!-- Grote foto -->
+    <img id="photoModalImg" src="" 
+         class="max-h-[90%] max-w-[90%] rounded shadow-lg border-4 border-white" />
+</div>
+
 </x-layouts.dashboard>
 
 
 <script>
+
+    function openPhotoModal(src) {
+    document.getElementById('photoModalImg').src = src;
+    document.getElementById('photoModal').classList.remove('hidden');
+    document.getElementById('photoModal').classList.add('flex');
+}
+
+function closePhotoModal() {
+    document.getElementById('photoModal').classList.add('hidden');
+    document.getElementById('photoModal').classList.remove('flex');
+}
 document.addEventListener("DOMContentLoaded", () => {
     const statusSelect = document.querySelector('select[name="status"]');
     const searchInput = document.querySelector('input[name="q"]');

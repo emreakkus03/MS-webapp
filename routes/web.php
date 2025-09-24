@@ -56,6 +56,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/dropbox/adressen', [TaskController::class, 'listAdressen']);
 
     Route::get('/dropbox/members', [TaskController::class, 'listTeamMembers']);
+    Route::get('/dropbox/preview', [TaskController::class, 'previewPhoto']);
+
 
     Route::post('/dropbox/create-adres', [TaskController::class, 'createAdresFolder'])->name('dropbox.create_adres');
     Route::post('/dropbox/upload-adres-photos', [TaskController::class, 'uploadAdresPhotos']);

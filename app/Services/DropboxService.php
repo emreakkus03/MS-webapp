@@ -310,5 +310,27 @@ public function createChildFolder(string $namespaceId, string $parentPath, strin
     ];
 }
 
+public function getTemporaryLink(string $namespaceId, string $path)
+{
+    $headers = [
+        'Dropbox-API-Path-Root' => json_encode([
+            '.tag'         => 'namespace_id',
+            'namespace_id' => $namespaceId
+        ]),
+        'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
+    ];
+
+    $response = Http::withToken($this->accessToken)
+        ->withHeaders($headers)
+        ->post('https://api.dropboxapi.com/2/files/get_temporary_link', [
+            'path' => $path,
+        ]);
+
+    if ($response->failed()) {
+        throw new \Exception("Dropbox temporary link failed: " . $response->body());
+    }
+
+    return $response->json()['link'] ?? null;
+}
 
 }

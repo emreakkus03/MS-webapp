@@ -20,5 +20,8 @@ class Task extends Model
     {
         return $this->belongsTo(Address::class, 'address_id');
     }
-    
+    public function getPhotoArrayAttribute()
+{
+    return $this->photo ? explode(',', $this->photo) : [];
+}
 }

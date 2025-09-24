@@ -338,4 +338,25 @@ public function uploadPhoto(Request $request, DropboxService $dropbox, $taskId)
             ], 500);
         }
     }
+
+    public function previewPhoto(Request $request, DropboxService $dropbox)
+{
+    $request->validate([
+        'path'        => 'required|string',
+        'namespace_id'=> 'nullable|string', // optioneel, standaard Fluvius namespace
+    ]);
+
+    try {
+        $namespaceId = $request->get('namespace_id') ?: $dropbox->getFluviusNamespaceId();
+        $link = $dropbox->getTemporaryLink($namespaceId, $request->path);
+
+        return redirect()->away($link);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Preview ophalen mislukt',
+            'details' => $e->getMessage(),
+        ], 500);
+    }
+}
+
 }

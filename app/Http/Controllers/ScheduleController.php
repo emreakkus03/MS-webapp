@@ -11,28 +11,72 @@ use Illuminate\Support\Facades\Auth;
 class ScheduleController extends Controller
 {
     public function index(Request $request)
-    {
-        $user = Auth::user();
+{
+    $user = Auth::user();
 
-        $teams = Team::orderBy('name')->get();
-        $addresses = Address::orderBy('street')->get();
+    $teams = Team::orderBy('name')->get();
+    $addresses = Address::orderBy('street')->get();
 
-        $defaultTeamId = $request->query('team_id');
+    $defaultTeamId = $request->query('team_id');
 
-        if ($user->role === 'admin') {
-            if (!$defaultTeamId && $teams->count() > 0) {
-                $defaultTeamId = $teams->first()->id;
-            }
-
-            $tasks = Task::with('address')
-                ->when($defaultTeamId, fn($query, $teamId) => $query->where('team_id', $teamId))
-                ->get();
-        } else {
-            $tasks = Task::with('address')->where('team_id', $user->id)->get();
-        }
-
-        return view('schedule.index', compact('tasks', 'teams', 'addresses', 'defaultTeamId'));
+    if ($user->role === 'admin') {
+    if (!$defaultTeamId && $teams->count() > 0) {
+        $defaultTeamId = $teams->first()->id;
     }
+
+    $tasks = Task::with('address')
+        ->when($defaultTeamId, fn($query, $teamId) => $query->where('team_id', $teamId))
+        ->get();
+
+    $tasks->transform(function ($task) {
+        $task->current_photos = $task->photo ? explode(',', $task->photo) : [];
+        $task->previous_photos = [];
+        $task->current_note = $task->note ?? '';
+        $task->previous_notes = [];
+        return $task;
+    });
+} else {
+    $tasks = Task::with('address')->where('team_id', $user->id)->get();
+    $team = Team::find($user->id);
+
+    foreach ($tasks as $task) {
+        $task->current_photos = $task->photo ? explode(',', $task->photo) : [];
+        $task->current_note = $task->note ?? '';
+
+        if ($team && in_array($team->name, ['Herstelploeg 1', 'Herstelploeg 2'])) {
+            $previousPhotos = Task::where('address_id', $task->address_id)
+                ->where('id', '<', $task->id)
+                ->whereNotNull('photo')
+                ->pluck('photo')
+                ->toArray();
+
+            $previousPhotos = collect($previousPhotos)
+                ->flatMap(fn($p) => explode(',', $p))
+                ->toArray();
+
+            $task->previous_photos = $previousPhotos;
+
+            // 👉 oude notities ophalen
+            $previousNotes = Task::where('address_id', $task->address_id)
+                ->where('id', '<', $task->id)
+                ->whereNotNull('note')
+                ->pluck('note')
+                ->toArray();
+
+            $task->previous_notes = $previousNotes;
+        } else {
+            $task->previous_photos = [];
+            $task->previous_notes = [];
+        }
+    }
+
+}
+
+
+    return view('schedule.index', compact('tasks', 'teams', 'addresses', 'defaultTeamId'));
+}
+
+    
 
     public function store(Request $request)
 {
@@ -118,32 +162,36 @@ class ScheduleController extends Controller
         return response()->json(['exists' => $exists]);
     }
 
-    public function getTasksByTeam($teamId)
-    {
-        if (Auth::user()->role !== 'admin') abort(403);
+   public function getTasksByTeam($teamId)
+{
+    if (Auth::user()->role !== 'admin') abort(403);
 
-        $tasks = Task::with('address')->where('team_id', $teamId)->get();
+    $tasks = Task::with('address')->where('team_id', $teamId)->get();
 
-        $events = $tasks->map(function ($task) {
-            return [
-                'id' => $task->id,
-                'title' => $task->address->street . ' ' . ($task->address->number ?? ''),
-                'start' => $task->time,
-                'color' => 'blue',
-                'extendedProps' => [
-                    'time' => \Carbon\Carbon::parse($task->time)->format('H:i'),
-                    'address_name' => $task->address->street,
-                    'address_number' => $task->address->number ?? '',
-                    'zipcode' => $task->address->zipcode ?? '',
-                    'city' => $task->address->city ?? '',
-                    'note' => $task->note ?? '',
-                    'team_id' => $task->team_id
-                ]
-            ];
-        });
+    $events = $tasks->map(function ($task) {
+        return [
+            'id' => $task->id,
+            'title' => $task->address->street . ' ' . ($task->address->number ?? ''),
+            'start' => $task->time,
+            'color' => 'blue',
+            'extendedProps' => [
+                'time' => \Carbon\Carbon::parse($task->time)->format('H:i'),
+                'address_name' => $task->address->street,
+                'address_number' => $task->address->number ?? '',
+                'zipcode' => $task->address->zipcode ?? '',
+                'city' => $task->address->city ?? '',
+                'note' => $task->note ?? '',
+                'team_id' => $task->team_id,
+                'photos' => $task->photo ? explode(',', $task->photo) : [], // 👈 toegevoegd
+                'current_photos' => $task->photo ? explode(',', $task->photo) : [],
+                'previous_photos' => [], // admin hoeft niet gesplitst
+            ]
+        ];
+    });
 
-        return response()->json($events);
-    }
+    return response()->json($events);
+}
+
 
     public function edit(Task $task)
 {

@@ -24,7 +24,7 @@
         {{ $slot }}
     </main>
     <footer class="w-full fixed bottom-0 left-0 flex justify-center items-center bg-gray-100 py-4">
-        <span class="text-gray-500 text-sm">&copy; {{ date('Y') }} - MS-Infra - Emre Akkus</span>
+        <strong><span class="text-gray-500 text-sm">&copy; {{ date('Y') }} - MS-Infra - <a href="https://www.linkedin.com/in/emre-akkus-118363251/" target="_blank">Emre Akkus</a></span></strong>
     </footer>
 </body>
 
