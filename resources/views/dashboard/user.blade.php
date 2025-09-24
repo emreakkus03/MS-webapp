@@ -419,6 +419,24 @@
             if (row) {
                 row.dataset.status = json.status;
                 row.querySelector("td:nth-child(3) span").textContent = json.status;
+
+                // ✅ Kleur realtime aanpassen
+    const statusSpan = row.querySelector("td:nth-child(3) span");
+    statusSpan.className = "px-2 py-1 rounded text-sm font-semibold"; // reset basis classes
+
+    switch (json.status) {
+        case "open":
+            statusSpan.classList.add("bg-gray-200", "text-gray-800");
+            break;
+        case "in behandeling":
+            statusSpan.classList.add("bg-yellow-200", "text-yellow-800");
+            break;
+        case "finished":
+            statusSpan.classList.add("bg-green-200", "text-green-800");
+            break;
+        default:
+            statusSpan.classList.add("bg-gray-200", "text-gray-800");
+    }
             }
 
             // Formulier sluiten

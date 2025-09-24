@@ -35,62 +35,69 @@ class ScheduleController extends Controller
     }
 
     public function store(Request $request)
-    {
-        $user = Auth::user();
+{
+    $user = Auth::user();
 
-        // ✅ Alleen admins mogen taken inplannen
-        if ($user->role !== 'admin') {
-            abort(403, 'Alleen admins kunnen taken inplannen.');
-        }
-
-        $request->validate([
-            'time' => 'required|date',
-            'team_id' => 'nullable|exists:teams,id',
-            'address_name' => 'required|string|max:255',
-            'address_number' => 'nullable|string|max:10',
-            'address_zipcode' => 'nullable|string|max:20',
-            'address_city' => 'nullable|string|max:100',
-            'note' => 'nullable|string|max:500',
-        ]);
-
-        $existingTask = Task::where('time', $request->time)->first();
-        if ($existingTask) {
-            return redirect()->back()
-                ->withErrors(['time' => 'Er is al een taak ingepland op dit tijdstip!'])
-                ->withInput();
-        }
-
-        $address = Address::firstOrCreate(
-            [
-                'street' => ucfirst(strtolower($request->address_name)),
-                'number' => $request->address_number
-            ],
-            [
-                'zipcode' => $request->address_zipcode,
-                'city' => ucfirst(strtolower($request->address_city)),
-            ]
-        );
-
-        $note = $request->note;
-        if (!$note) {
-            $note = Task::where('address_id', $address->id)->latest()->value('note');
-        }
-
-        // Kijk of er al een taak voor dit adres bestaat
-$lastTask = Task::where('address_id', $address->id)->latest()->first();
-
-$status = $lastTask ? $lastTask->status : 'open';
-
-        Task::create([
-            'team_id' => $request->filled('team_id') ? $request->team_id : $user->id,
-            'address_id' => $address->id,
-            'time' => $request->time,
-            'status' => $status,
-            'note' => $note,
-        ]);
-
-        return redirect()->route('schedule.index')->with('success', 'Taak toegevoegd!');
+    // ✅ Alleen admins mogen taken inplannen
+    if ($user->role !== 'admin') {
+        abort(403, 'Alleen admins kunnen taken inplannen.');
     }
+
+    $request->validate([
+        'time' => 'required|date',
+        'team_id' => 'required|exists:teams,id', // verplicht bij admin
+        'address_name' => 'required|string|max:255',
+        'address_number' => 'nullable|string|max:10',
+        'address_zipcode' => 'nullable|string|max:20',
+        'address_city' => 'nullable|string|max:100',
+        'note' => 'nullable|string|max:500',
+    ]);
+
+    // ✅ Check dubbele taken per team
+    $existingTask = Task::where('time', $request->time)
+        ->where('team_id', $request->team_id)
+        ->first();
+
+    if ($existingTask) {
+        return redirect()->back()
+            ->withErrors(['time' => 'Er is al een taak ingepland op dit tijdstip voor dit team!'])
+            ->withInput();
+    }
+
+    $address = Address::firstOrCreate(
+        [
+            'street' => ucfirst(strtolower($request->address_name)),
+            'number' => $request->address_number
+        ],
+        [
+            'zipcode' => $request->address_zipcode,
+            'city' => ucfirst(strtolower($request->address_city)),
+        ]
+    );
+
+    $note = $request->note;
+    if (!$note) {
+        $note = Task::where('address_id', $address->id)->latest()->value('note');
+    }
+
+    // Kijk of er al een taak voor dit adres bestaat
+    $lastTask = Task::where('address_id', $address->id)->latest()->first();
+    $status = $lastTask ? $lastTask->status : 'open';
+
+    Task::create([
+        'team_id' => $request->team_id, // 👈 altijd vanuit formulier
+        'address_id' => $address->id,
+        'time' => $request->time,
+        'status' => $status,
+        'note' => $note,
+    ]);
+
+    // ✅ Redirect naar dezelfde ploeg
+    return redirect()
+        ->route('schedule.index', ['team_id' => $request->team_id])
+        ->with('success', 'Taak toegevoegd!');
+}
+
 
     public function checkTime(Request $request)
     {
@@ -146,56 +153,63 @@ $status = $lastTask ? $lastTask->status : 'open';
     $teams = Team::orderBy('name')->get();
     $addresses = Address::orderBy('street')->get();
 
-    return view('schedule.edit', compact('task', 'teams', 'addresses'));
+       $redirect = request('redirect', url()->previous());
+
+    return view('schedule.edit', compact('task', 'teams', 'addresses', 'redirect'));
+
 }
 
     public function update(Request $request, Task $task)
-    {
-        $user = Auth::user();
-        if ($user->role !== 'admin') abort(403);
+{
+    $user = Auth::user();
+    if ($user->role !== 'admin') abort(403);
 
-        $request->validate([
-            'time' => 'required|date',
-            'team_id' => 'nullable|exists:teams,id',
-            'address_name' => 'required|string|max:255',
-            'address_number' => 'nullable|string|max:10',
-            'address_zipcode' => 'nullable|string|max:20',
-            'address_city' => 'nullable|string|max:100',
-            'note' => 'nullable|string|max:500',
-        ]);
+    $request->validate([
+        'time' => 'required|date',
+        'team_id' => 'nullable|exists:teams,id',
+        'address_name' => 'required|string|max:255',
+        'address_number' => 'nullable|string|max:10',
+        'address_zipcode' => 'nullable|string|max:20',
+        'address_city' => 'nullable|string|max:100',
+        'note' => 'nullable|string|max:500',
+    ]);
 
-        $existingTask = Task::where('time', $request->time)
-            ->where('id', '!=', $task->id)
-            ->first();
+    $existingTask = Task::where('time', $request->time)
+        ->where('id', '!=', $task->id)
+        ->first();
 
-        if ($existingTask) {
-            return redirect()->back()
-                ->withErrors(['time' => 'Er is al een andere taak ingepland op dit tijdstip!'])
-                ->withInput();
-        }
-
-        $address = Address::firstOrCreate(
-            [
-                'street' => ucfirst(strtolower($request->address_name)),
-                'number' => $request->address_number
-            ],
-            [
-                'zipcode' => $request->address_zipcode,
-                'city' => ucfirst(strtolower($request->address_city)),
-            ]
-        );
-
-        $task->update([
-            'team_id' => $user->role === 'admin' && $request->filled('team_id')
-                ? $request->team_id
-                : $task->team_id,
-            'address_id' => $address->id,
-            'time' => $request->time,
-            'note' => $request->note ?: $task->note,
-        ]);
-
-        return redirect()->route('schedule.index')->with('success', 'Taak bijgewerkt!');
+    if ($existingTask) {
+        return redirect()->back()
+            ->withErrors(['time' => 'Er is al een andere taak ingepland op dit tijdstip!'])
+            ->withInput();
     }
+
+    $address = Address::firstOrCreate(
+        [
+            'street' => ucfirst(strtolower($request->address_name)),
+            'number' => $request->address_number
+        ],
+        [
+            'zipcode' => $request->address_zipcode,
+            'city' => ucfirst(strtolower($request->address_city)),
+        ]
+    );
+
+    $task->update([
+        'team_id' => $user->role === 'admin' && $request->filled('team_id')
+            ? $request->team_id
+            : $task->team_id,
+        'address_id' => $address->id,
+        'time' => $request->time,
+        'note' => $request->note ?: $task->note,
+    ]);
+
+    // 👇 check of redirect_to bestaat (tasks), anders ga je terug naar schedule
+    $redirect = $request->input('redirect_to', route('schedule.index'));
+
+    return redirect($redirect)->with('success', 'Taak bijgewerkt!');
+}
+
 
     public function destroy(Task $task)
     {
@@ -203,7 +217,7 @@ $status = $lastTask ? $lastTask->status : 'open';
         if ($user->role !== 'admin') abort(403);
 
         $task->delete();
-        return redirect()->route('schedule.index')->with('success', 'Taak verwijderd!');
+        return redirect()->back()->with('success', 'Taak verwijderd!');
     }
 
     public function getTaskNoteByAddress(Request $request)

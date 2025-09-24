@@ -45,7 +45,7 @@
                     @if (Auth::user()->role === 'admin')
                         <div>
                             <label class="block text-sm font-medium">Ploeg</label>
-                            <select name="team_id" class="w-full border px-3 py-2 rounded">
+                            <select name="team_id" required  class="w-full border px-3 py-2 rounded">
                                 @foreach ($teams as $team)
                                     <option value="{{ $team->id }}">{{ $team->name }}</option>
                                 @endforeach
@@ -300,8 +300,9 @@ function openViewModal(event) {
     const deleteForm = document.getElementById('deleteTaskForm');
 
     editBtn.onclick = function() {
-        window.location.href = `/schedule/${event.id}/edit`;
-    };
+    window.location.href = `/schedule/${event.id}/edit?redirect=` + encodeURIComponent(window.location.href);
+};
+
     deleteForm.action = `/schedule/${event.id}`;
 
     @if(Auth::user()->role === 'admin')

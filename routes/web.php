@@ -15,14 +15,16 @@ Route::get('/', fn() => redirect()->route('login'));
 
 Route::get('/signin', fn() => view('signin.signin'));
 
-Route::get('/teams', [TeamController::class, 'index'])->name('teams.index');
-Route::post('/teams', [TeamController::class, 'store']);
+
 Route::middleware(['auth'])->group(function () {
+    Route::get('/teams', [TeamController::class, 'index'])->name('teams.index');
+    Route::post('/teams', [TeamController::class, 'store']);
     Route::delete('/teams/{team}', [TeamController::class, 'destroy'])->name('teams.destroy');
+    Route::get('/teams/{id}/edit', [TeamController::class, 'edit'])->name('teams.edit');
+    Route::put('/teams/{id}', [TeamController::class, 'update'])->name('teams.update');
 });
 
-Route::get('/teams/{id}/edit', [TeamController::class, 'edit'])->name('teams.edit');
-Route::put('/teams/{id}', [TeamController::class, 'update'])->name('teams.update');
+
 
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard/admin', [DashboardController::class, 'admin'])->name('dashboard.admin');

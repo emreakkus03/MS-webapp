@@ -20,4 +20,5 @@ class Task extends Model
     {
         return $this->belongsTo(Address::class, 'address_id');
     }
+    
 }

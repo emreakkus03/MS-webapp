@@ -7,6 +7,24 @@
             class="mb-6 bg-[#283142] text-white px-4 py-2 rounded hover:bg-[#B51D2D]">
             Nieuwe Ploeg
         </button>
+
+        <div class="mb-6 flex gap-4">
+    <div>
+        <label class="block text-sm font-medium mb-1">Filter op rol</label>
+        <select id="roleFilter" class="border px-3 py-2 rounded">
+            <option value="">Alle rollen</option>
+            <option value="admin" {{ ($filters['role'] ?? '') === 'admin' ? 'selected' : '' }}>Admin</option>
+            <option value="team" {{ ($filters['role'] ?? '') === 'team' ? 'selected' : '' }}>Team</option>
+        </select>
+    </div>
+
+    <div>
+        <label class="block text-sm font-medium mb-1">Zoek op naam</label>
+        <input type="text" id="searchFilter" value="{{ $filters['search'] ?? '' }}"
+               placeholder="Teamnaam..." class="border px-3 py-2 rounded">
+    </div>
+</div>
+
     
         <table class="w-full border-collapse border border-gray-300">
             <thead>
@@ -142,4 +160,32 @@
         document.getElementById('createModal').classList.add('hidden');
         document.getElementById('createModal').classList.remove('flex');
     }
+
+document.addEventListener("DOMContentLoaded", function () {
+    const roleFilter = document.getElementById("roleFilter");
+    const searchFilter = document.getElementById("searchFilter");
+
+    function updateTeams() {
+        let role = roleFilter.value;
+        let search = searchFilter.value;
+
+        let params = new URLSearchParams();
+        if (role) params.append("role", role);
+        if (search) params.append("search", search);
+
+        window.location.href = "{{ route('teams.index') }}?" + params.toString();
+    }
+
+    // Als admin dropdown verandert → meteen filteren
+    roleFilter.addEventListener("change", updateTeams);
+
+    // Zoekveld → wacht 300ms na typen
+    let searchTimeout;
+    searchFilter.addEventListener("input", function () {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(updateTeams, 500);
+    });
+});
+
+
 </script>

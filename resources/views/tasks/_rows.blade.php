@@ -34,8 +34,27 @@
                     </button>
                 </form>
             @else
-                <span class="text-gray-400">—</span>
+                <span class="text-gray-400"></span>
             @endif
+
+            @if (Auth::user()->role === 'admin')
+                {{-- Bewerken knop --}}
+                <a href="{{ route('schedule.edit', $task) }}?redirect={{ urlencode(request()->fullUrl()) }}"
+   class="px-3 py-1 rounded bg-yellow-500 text-white hover:bg-yellow-600">
+    Bewerken
+</a>
+
+                {{-- Delete knop --}}
+                <form action="{{ route('schedule.destroy', $task) }}" method="POST" class="inline"
+                    onsubmit="return confirm('Weet je zeker dat je deze taak wilt verwijderen?');">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="px-3 py-1 rounded bg-red-500 text-white hover:bg-red-600">
+                        Verwijder
+                    </button>
+                </form>
+            @endif
+
         </td>
     </tr>
 @empty

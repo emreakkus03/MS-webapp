@@ -17,19 +17,33 @@ class TeamController extends Controller
         // $this->middleware('auth');
     }
 
-    // Toon de ploegenlijst
-    public function index()
-    {
-        /** @var \App\Models\User|null $user */
-        $user = auth()->guard()->user();
+   public function index(Request $request)
+{
+    $user = auth()->guard()->user();
 
-        if (!$user || $user->role !== 'admin') {
-            abort(403); // of redirect('/');
-        }
-
-        $teams = Team::all();
-        return view('teams.index', compact('teams'));
+    if (!$user || $user->role !== 'admin') {
+        abort(403);
     }
+
+    // Start query
+    $query = Team::query();
+
+    // Filter op rol
+    if ($request->filled('role')) {
+        $query->where('role', $request->role);
+    }
+
+    // Zoek op naam
+    if ($request->filled('search')) {
+        $query->where('name', 'like', '%' . $request->search . '%');
+    }
+
+    $teams = $query->orderBy('name')->get();
+
+    return view('teams.index', compact('teams'))
+        ->with('filters', $request->only(['role', 'search']));
+}
+
 
    public function store(Request $request)
 {
