@@ -162,35 +162,63 @@ class ScheduleController extends Controller
         return response()->json(['exists' => $exists]);
     }
 
-   public function getTasksByTeam($teamId)
+  public function getTasksByTeam($teamId)
 {
     if (Auth::user()->role !== 'admin') abort(403);
 
+    $calendarColors = [
+        'open' => '#9CA3AF', // grijs
+        'in behandeling' => '#FACC15', // geel
+        'finished' => '#22C55E', // groen
+        'reopened' => '#EF4444', // rood
+    ];
+
+    $statusClasses = [
+        'open' => 'bg-gray-200 text-gray-800',
+        'in behandeling' => 'bg-yellow-200 text-yellow-800',
+        'finished' => 'bg-green-200 text-green-800',
+        'reopened' => 'bg-red-200 text-red-800',
+    ];
+
     $tasks = Task::with('address')->where('team_id', $teamId)->get();
 
-    $events = $tasks->map(function ($task) {
+    $events = $tasks->map(function ($task) use ($calendarColors, $statusClasses) {
         return [
             'id' => $task->id,
             'title' => $task->address->street . ' ' . ($task->address->number ?? ''),
             'start' => $task->time,
-            'color' => 'blue',
+
+            // 🎨 kleur van het event
+            'color' => $calendarColors[$task->status] ?? '#9CA3AF',
+
             'extendedProps' => [
                 'time' => \Carbon\Carbon::parse($task->time)->format('H:i'),
                 'address_name' => $task->address->street,
                 'address_number' => $task->address->number ?? '',
                 'zipcode' => $task->address->zipcode ?? '',
                 'city' => $task->address->city ?? '',
+
+                // ✅ status meegeven
+                'status' => $task->status,
+                'statusColor' => $statusClasses[$task->status] ?? 'bg-gray-200 text-gray-800',
+
+                // ✅ notities + foto's
                 'note' => $task->note ?? '',
-                'team_id' => $task->team_id,
-                'photos' => $task->photo ? explode(',', $task->photo) : [], // 👈 toegevoegd
+                'current_note' => $task->note ?? '',
+                'previous_notes' => [],
+                'photos' => $task->photo ? explode(',', $task->photo) : [],
                 'current_photos' => $task->photo ? explode(',', $task->photo) : [],
-                'previous_photos' => [], // admin hoeft niet gesplitst
+                'previous_photos' => [],
+
+                'team_id' => $task->team_id,
+                'team_name' => $task->team->name ?? '',
             ]
         ];
     });
 
     return response()->json($events);
 }
+
 
 
     public function edit(Task $task)

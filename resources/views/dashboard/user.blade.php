@@ -101,23 +101,27 @@
                                 <span>Schade</span>
                             </label>
                         </div>
+                        <p id="errorDamage" class="text-red-500 text-sm mt-1 hidden"></p>
                     </div>
 
                     <!-- Notitie veld -->
                     <div id="noteWrapper" class="mb-3 hidden">
                         <label class="block text-sm font-medium">Notitie</label>
                         <textarea name="note" rows="4" class="w-full border px-3 py-2 rounded"></textarea>
+                        <p id="errorNote" class="text-red-500 text-sm mt-1 hidden"></p>
                     </div>
 
                     <!-- Cascade dropdowns -->
                     <div class="mb-3">
                         <label class="block text-sm font-medium">Percelen</label>
                         <select id="perceelSelect" class="w-full border px-3 py-2 rounded"></select>
+                         <p id="errorPerceel" class="text-red-500 text-sm mt-1 hidden"></p>
                     </div>
 
                     <div class="mb-3">
                         <label class="block text-sm font-medium">Regio</label>
                         <select id="regioSelect" class="w-full border px-3 py-2 rounded" disabled></select>
+                         <p id="errorRegio" class="text-red-500 text-sm mt-1 hidden"></p>
                     </div>
 
                     <div class="mb-3 relative">
@@ -139,6 +143,7 @@
                             class="mt-2 bg-gray-200 px-2 py-1 rounded hover:bg-gray-300">+</button>
                         <button type="button" id="loadMoreAdressenBtn"
                             class="mt-2 text-blue-600 text-sm underline hidden">Meer laden...</button>
+                             <p id="errorAdres" class="text-red-500 text-sm mt-1 hidden"></p>
                     </div>
 
                     <!-- Foto upload -->
@@ -146,6 +151,7 @@
                         <label class="block text-sm font-medium">Upload foto's (max 3)</label>
                         <input type="file" id="photoUpload" name="photos[]" accept="image/*" multiple
                             class="w-full border px-3 py-2 rounded">
+                            <p id="errorPhoto" class="text-red-500 text-sm mt-1 hidden"></p>
                         <p class="text-xs text-gray-500">Maximaal 3 foto's</p>
                         <div id="photoPreview" class="flex gap-2 mt-2"></div>
                     </div>
@@ -170,23 +176,40 @@
         perceelSelect.innerHTML = "<option value=''>-- Kies perceel --</option>";
 
         data.forEach(p => {
-            perceelSelect.innerHTML += `<option value="${p.id}" data-type="${p.type}">${p.name}</option>`;
+           let displayName = p.name;
+if (p.name.toLowerCase().includes("perceel 1")) {
+    displayName = "Aansluitingen";
+} else if (p.name.toLowerCase().includes("perceel 2")) {
+    displayName = "Graafwerk";
+}
+
+perceelSelect.innerHTML += `<option value="${p.id}" data-type="${p.type}" data-original="${p.name}">${displayName}</option>`;
+
         });
     }
 
     async function loadRegios(id, type) {
-        let res = await fetch(`/dropbox/regios?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}`);
-        let data = await res.json();
-        let regioSelect = document.getElementById("regioSelect");
-        regioSelect.innerHTML = "<option value=''>-- Kies regio --</option>";
+    let res = await fetch(`/dropbox/regios?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}`);
+    let data = await res.json();
+    let regioSelect = document.getElementById("regioSelect");
+    regioSelect.innerHTML = "<option value=''>-- Kies regio --</option>";
 
-        data.forEach(r => {
-            regioSelect.innerHTML +=
-                `<option value="${r.path}" data-namespace="${r.namespace}">${r.name}</option>`;
-        });
-
-        regioSelect.disabled = false;
+    // ✅ Alleen 'Webapp uploads' tonen
+    let webappFolder = data.find(r => r.name.toLowerCase().includes("webapp uploads"));
+    if (webappFolder) {
+        regioSelect.innerHTML +=
+            `<option value="${webappFolder.path}" data-namespace="${webappFolder.namespace}">${webappFolder.name}</option>`;
     }
+
+    regioSelect.disabled = false;
+
+    // ✅ Automatisch selecteren van 'Webapp uploads'
+    if (webappFolder) {
+        regioSelect.value = webappFolder.path;
+        loadAdressen(webappFolder.namespace, webappFolder.path);
+    }
+}
+
 
     // --- Adressen laden ---
     let currentAdresCursor = null;
@@ -289,56 +312,64 @@
     });
 
     // Nieuwe adresmap
-    document.getElementById("newAdresBtn").addEventListener("click", async () => {
-        const regioSelect = document.getElementById("regioSelect");
-        const regioPath = regioSelect.value;
-        const namespaceId = regioSelect.options[regioSelect.selectedIndex]?.dataset.namespace;
+    // Nieuwe adresmap (altijd binnen Webapp uploads)
+document.getElementById("newAdresBtn").addEventListener("click", async () => {
+    const regioSelect = document.getElementById("regioSelect");
 
-        if (!regioPath || !namespaceId) {
-            alert("Kies eerst een regio");
-            return;
+    // Altijd Webapp uploads forceren
+    const webappOption = [...regioSelect.options].find(opt =>
+        opt.textContent.toLowerCase().includes("webapp uploads")
+    );
+
+    if (!webappOption) {
+        alert("Map 'Webapp uploads' niet gevonden. Kies eerst perceel 1 of 2.");
+        return;
+    }
+
+    const regioPath = webappOption.value;
+    const namespaceId = webappOption.dataset.namespace;
+
+    const name = prompt("Naam nieuwe adresmap:");
+    if (!name) return;
+
+    try {
+        const res = await fetch("/dropbox/create-adres", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify({
+                namespace_id: namespaceId,
+                path: regioPath,
+                adres: name
+            })
+        });
+
+        const json = await res.json();
+
+        if (res.status === 201 && json.success) {
+            alert(json.message || "Adresmap aangemaakt in Webapp uploads.");
+
+            await loadAdressen(namespaceId, regioPath, null, "");
+
+            const input = document.getElementById("adresComboInput");
+            const select = document.getElementById("adresSelect");
+            const drop = document.getElementById("adresDropdown");
+
+            input.value = json.folder.name;
+            select.innerHTML = `<option value="${json.folder.path}" data-namespace="${json.folder.namespace}" selected>${json.folder.name}</option>`;
+            drop.classList.add("hidden");
+
+        } else {
+            alert(json.message || "Kon adresmap niet maken.");
         }
+    } catch (err) {
+        console.error(err);
+        alert("Serverfout bij map maken.");
+    }
+});
 
-        const name = prompt("Naam nieuwe adresmap:");
-        if (!name) return;
-
-        try {
-            const res = await fetch("/dropbox/create-adres", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: JSON.stringify({
-                    namespace_id: namespaceId,
-                    path: regioPath,
-                    adres: name
-                })
-            });
-
-            const json = await res.json();
-
-            if (res.status === 201 && json.success) {
-                alert(json.message || "Map aangemaakt.");
-
-                await loadAdressen(namespaceId, regioPath, null, "");
-
-                const input = document.getElementById("adresComboInput");
-                const select = document.getElementById("adresSelect");
-                const drop = document.getElementById("adresDropdown");
-
-                input.value = json.folder.name;
-                select.innerHTML = `<option value="${json.folder.path}" data-namespace="${json.folder.namespace}" selected>${json.folder.name}</option>`;
-                drop.classList.add("hidden");
-
-            } else {
-                alert(json.message || "Kon map niet maken.");
-            }
-        } catch (err) {
-            console.error(err);
-            alert("Serverfout bij map maken.");
-        }
-    });
 
     // Foto preview
     document.getElementById("photoUpload").addEventListener("change", (e) => {
@@ -367,9 +398,78 @@
         });
     });
 
+    function showError(id, message) {
+    let el = document.getElementById(id);
+    if (el) {
+        el.textContent = message;
+        el.classList.remove("hidden");
+    }
+}
+
+function clearErrors() {
+    ["errorPerceel", "errorRegio", "errorAdres", "errorPhoto", "errorDamage", "errorNote"]
+        .forEach(id => {
+            let el = document.getElementById(id);
+            if (el) {
+                el.textContent = "";
+                el.classList.add("hidden");
+            }
+        });
+}
+
+function validateForm() {
+    clearErrors();
+
+    let perceelSelect = document.getElementById("perceelSelect");
+    let regioSelect = document.getElementById("regioSelect");
+    let adresSelect = document.getElementById("adresSelect");
+    let photoUpload = document.getElementById("photoUpload");
+    let damageNone = document.getElementById("damageNone");
+    let damageYes = document.getElementById("damageYes");
+    let noteField = document.querySelector('#finishForm textarea[name="note"]');
+
+    let isValid = true;
+
+    if (!perceelSelect.value) {
+        showError("errorPerceel", "Kies een perceel.");
+        isValid = false;
+    }
+
+    if (!regioSelect.value) {
+        showError("errorRegio", "Kies een regio (Webapp uploads).");
+        isValid = false;
+    }
+
+    if (!adresSelect.value) {
+        showError("errorAdres", "Kies of maak een adresmap.");
+        isValid = false;
+    }
+
+    if (photoUpload.files.length === 0) {
+        showError("errorPhoto", "Upload minstens 1 foto.");
+        isValid = false;
+    }
+
+    if (!damageNone.checked && !damageYes.checked) {
+        showError("errorDamage", "Selecteer of er schade is of niet.");
+        isValid = false;
+    }
+
+    if (damageYes.checked && !noteField.value.trim()) {
+        showError("errorNote", "Notitie is verplicht bij schade.");
+        isValid = false;
+    }
+
+    return isValid;
+}
+
+
+
     // ✅ Nieuw: finish + upload gecombineerd
     document.getElementById("finishForm").addEventListener("submit", async (e) => {
         e.preventDefault();
+        // ✅ eerst valideren
+    if (!validateForm()) return;
         let form = e.target;
         let taskId = form.action.match(/tasks\/(\d+)/)?.[1];
         let formData = new FormData(form);
@@ -388,6 +488,11 @@
             uploadData.append("namespace_id", namespaceId);
             uploadData.append("path", adresSelect.value);
 
+           // Gebruik de "echte" backend naam (Perceel 1 of Perceel 2)
+let perceelOriginal = document.getElementById("perceelSelect").selectedOptions[0]?.dataset.original;
+if (perceelOriginal) {
+    uploadData.append("perceel_name", perceelOriginal);
+}
             let resUpload = await fetch(`/tasks/${taskId}/upload-photo`, {
                 method: "POST",
                 headers: {
