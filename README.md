@@ -1,7 +1,7 @@
 # MS Infra Web Application  
 
-![Laravel](https://img.shields.io/badge/Laravel-10.x-FF2D20?logo=laravel&logoColor=white)  
-![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white)  
+![Laravel](https://img.shields.io/badge/Laravel-11.x-FF2D20?logo=laravel&logoColor=white)  
+![MySQL](https://img.shields.io/badge/MySQL-8.2-4479A1?logo=mysql&logoColor=white)  
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.x-38B2AC?logo=tailwind-css&logoColor=white)  
 ![Docker](https://img.shields.io/badge/Docker-24.x-2496ED?logo=docker&logoColor=white)  
 ![DDEV](https://img.shields.io/badge/DDEV-latest-0A192F?logo=docker&logoColor=white)  
