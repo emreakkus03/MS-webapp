@@ -6,15 +6,33 @@ use App\Http\Controllers\TeamController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TaskController;
+use Illuminate\Support\Facades\Auth;
+use App\Events\TestEvent;
 
-Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
-Route::post('/login', [LoginController::class, 'login']);
-Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
-Route::get('/', fn() => redirect()->route('login'));
+Route::get('/fire-test', function () {
+    broadcast(new TestEvent('Hallo vanuit Laravel Reverb!'));
+    return "Event fired!";
+});
 
-Route::get('/signin', fn() => view('signin.signin'));
+Route::post('/notifications/clear', function () {
+    Auth::user()->unreadNotifications->markAsRead();
+    return back();
+})->name('notifications.clear');
 
+
+Route::middleware('guest')->group(function () {
+   
+    Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
+    Route::post('/login', [LoginController::class, 'login']);
+    Route::get('/', fn() => redirect()->route('login'));
+    
+    Route::get('/signin', fn() => view('signin.signin'));
+});
+Route::middleware(['auth'])->group(function () {
+    Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
+
+    });
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/teams', [TeamController::class, 'index'])->name('teams.index');
@@ -25,7 +43,7 @@ Route::middleware(['auth'])->group(function () {
 });
 
 
-
+//
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard/admin', [DashboardController::class, 'admin'])->name('dashboard.admin');
     Route::get('/dashboard/user', [DashboardController::class, 'user'])->name('dashboard.user');
@@ -42,6 +60,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/schedule/task-note', [ScheduleController::class, 'getTaskNoteByAddress']);
     Route::get('/schedule/check-time', [ScheduleController::class, 'checkTime']);
     Route::get('/schedule/address-details', [ScheduleController::class, 'getAddressDetails']);
+    Route::get('/schedule/address-suggest', [ScheduleController::class, 'addressSuggest']);
 });
 
 Route::middleware(['auth'])->group(function () {

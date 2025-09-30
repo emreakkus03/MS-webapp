@@ -12,7 +12,7 @@
 
 <body  class="flex min-h-screen">
     <x-layouts.navigation></x-layouts.navigation>
-    <main class="flex-1 min-h-screen p-6 overflow-y-auto">
+    <main class="flex-1 min-h-screen p-6 overflow-y-auto bg-gray-50">
         {{ $slot }}
     </main>
 </body>

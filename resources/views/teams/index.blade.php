@@ -42,11 +42,11 @@
                         <td class="p-2 border">{{ $team->members }}</td>
                         <td class="p-2 border">{{ $team->role }}</td>
                         <td class="p-2 border">
-                            <a href="{{ route('teams.edit', $team->id) }}" class="text-blue-600 hover:text-blue-800 mr-2">
+                            <a href="{{ route('teams.edit', $team->id) }}" class="px-3 py-1 rounded bg-[#2ea5d7] text-white hover:bg-[#2eb5d7]">
                                 Bewerken
                             </a>
                             
-                            <button type="button" class="text-red-600 hover:text-red-800"
+                            <button type="button" class="px-3 py-1 ml-1 rounded bg-[#B51D2D] text-white hover:bg-[#B53D2D]"
                                 onclick="openDeleteModal({{ $team->id }})">
                                 Verwijderen
                             </button>

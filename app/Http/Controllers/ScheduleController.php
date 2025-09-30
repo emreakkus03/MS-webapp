@@ -162,9 +162,9 @@ class ScheduleController extends Controller
         return response()->json(['exists' => $exists]);
     }
 
-  public function getTasksByTeam($teamId)
+public function getTasksByTeam($teamId)
 {
-    if (Auth::user()->role !== 'admin') abort(403);
+    $user = Auth::user();
 
     $calendarColors = [
         'open' => '#9CA3AF', // grijs
@@ -180,36 +180,37 @@ class ScheduleController extends Controller
         'reopened' => 'bg-red-200 text-red-800',
     ];
 
-    $tasks = Task::with('address')->where('team_id', $teamId)->get();
+    if ($user->role === 'admin') {
+        // Admin kan elk team zien
+        $tasks = Task::with('address')->where('team_id', $teamId)->get();
+    } else {
+        // User mag alleen zijn eigen team zien
+        if ($teamId != $user->id) {
+            abort(403);
+        }
+        $tasks = Task::with('address')->where('team_id', $user->id)->get();
+    }
 
     $events = $tasks->map(function ($task) use ($calendarColors, $statusClasses) {
         return [
             'id' => $task->id,
             'title' => $task->address->street . ' ' . ($task->address->number ?? ''),
             'start' => $task->time,
-
-            // 🎨 kleur van het event
             'color' => $calendarColors[$task->status] ?? '#9CA3AF',
-
             'extendedProps' => [
                 'time' => \Carbon\Carbon::parse($task->time)->format('H:i'),
                 'address_name' => $task->address->street,
                 'address_number' => $task->address->number ?? '',
                 'zipcode' => $task->address->zipcode ?? '',
                 'city' => $task->address->city ?? '',
-
-                // ✅ status meegeven
                 'status' => $task->status,
                 'statusColor' => $statusClasses[$task->status] ?? 'bg-gray-200 text-gray-800',
-
-                // ✅ notities + foto's
                 'note' => $task->note ?? '',
                 'current_note' => $task->note ?? '',
                 'previous_notes' => [],
                 'photos' => $task->photo ? explode(',', $task->photo) : [],
                 'current_photos' => $task->photo ? explode(',', $task->photo) : [],
                 'previous_photos' => [],
-
                 'team_id' => $task->team_id,
                 'team_name' => $task->team->name ?? '',
             ]
@@ -218,6 +219,7 @@ class ScheduleController extends Controller
 
     return response()->json($events);
 }
+
 
 
 
@@ -329,4 +331,24 @@ class ScheduleController extends Controller
             'note' => $note,
         ]);
     }
+
+    public function addressSuggest(Request $request)
+{
+    $query = $request->query('query', '');
+    if (strlen($query) < 2) {
+        return response()->json([]);
+    }
+
+    $addresses = Address::where('street', 'like', "%{$query}%")
+        ->limit(10)
+        ->get();
+
+    $addresses->transform(function ($a) {
+        $a->note = Task::where('address_id', $a->id)->latest()->value('note');
+        return $a;
+    });
+
+    return response()->json($addresses);
+}
+
 }

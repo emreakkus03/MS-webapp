@@ -6,43 +6,83 @@ use Illuminate\Http\Request;
 use App\Models\Task;
 use Illuminate\Support\Facades\Auth;
 use App\Services\DropboxService;
+use App\Notifications\TaskCompletedNotification;
+use App\Models\Team; 
 
 class TaskController extends Controller
 {
-    public function finish(Request $request, Task $task)
-    {
-        $request->validate([
-            'damage' => 'required|in:none,damage',
-            'note'   => 'nullable|string|max:1000',
-        ]);
+   public function finish(Request $request, Task $task)
+{
+    $request->validate([
+        'damage' => 'required|in:none,damage',
+        'note'   => 'nullable|string|max:1000',
+    ]);
 
-        if ($task->status === 'open') {
+    if ($task->status === 'open') {
+        $task->status = 'in behandeling';
+        $task->note   = $request->damage === 'damage' ? ucfirst($request->note) : null;
+    } elseif (in_array($task->status, ['in behandeling', 'reopened'])) {
+        if ($request->damage === 'none') {
+            $task->status = 'finished';
+            $task->note   = null;
+        } else {
             $task->status = 'in behandeling';
-            $task->note   = $request->damage === 'damage' ? ucfirst($request->note) : null;
-        } elseif (in_array($task->status, ['in behandeling', 'reopened'])) {
-            if ($request->damage === 'none') {
-                $task->status = 'finished';
-                $task->note   = null;
-            } else {
-                $task->status = 'in behandeling';
-                $task->note   = ucfirst($request->note);
+            $task->note   = ucfirst($request->note);
+        }
+    }
+
+    $task->save();
+
+    Task::where('address_id', $task->address_id)
+        ->where('id', '!=', $task->id)
+        ->update(['status' => $task->status]);
+
+    $team = Auth::user(); // huidig ingelogde ploeg
+    $address = $task->address 
+        ? "{$task->address->street} {$task->address->number}, {$task->address->zipcode} {$task->address->city}" 
+        : "Onbekend adres";
+
+    // ✅ Notificatie bij schade + notitie
+    if ($request->damage === 'damage' && !empty($task->note)) {
+        if ($team->role !== 'admin') {
+            $admins = \App\Models\Team::where('role', 'admin')->get();
+            foreach ($admins as $admin) {
+                $admin->notify(new \App\Notifications\TaskNoteAddedNotification(
+                    $team->name,
+                    $task->address
+                ));
             }
         }
-
-        $task->save();
-
-        Task::where('address_id', $task->address_id)
-            ->where('id', '!=', $task->id)
-            ->update(['status' => $task->status]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Taak is afgerond!',
-            'status'  => $task->status,
-            'taskId'  => $task->id,
-            'note'    => $task->note,
-        ]);
     }
+
+    // ✅ Notificatie bij afronden taak (alleen Herstelploeg 1 & 2)
+    if (
+        $task->status === 'finished' &&
+        in_array($team->name, ['Herstelploeg 1', 'Herstelploeg 2'])
+    ) {
+        $taskName = $address;
+        if ($team->role !== 'admin') {
+            $admins = \App\Models\Team::where('role', 'admin')->get();
+            foreach ($admins as $admin) {
+                $admin->notify(new \App\Notifications\TaskCompletedNotification(
+                    $team->name,
+                    $taskName
+                ));
+            }
+        }
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Taak is afgerond!',
+        'status'  => $task->status,
+        'taskId'  => $task->id,
+        'note'    => $task->note,
+    ]);
+}
+
+
+
 
     public function index(Request $request)
     {
@@ -140,44 +180,27 @@ class TaskController extends Controller
         return response()->json(['error' => 'id + type verplicht']);
     }
 
-    // 1) Bepaal namespace + basispad voor de zoekopdracht
-    if ($type === 'namespace') {
-        // Perceel 1 → eigen namespace; zoek vanaf root ("")
-        $namespaceUsed = $id;
-        $basePath = "";
-    } else {
-        // Perceel 2 → folder binnen Fluvius namespace; zoek vanaf die folder
-        $namespaceUsed = $dropbox->getFluviusNamespaceId();
-        $basePath = $id; // dit is bv. "/Fluvius/.../Perceel 2"
-    }
+   // Namespace = perceel 1 (eigen namespace)
+if ($type === 'namespace') {
+    $namespaceUsed = $id;
+    $basePath = "";
 
-    // 2) Zoek specifiek naar de map "Webapp uploads" (case-insensitive)
+    // 🔹 Zoek naar "Webapp uploads"
     $matches = $dropbox->searchFoldersInNamespace($namespaceUsed, $basePath, 'Webapp uploads');
 
-    // filter op exacte naam (case-insensitive), voor het geval search meerdere dingen teruggeeft
     $webappFolders = collect($matches)->filter(function ($m) {
         return strtolower(trim($m['name'])) === 'webapp uploads';
     });
 
-    // Fallback: als search niks teruggeeft, probeer de directe kinderen (voor het geval de map wél in de root zit).
+    // fallback: direct kinderen checken
     if ($webappFolders->isEmpty()) {
         $list = $dropbox->listFoldersInNamespace($namespaceUsed, $basePath);
         $webappFolders = collect($list['entries'] ?? [])->filter(function ($e) {
             return ($e['.tag'] ?? null) === 'folder' && strtolower(trim($e['name'])) === 'webapp uploads';
-        })->map(function ($e) use ($namespaceUsed) {
-            return [
-                'name'      => $e['name'],
-                'path'      => $e['path_display'] ?? null,
-                'id'        => $e['id'] ?? null,
-                'namespace' => $namespaceUsed,
-                'tag'       => $e['.tag'] ?? 'folder',
-            ];
         });
     }
 
-    // 3) Toon alleen de (eerste) Webapp uploads map als "regio"
     $regios = $webappFolders->take(1)->map(function ($folder) use ($dropbox, $namespaceUsed) {
-        // Tel hoeveel adres-mappen erin zitten
         $adresResult = $dropbox->listFoldersInNamespace($namespaceUsed, $folder['path']);
         $count = collect($adresResult['entries'] ?? [])
             ->filter(fn($e) => ($e['.tag'] ?? null) === 'folder')
@@ -194,6 +217,39 @@ class TaskController extends Controller
 
     return response()->json($regios);
 }
+else {
+        // 🔹 Perceel 2 → Fluvius namespace
+        $namespaceUsed = $dropbox->getFluviusNamespaceId();
+        $basePath = $id;
+
+        $list = $dropbox->listFoldersInNamespace($namespaceUsed, $basePath);
+
+        $webappFolders = collect($list['entries'] ?? [])->filter(function ($entry) {
+            return ($entry['.tag'] ?? null) === 'folder'
+                && strcasecmp(trim($entry['name']), 'Webapp uploads') === 0;
+        });
+    }
+
+    // Zet het resultaat netjes om
+    $regios = $webappFolders->take(1)->map(function ($folder) use ($dropbox, $namespaceUsed) {
+        $adresResult = $dropbox->listFoldersInNamespace($namespaceUsed, $folder['path_display'] ?? $folder['path_lower'] ?? "");
+        $count = collect($adresResult['entries'] ?? [])
+            ->filter(fn($e) => ($e['.tag'] ?? null) === 'folder')
+            ->count();
+
+        return [
+            'name'      => $folder['name'] . " ({$count})",
+            'path'      => $folder['path_display'] ?? $folder['path_lower'] ?? null,
+            'id'        => $folder['id'] ?? null,
+            'namespace' => $namespaceUsed,
+            'count'     => $count,
+        ];
+    })->values();
+
+    return response()->json($regios);
+}
+
+
 
 
     // 🔹 Enkel adressen binnen "Webapp uploads"

@@ -62,8 +62,8 @@
                       onsubmit="return confirm('Weet je zeker dat je deze taak wilt verwijderen?');">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" class="px-3 py-1 rounded bg-[#B51D2D] text-white hover:bg-[#B53D2D]">
-                        Verwijder
+                    <button type="submit" class="px-3 py-1 ml-1 rounded bg-[#B51D2D] text-white hover:bg-[#B53D2D]">
+                        Verwijderen
                     </button>
                 </form>
             @endif
@@ -72,8 +72,8 @@
                 <form action="{{ route('tasks.reopen', $task) }}" method="POST" class="inline">
                     @csrf
                     @method('PATCH')
-                    <button class="px-3 py-1 rounded bg-[#005787] text-white hover:bg-[#006087]">
-                        Reopen
+                    <button class="px-3 py-1 ml-1 rounded bg-[#005787] text-white hover:bg-[#006087]">
+                        Heropenen
                     </button>
                 </form>
             @else

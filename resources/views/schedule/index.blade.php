@@ -40,16 +40,17 @@
                 <div class="bg-white rounded-lg shadow-lg w-full max-w-lg p-6">
                     <h2 class="text-lg font-semibold mb-4">Nieuwe Taak Toevoegen</h2>
 
-                    <form action="{{ route('schedule.store') }}" method="POST" class="space-y-4">
+                    <form id="taskForm" action="{{ route('schedule.store') }}" method="POST" class="space-y-4">
                         @csrf
                         @if (Auth::user()->role === 'admin')
                             <div>
                                 <label class="block text-sm font-medium">Ploeg</label>
-                                <select name="team_id" required class="w-full border px-3 py-2 rounded">
-                                    @foreach ($teams as $team)
-                                        <option value="{{ $team->id }}">{{ $team->name }}</option>
-                                    @endforeach
-                                </select>
+                               <select id="taskTeamSelect" name="team_id" required class="w-full border px-3 py-2 rounded">
+    @foreach ($teams as $team)
+        <option value="{{ $team->id }}">{{ $team->name }}</option>
+    @endforeach
+</select>
+
                             </div>
                         @endif
 
@@ -67,31 +68,29 @@
                         <div>
                             <label class="block text-sm font-medium">Adres (*)</label>
                             <input list="addresses" name="address_name" id="createAddress"
-                                class="w-full border px-3 py-2 rounded" placeholder="Typ hier een straat..." required>
-                            <datalist id="addresses">
-                                @foreach ($addresses as $address)
-                                    <option value="{{ $address->street }}">{{ $address->number }},
-                                        {{ $address->zipcode }}, {{ $address->city }}</option>
-                                @endforeach
-                            </datalist>
+                                class="w-full border px-3 py-2 rounded" placeholder="Typ hier een straat..."    autocomplete="new-password"  required>
+                            <!-- Suggesties dropdown -->
+    <div id="addressSuggestions"
+         class="absolute z-50 bg-white border rounded shadow mt-1 hidden max-h-40 overflow-y-auto">
+    </div>
                         </div>
 
                         <div>
                             <label class="block text-sm font-medium">Nummer (*)</label>
                             <input type="text" name="address_number" id="createNumber"
-                                class="w-full border px-3 py-2 rounded" required>
+                                class="w-full border px-3 py-2 rounded"  autocomplete="new-password" required>
                         </div>
 
                         <div>
                             <label class="block text-sm font-medium">Postcode (*)</label>
                             <input type="text" name="address_zipcode" id="createZip"
-                                class="w-full border px-3 py-2 rounded" required>
+                                class="w-full border px-3 py-2 rounded"  autocomplete="new-password" required>
                         </div>
 
                         <div>
                             <label class="block text-sm font-medium">Stad (*)</label>
                             <input type="text" name="address_city" id="createCity"
-                                class="w-full border px-3 py-2 rounded" required>
+                                class="w-full border px-3 py-2 rounded"  autocomplete="new-password" required>
                         </div>
 
                         <div>
@@ -188,8 +187,9 @@
 
 </x-layouts.dashboard>
 
-<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+
 
 <script>
     // Toggle 3 puntjes menu in taakdetails
@@ -241,37 +241,10 @@
                 ];
             @endphp
 
-            events: [
-                @foreach ($tasks as $task)
-                    {
-                        id: "{{ $task->id }}",
-                        title: "{{ $task->address->street }} {{ $task->address->number ?? '' }}",
-                        start: "{{ $task->time }}",
+          events: '/schedule/tasks/{{ Auth::user()->role === "admin" ? ($defaultTeamId ?? Auth::id()) : Auth::id() }}'
 
-                        // 🎨 kleur van het event
-                        color: "{{ $calendarColors[$task->status] ?? '#9CA3AF' }}",
 
-                        extendedProps: {
-                            time: "{{ \Carbon\Carbon::parse($task->time)->format('H:i') }}",
-                            address_name: "{{ $task->address->street }}",
-                            address_number: "{{ $task->address->number ?? '' }}",
-                            zipcode: "{{ $task->address->zipcode ?? '' }}",
-                            city: "{{ $task->address->city ?? '' }}",
 
-                            // 🔥 status en kleur class
-                            status: "{{ $task->status }}",
-                            statusColor: "{{ $statusClasses[$task->status] ?? 'bg-gray-200 text-gray-800' }}",
-
-                            current_note: @json($task->current_note),
-                            previous_notes: @json($task->previous_notes),
-                            team_id: {{ $task->team_id }},
-                            team_name: "{{ $task->team->name }}",
-                            current_photos: @json($task->current_photos),
-                            previous_photos: @json($task->previous_photos)
-                        }
-                    },
-                @endforeach
-            ]
 
 
         });
@@ -303,6 +276,13 @@
         document.getElementById('createCity').value = '';
         document.getElementById('createNoteDisplay').textContent = '';
         document.getElementById('timeWarning').classList.add('hidden');
+
+        const teamSelect = document.getElementById('teamSelect');
+const taskTeamSelect = document.getElementById('taskTeamSelect');
+if (teamSelect && taskTeamSelect) {
+    taskTeamSelect.value = teamSelect.value;
+}
+
 
         if (dateStr) {
             let input = document.querySelector('input[name="time"]');
@@ -357,6 +337,8 @@
                 })
                 .catch(err => console.error(err));
         });
+        setupAddressAutocomplete();
+
     }
 
 
@@ -546,4 +528,70 @@
         document.getElementById('photoModal').classList.add('hidden');
         document.getElementById('photoModal').classList.remove('flex');
     }
+
+    document.getElementById('taskForm')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    fetch(this.action, {
+        method: 'POST',
+        body: formData
+    }).then(res => {
+        if (res.ok) {
+            closeCreateModal();
+            // herlaad events voor huidig geselecteerd team
+            const teamId = document.getElementById('teamSelect')?.value || {{ $defaultTeamId }}
+            calendar.removeAllEvents();
+            calendar.addEventSource('/schedule/tasks/' + teamId);
+        }
+    });
+});
+
+function setupAddressAutocomplete() {
+    const input = document.getElementById('createAddress');
+    const suggestions = document.getElementById('addressSuggestions');
+
+    input.addEventListener('input', function () {
+        const query = this.value.trim();
+        if (query.length < 2) {
+            suggestions.classList.add('hidden');
+            return;
+        }
+
+        fetch(`/schedule/address-suggest?query=${encodeURIComponent(query)}`)
+            .then(res => res.json())
+            .then(data => {
+                suggestions.innerHTML = "";
+                if (data.length === 0) {
+                    suggestions.classList.add('hidden');
+                    return;
+                }
+
+                data.forEach(addr => {
+                    const option = document.createElement('div');
+                    option.className = "px-3 py-2 hover:bg-gray-100 cursor-pointer";
+                    option.textContent = `${addr.street} ${addr.number}, ${addr.zipcode} ${addr.city}`;
+                    option.onclick = () => {
+                        input.value = addr.street;
+                        document.getElementById('createNumber').value = addr.number ?? '';
+                        document.getElementById('createZip').value = addr.zipcode ?? '';
+                        document.getElementById('createCity').value = addr.city ?? '';
+                        document.getElementById('createNoteDisplay').textContent = addr.note ?? '';
+                        suggestions.classList.add('hidden');
+                    };
+                    suggestions.appendChild(option);
+                });
+
+                suggestions.classList.remove('hidden');
+            });
+    });
+
+    // klik buiten → sluit dropdown
+    document.addEventListener('click', (e) => {
+        if (!suggestions.contains(e.target) && e.target !== input) {
+            suggestions.classList.add('hidden');
+        }
+    });
+}
+
+
 </script>
