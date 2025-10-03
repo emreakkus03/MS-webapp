@@ -32,10 +32,10 @@ class Handler extends ExceptionHandler
      */
     public function render($request, Throwable $e)
     {
-        // 🔑 419 Page Expired → terug naar login
+        // 🔑 419 Page Expired → netjes naar login redirecten
         if ($e instanceof TokenMismatchException) {
             return redirect()->route('login')
-                ->with('error', 'Je sessie is verlopen, log opnieuw in.');
+                ->withErrors(['message' => 'Je sessie is verlopen, log opnieuw in.']);
         }
 
         return parent::render($request, $e);

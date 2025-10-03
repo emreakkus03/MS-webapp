@@ -1,4 +1,9 @@
 <x-layouts.app>
+    @php
+    header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+    header("Pragma: no-cache");
+    header("Expires: 0");
+@endphp
     <div class="flex items-center justify-center min-h-[86vh] bg-gray-100">
         <div class="md:w-full max-w-md bg-white p-8 rounded shadow box-border">
             <h1 class="text-2xl font-bold mb-6 text-center">Inloggen</h1>
@@ -28,11 +33,12 @@
                     class="w-full bg-[#283142] text-white py-2 rounded hover:bg-[#B51D2D] transition">Inloggen</button>
             </form>
 
-            @if ($errors->any())
-                <div class="mt-4 text-red-600 text-center">
-                    {{ $errors->first() }}
-                </div>
-            @endif
+           @if ($errors->any())
+    <div class="mt-4 text-red-600 text-center">
+        {{ $errors->first() }}
+    </div>
+@endif
+
         </div>
     </div>
 </x-layouts.app>

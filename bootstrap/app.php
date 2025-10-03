@@ -12,7 +12,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        //
+        // CSRF valideren, maar login route uitsluiten
+        $middleware->validateCsrfTokens(except: [
+            'login', // POST /login uitsluiten
+            'logout',  
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
