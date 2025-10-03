@@ -25,15 +25,12 @@ class DropboxService
         ]);
 
         if ($response->failed()) {
-            throw new \Exception("Dropbox token refresh failed: " . $response->body());
+            throw new \Exception("Dropbox token refresh failed: " . $response->json()['error_summary'] ?? $response->body());
         }
 
         return $response->json()['access_token'];
     }
 
-    /**
-     * Haal alle namespaces (team folders, shared folders, etc.)
-     */
     public function listNamespaces()
     {
         $response = Http::withToken($this->accessToken)
@@ -41,15 +38,12 @@ class DropboxService
             ->post('https://api.dropboxapi.com/2/team/namespaces/list', (object)[]);
 
         if ($response->failed()) {
-            throw new \Exception("Dropbox namespaces ophalen mislukt: " . $response->body());
+            throw new \Exception("Dropbox namespaces ophalen mislukt: " . $response->json()['error_summary'] ?? $response->body());
         }
 
         return $response->json()['namespaces'] ?? [];
     }
 
-    /**
-     * Geef de namespace_id van "Fluvius Aansluitingen"
-     */
     public function getFluviusNamespaceId()
     {
         $namespaces = $this->listNamespaces();
@@ -62,49 +56,47 @@ class DropboxService
             ->first(fn($ns) => stripos($ns['name'], 'fluvius aansluitingen') !== false);
 
         if (!$fluvius) {
-            throw new \Exception("Fluvius Aansluitingen namespace niet gevonden. Beschikbare: " . json_encode($namespaces));
+            throw new \Exception("Fluvius Aansluitingen namespace niet gevonden.");
         }
 
         return $fluvius['namespace_id'];
     }
 
-    /**
-     * Eerste batch van submappen/bestanden binnen een namespace
-     */
-    public function listFoldersInNamespace($namespaceId, $path = "")
-    {
-        $headers = [
-            'Dropbox-API-Path-Root' => json_encode([
-                '.tag'         => 'namespace_id',
-                'namespace_id' => $namespaceId
-            ]),
-            'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
-        ];
-
-        $response = Http::withToken($this->accessToken)
-            ->withHeaders($headers)
-            ->post('https://api.dropboxapi.com/2/files/list_folder', [
-                'path'      => $path,
-                'recursive' => false,
-                'limit'     => 250,
-            ]);
-
-        if ($response->failed()) {
-            throw new \Exception("Dropbox list_folder failed: " . $response->body());
-        }
-
-        $result = $response->json();
-
-        return [
-            'entries'  => $result['entries'] ?? [],
-            'cursor'   => $result['cursor'] ?? null,
-            'has_more' => $result['has_more'] ?? false,
-        ];
+   public function listFoldersInNamespace($namespaceId, $path = "")
+{
+    if ($path === null || strtolower($path) === 'null') {
+        $path = ""; // forceer root in namespace
     }
 
-    /**
-     * Vervolgbatch ophalen met cursor
-     */
+    $headers = [
+        'Dropbox-API-Path-Root' => json_encode([
+            '.tag'         => 'namespace_id',
+            'namespace_id' => $namespaceId
+        ]),
+        'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
+    ];
+
+    $response = Http::withToken($this->accessToken)
+        ->withHeaders($headers)
+        ->post('https://api.dropboxapi.com/2/files/list_folder', [
+            'path'      => $path,
+            'recursive' => false,
+            'limit'     => 250,
+        ]);
+
+    if ($response->failed()) {
+        throw new \Exception("Dropbox list_folder failed: " . ($response->json()['error_summary'] ?? $response->body()));
+    }
+
+    $result = $response->json();
+
+    return [
+        'entries'  => $result['entries'] ?? [],
+        'cursor'   => $result['cursor'] ?? null,
+        'has_more' => $result['has_more'] ?? false,
+    ];
+}
+
     public function listFoldersContinue($namespaceId, $cursor)
     {
         $headers = [
@@ -122,7 +114,7 @@ class DropboxService
             ]);
 
         if ($response->failed()) {
-            throw new \Exception("Dropbox list_folder/continue failed: " . $response->body());
+            throw new \Exception("Dropbox list_folder/continue failed: " . $response->json()['error_summary'] ?? $response->body());
         }
 
         $result = $response->json();
@@ -152,7 +144,7 @@ class DropboxService
             ]);
 
         if ($response->failed()) {
-            throw new \Exception("Dropbox create_folder_v2 failed: " . $response->body());
+            throw new \Exception("Dropbox create_folder_v2 failed: " . $response->json()['error_summary'] ?? $response->body());
         }
 
         return $response->json();
@@ -168,54 +160,83 @@ class DropboxService
         ]);
 
         if ($response->failed()) {
-            throw new \Exception("Failed to refresh Dropbox member token: " . $response->body());
+            throw new \Exception("Failed to refresh Dropbox member token: " . $response->json()['error_summary'] ?? $response->body());
         }
 
         return $response->json()['access_token'];
     }
 
-    public function upload($namespaceId, $path, $file)
-    {
-        $stream = fopen($file->getRealPath(), 'rb');
-        $accessToken = $this->getMemberAccessToken();
+ public function upload($namespaceId, $path, $file)
+{
+    $accessToken = $this->getMemberAccessToken();
 
-        $response = Http::withToken($accessToken)
-            ->withHeaders([
-                'Dropbox-API-Arg' => json_encode([
-                    'path'           => $path,
-                    'mode'           => 'add',
-                    'autorename'     => true,
-                    'mute'           => false,
-                    'strict_conflict'=> false,
-                ], JSON_UNESCAPED_SLASHES),
-                'Dropbox-API-Path-Root' => json_encode([
-                    '.tag'         => 'namespace_id',
-                    'namespace_id' => $namespaceId,
-                ]),
-                'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
-                'Content-Type'            => 'application/octet-stream',
-            ])
-            ->send('POST', 'https://content.dropboxapi.com/2/files/upload', [
-                'body' => $stream,
+    // ✅ path komt nu altijd met bestandsnaam uit de controller
+    $dropboxPath = '/' . ltrim($path, '/');
+
+    $headers = [
+        'Dropbox-API-Path-Root' => json_encode([
+            '.tag'         => 'namespace_id',
+            'namespace_id' => $namespaceId,
+        ]),
+        'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
+        'Content-Type'            => 'application/octet-stream',
+    ];
+
+    $attempts = 0;
+    $maxAttempts = 3;
+    $stream = fopen($file->getRealPath(), 'rb');
+
+    try {
+        do {
+            $attempts++;
+
+            $res = Http::withToken($accessToken)
+                ->withHeaders(array_merge($headers, [
+                    'Dropbox-API-Arg' => json_encode([
+                        'path'           => $dropboxPath,
+                        'mode'           => 'add',
+                        'autorename'     => true,
+                        'mute'           => false,
+                        'strict_conflict'=> false,
+                    ], JSON_UNESCAPED_SLASHES),
+                ]))
+                ->send('POST', 'https://content.dropboxapi.com/2/files/upload', [
+                    'body' => $stream,
+                ]);
+
+            if ($res->status() === 429 && $attempts < $maxAttempts) {
+                $wait = $attempts * 2; 
+                Log::warning("Dropbox upload rate limit (429), poging {$attempts}, wacht {$wait}s...");
+                sleep($wait);
+                continue;
+            }
+
+            if ($res->failed()) {
+                Log::error('Dropbox upload failed', [
+                    'status' => $res->status(),
+                    'body'   => $res->body(),
+                    'path'   => $dropboxPath,
+                ]);
+                throw new \Exception("Dropbox upload failed: " . $res->body());
+            }
+
+            Log::info('Dropbox upload success', [
+                'status' => $res->status(),
+                'path'   => $dropboxPath,
             ]);
 
+            return $res->json();
+
+        } while ($attempts < $maxAttempts);
+
+    } finally {
         fclose($stream);
-
-        if ($response->failed()) {
-            Log::error('Dropbox upload failed', [
-                'status' => $response->status(),
-                'body'   => $response->body(),
-            ]);
-            throw new \Exception("Dropbox upload failed: " . $response->body());
-        }
-
-        Log::info('Dropbox upload success', [
-            'status' => $response->status(),
-            'body'   => $response->body(),
-        ]);
-
-        return $response->json();
     }
+
+    throw new \Exception("Dropbox upload kon niet worden uitgevoerd na {$maxAttempts} pogingen.");
+}
+
+
 
     public function listTeamMembers()
     {
@@ -225,68 +246,85 @@ class DropboxService
             ]);
 
         if ($response->failed()) {
-            throw new \Exception("Dropbox members ophalen mislukt: " . $response->body());
+            throw new \Exception("Dropbox members ophalen mislukt: " . $response->json()['error_summary'] ?? $response->body());
         }
 
         return $response->json();
     }
 
-    public function searchFoldersInNamespace($namespaceId, $path, $search)
-    {
-        $headers = [
-            'Dropbox-API-Path-Root' => json_encode([
-                '.tag'         => 'namespace_id',
-                'namespace_id' => $namespaceId
-            ]),
-            'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
-        ];
+   public function searchFoldersInNamespace($namespaceId, $path, $search)
+{
+    $headers = [
+        'Dropbox-API-Path-Root' => json_encode([
+            '.tag'         => 'namespace_id',
+            'namespace_id' => $namespaceId
+        ]),
+        'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
+    ];
 
-        $response = Http::withToken($this->accessToken)
-            ->withHeaders($headers)
-            ->post('https://api.dropboxapi.com/2/files/search_v2', [
-                'query' => $search,
-                'options' => [
-                    'path' => $path,
-                    'max_results' => 100,
-                ]
-            ]);
+    $response = Http::withToken($this->accessToken)
+        ->withHeaders($headers)
+        ->post('https://api.dropboxapi.com/2/files/search_v2', [
+            'query' => $search,
+            'options' => [
+                'path' => $path,
+                'max_results' => 100,
+            ]
+        ]);
 
-        if ($response->failed()) {
-            throw new \Exception("Dropbox search_v2 failed: " . $response->body());
-        }
-
-        $matches = $response->json()['matches'] ?? [];
-
-        return collect($matches)
-            ->map(function ($m) use ($namespaceId) {
-                $meta = $m['metadata']['metadata'] ?? null;
-                if (!$meta || ($meta['.tag'] ?? null) !== 'folder') return null;
-
-                return [
-                    'name'      => $meta['name'],
-                    'path'      => $meta['path_display'] ?? null,
-                    'id'        => $meta['id'] ?? null,
-                    'namespace' => $namespaceId,
-                    'tag'       => $meta['.tag'] ?? 'unknown',
-                ];
-            })
-            ->filter()
-            ->values();
+    if ($response->failed()) {
+        throw new \Exception("Dropbox search_v2 failed: " . ($response->json()['error_summary'] ?? $response->body()));
     }
 
-    public function createChildFolder(string $namespaceId, string $parentPath, string $folderName): array
-    {
-        $safeName = trim(preg_replace('/[\/\\\\]+/', '-', $folderName));
-        $fullPath = rtrim($parentPath, '/') . '/' . $safeName;
+    $matches = $response->json()['matches'] ?? [];
 
-        $headers = [
-            'Dropbox-API-Path-Root' => json_encode([
-                '.tag'         => 'namespace_id',
-                'namespace_id' => $namespaceId
-            ]),
-            'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
-            'Content-Type'            => 'application/json',
-        ];
+    return collect($matches)
+        ->map(function ($m) use ($namespaceId) {
+            $meta = $m['metadata']['metadata'] ?? null;
+            if (!$meta || ($meta['.tag'] ?? null) !== 'folder') return null;
+
+            return [
+                'name'      => $meta['name'],
+                'path'      => $meta['path_display'] ?? "",   // ✅ altijd path_display
+                'id'        => $meta['id'] ?? null,
+                'namespace' => $namespaceId,
+                'tag'       => $meta['.tag'] ?? 'unknown',
+            ];
+        })
+        ->filter()
+        ->values();
+}
+
+
+   public function createChildFolder(string $namespaceId, string $parentPath, string $folderName): array
+{
+    $safeName = trim(preg_replace('/[\/\\\\]+/', '-', $folderName));
+    $safeName = mb_substr($safeName, 0, 100); // extra bescherming
+
+    // ✅ Altijd met leading slash, Dropbox verwacht dit
+    $fullPath = '/' . ltrim(rtrim($parentPath, '/') . '/' . $safeName, '/');
+
+    Log::info("createChildFolder → resolved path", [
+        'namespaceId' => $namespaceId,
+        'parentPath'  => $parentPath,
+        'fullPath'    => $fullPath,
+    ]);
+
+    $headers = [
+        'Dropbox-API-Path-Root' => json_encode([
+            '.tag'         => 'namespace_id',
+            'namespace_id' => $namespaceId
+        ]),
+        'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
+        'Content-Type'            => 'application/json',
+    ];
+
+    // ✅ Retry mechanisme max 3 pogingen bij 429
+    $attempts = 0;
+    $maxAttempts = 3;
+
+    do {
+        $attempts++;
 
         $res = Http::withToken($this->accessToken)
             ->withHeaders($headers)
@@ -295,16 +333,32 @@ class DropboxService
                 'autorename' => false,
             ]);
 
+        if ($res->status() === 429 && $attempts < $maxAttempts) {
+            $wait = $attempts * 2; // exponential backoff
+            Log::warning("Dropbox rate limit (429), poging {$attempts}, wacht {$wait}s...");
+            sleep($wait);
+            continue; // probeer opnieuw
+        }
+
         if ($res->failed()) {
-            throw new \Exception("create_folder_v2 failed: " . $res->body());
+            Log::error("Dropbox create_folder_v2 failed", [
+                'status' => $res->status(),
+                'body'   => $res->body(),
+            ]);
+            throw new \Exception("create_folder_v2 failed: " . ($res->json()['error_summary'] ?? $res->body()));
         }
 
         return $res->json()['metadata'] ?? [
-            '.tag'        => 'folder',
-            'name'        => $safeName,
-            'path_display'=> $fullPath,
+            '.tag'         => 'folder',
+            'name'         => $safeName,
+            'path_display' => $fullPath,
         ];
-    }
+
+    } while ($attempts < $maxAttempts);
+
+    throw new \Exception("Dropbox create_folder_v2 kon niet worden uitgevoerd na {$maxAttempts} pogingen.");
+}
+
 
     public function getTemporaryLink(string $namespaceId, string $path)
     {
@@ -323,7 +377,7 @@ class DropboxService
             ]);
 
         if ($response->failed()) {
-            throw new \Exception("Dropbox temporary link failed: " . $response->body());
+            throw new \Exception("Dropbox temporary link failed: " . $response->json()['error_summary'] ?? $response->body());
         }
 
         return $response->json()['link'] ?? null;

@@ -14,7 +14,6 @@ class Team extends Authenticatable
     protected $fillable = [
         'name',
         'password',
-        'role',
         'members',
     ];
 

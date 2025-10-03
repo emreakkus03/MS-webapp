@@ -1,8 +1,7 @@
 import axios from 'axios';
 import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';   // belangrijk!
+import Pusher from 'pusher-js';   // Reverb gebruikt zelfde protocol
 
-// Maak Pusher globaal zodat Echo het kan vinden
 window.Pusher = Pusher;
 
 window.axios = axios;
@@ -18,6 +17,7 @@ window.Echo = new Echo({
     enabledTransports: ['ws'],
 });
 
+// ✅ Testkanaal voor debug
 window.Echo.channel('test-channel')
     .listen('TestEvent', (e) => {
         console.log('Ontvangen via Reverb:', e.message);

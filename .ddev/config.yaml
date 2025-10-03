@@ -18,6 +18,7 @@ host_webserver_port: "7748"
 host_https_port: "7749"
 host_db_port: "7750"
 
+
 # Key features of DDEV's config.yaml:
 
 # name: <projectname> # Name of the project, automatically provides

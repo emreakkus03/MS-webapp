@@ -1,6 +1,6 @@
 <x-layouts.app>
     <div class="flex items-center justify-center min-h-[86vh] bg-gray-100">
-        <div class="w-full max-w-md bg-white p-8 rounded shadow box-border">
+        <div class="md:w-full max-w-md bg-white p-8 rounded shadow box-border">
             <h1 class="text-2xl font-bold mb-6 text-center">Inloggen</h1>
             <form method="POST" action="{{ route('login') }}" class="space-y-6">
                 @csrf

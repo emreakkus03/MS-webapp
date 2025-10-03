@@ -1,7 +1,7 @@
 <x-layouts.dashboard style="background-color: #f0f0f0;">
     <div>
         <!-- Datum -->
-        <h2 class="text-lg font-semibold text-gray-700 mb-6">
+        <h2 class="text-lg font-semibold text-gray-700 mb-6 text-center md:text-left ">
             {{ \Carbon\Carbon::now()->locale('nl')->isoFormat('dd, DD.MM.YYYY') }}
         </h2>
 
@@ -9,13 +9,13 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-10 mt-10">
             <!-- Aantal actieve ploegen -->
             <div class="bg-white p-4 rounded-lg shadow text-center">
-                <p class="text-xl text-gray-500 mb-2">Totaal aantal ploegen</p>
+                <p class="text-md lg:text-xl text-gray-500 mb-2">Totaal aantal ploegen</p>
                 <p class="text-2xl font-bold text-gray-800 mt-5">{{ $activeTeams }}</p>
             </div>
 
             <!-- Totaal aantal taken vandaag -->
             <div class="bg-white p-4 rounded-lg shadow text-center">
-                <p class="text-xl text-gray-500 mb-2">Totaal aantal taken vandaag</p>
+                <p class="text-md lg:text-xl text-gray-500 mb-2">Totaal aantal taken vandaag</p>
                 <p class="text-2xl font-bold text-gray-800 mt-5">{{ $tasksToday }}</p>
             </div>
 
@@ -36,8 +36,8 @@
 
         <!-- Chart -->
         <div class="bg-white p-6 rounded-lg shadow mt-8">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-medium">
+            <div class="flex flex-col justify-between items-center mb-4 md:flex-row">
+                <h3 class="text-md font-bold text-center mb-4 md:text-left md:mb-0 md:text-xl">
                     Aantal voltooide taken vs. openstaand
                 </h3>
 

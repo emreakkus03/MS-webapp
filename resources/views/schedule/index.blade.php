@@ -1,7 +1,7 @@
 <x-layouts.dashboard>
     <div class="md:p-6">
 
-        <h1 class="text-2xl font-bold mb-4">Planning</h1>
+        <h1 class="text-2xl font-bold mb-8 text-center md:text-left md:mb-4">Planning</h1>
 
         <!-- Flash message -->
         @if (session('success'))
@@ -10,29 +10,32 @@
             </div>
         @endif
 
-        <!-- Admin team dropdown -->
-        @if (Auth::user()->role === 'admin')
-            <div class="mb-4">
-                <label for="teamSelect" class="block font-medium mb-1">Kies een team:</label>
-                <select id="teamSelect" class="border px-3 py-2 rounded">
-                    @foreach ($teams as $team)
-                        <option value="{{ $team->id }}" {{ $team->id == $defaultTeamId ? 'selected' : '' }}>
-                            {{ $team->name }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-        @endif
+        <div class="flex items-center justify-between mb-6">
 
-        @if (Auth::user()->role === 'admin')
-            <button type="button" onclick="openCreateModal()"
-                class="mb-6 bg-[#283142] text-white px-4 py-2 rounded hover:bg-[#B51D2D]">
-                Nieuwe Taak
-            </button>
-        @endif
+            <!-- Admin team dropdown -->
+            @if (Auth::user()->role === 'admin')
+                <div class="mb-4">
+                    <label for="teamSelect" class="block font-medium mb-1">Kies een team:</label>
+                    <select id="teamSelect" class="border px-3 py-2 rounded">
+                        @foreach ($teams as $team)
+                            <option value="{{ $team->id }}" {{ $team->id == $defaultTeamId ? 'selected' : '' }}>
+                                {{ $team->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+            @endif
+    
+            @if (Auth::user()->role === 'admin')
+                <button type="button" onclick="openCreateModal()"
+                    class="bg-[#283142] text-white px-2 py-2 mt-2  rounded hover:bg-[#B51D2D]">
+                    Nieuwe Taak
+                </button>
+            @endif
+        </div>
 
         <!-- Kalender -->
-        <div id="calendar" class="mb-6"></div>
+        <div id="calendar" class="mb-6 w-full min-h-[700px]"></div>
 
         <!-- Modal voor nieuwe taak -->
         @if (Auth::user()->role === 'admin')
@@ -187,6 +190,7 @@
 
 </x-layouts.dashboard>
 
+
 <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
 
@@ -206,50 +210,95 @@
         }
     });
 
-    document.addEventListener('DOMContentLoaded', function() {
-        var calendarEl = document.getElementById('calendar');
+   document.addEventListener('DOMContentLoaded', function() {
+    var calendarEl = document.getElementById('calendar');
 
-        var calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: 'dayGridMonth',
-            selectable: true,
-            width: '100px',
-            headerToolbar: {
-                left: 'prev,next',
-                center: 'title',
-                right: 'dayGridMonth,timeGridWeek,timeGridDay'
-            },
+    // 👉 Detecteer mobiel
+    var isMobile = window.innerWidth < 768;
 
-            dateClick: function(info) {
-                openCreateModal(info.dateStr);
-            },
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        // 👇 Gebruik dag-weergave op mobiel, anders maand
+        initialView: isMobile ? 'timeGridDay' : 'dayGridMonth',
+        selectable: true,
+        headerToolbar: {
+            left: 'prev,next',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
+        },
+        aspectRatio: isMobile ? 0.7 : 1.35,
+        contentHeight: isMobile ? 'auto' : '700px',
+        expandRows: true,
 
-            eventClick: function(info) {
-                openViewModal(info.event);
-            },
-            @php
-                $calendarColors = [
-                    'open' => '#9CA3AF', // grijs
-                    'in behandeling' => '#FACC15', // geel
-                    'finished' => '#22C55E', // groen
-                    'reopened' => '#EF4444', // rood
-                ];
-                $statusClasses = [
-                    'open' => 'bg-gray-200 text-gray-800',
-                    'in behandeling' => 'bg-yellow-200 text-yellow-800',
-                    'finished' => 'bg-green-200 text-green-800',
-                    'reopened' => 'bg-red-200 text-red-800',
-                ];
-            @endphp
+        dateClick: function(info) {
+            openCreateModal(info.dateStr);
+        },
+        eventClick: function(info) {
+            openViewModal(info.event);
+        },
 
-          events: '/schedule/tasks/{{ Auth::user()->role === "admin" ? ($defaultTeamId ?? Auth::id()) : Auth::id() }}'
+        events: '/schedule/tasks/{{ Auth::user()->role === "admin" ? ($defaultTeamId ?? Auth::id()) : Auth::id() }}'
+    });
 
 
 
-
-
-        });
 
         calendar.render();
+        // === Tailwind op FullCalendar-toolbar toveren (responsive) ===
+function applyTailwindToToolbar() {
+  const root = document.getElementById('calendar');
+  const toolbar = root?.querySelector('.fc-header-toolbar');
+  if (!toolbar) return;
+
+  // Layout (mobiel = stacked, desktop = row)
+  toolbar.classList.add(
+    'flex','flex-col','items-center','gap-4',
+    'p-4','rounded-lg','mb-6',
+    'md:flex-row','md:justify-between'
+  );
+
+  // Titel (extra groot)
+  const title = toolbar.querySelector('.fc-toolbar-title');
+  if (title) {
+    title.classList.add(
+      'text-xl','font-bold','text-center',
+      'md:text-5xl','md:font-extrabold','md:flex-1','md:text-center'
+    );
+  }
+
+  // Chunks (prev/next, title, view-switcher)
+  const chunks = toolbar.querySelectorAll('.fc-toolbar-chunk');
+  if (chunks.length === 3) {
+    // prev/next
+    chunks[0].classList.add('flex','flex-row','gap-4','order-2','md:order-1');
+
+    // title midden (desktop)
+    chunks[1].classList.add('md:flex','order-1','md:order-2','justify-center','flex-1');
+
+    // view-switcher rechts
+    chunks[2].classList.add('flex','flex-row','gap-4','order-3');
+  }
+
+  // Buttons stylen (helemaal groot)
+  toolbar.querySelectorAll('.fc-button').forEach(btn => {
+    btn.classList.add(
+      'text-white','!border','!border-gray-200',
+      'px-4','py-3','rounded-lg','text-base','font-semibold',
+      'transition','duration-200',
+      'bg-[#283142]','hover:!bg-[#B51D2D]',
+      'focus:!outline-none','focus:!ring-2','focus:!ring-[#B51D2D]/40',
+      // desktop/laptop extreem groot
+      'md:px-20','md:py-10','md:text-3xl'
+    );
+  });
+
+  // Button-groepen spacing
+  toolbar.querySelectorAll('.fc-button-group').forEach(g => {
+    g.classList.add('flex','flex-row','space-x-4');
+  });
+}
+
+calendar.render();
+applyTailwindToToolbar();
 
         @if (Auth::user()->role === 'admin')
             document.getElementById('teamSelect').addEventListener('change', function() {
@@ -595,3 +644,26 @@ function setupAddressAutocomplete() {
 
 
 </script>
+<style>
+@media (max-width: 768px) {
+  #calendar {
+    min-height: 80vh !important;
+    font-size: 14px !important;
+  }
+
+  .fc-toolbar-title {
+    font-size: 1.25rem !important; /* text-xl */
+    font-weight: bold !important;
+    text-align: center !important;
+  }
+
+  .fc-daygrid-day-frame,
+  .fc-timegrid-slot {
+    min-height: 3rem !important; /* hogere cellen */
+  }
+
+  .fc-daygrid-day {
+    padding: 8px !important; /* extra ruimte in maandweergave */
+  }
+}
+</style>

@@ -78,7 +78,7 @@ class ScheduleController extends Controller
 
     
 
-    public function store(Request $request)
+ public function store(Request $request)
 {
     $user = Auth::user();
 
@@ -110,16 +110,16 @@ class ScheduleController extends Controller
 
     $address = Address::firstOrCreate(
         [
-            'street' => ucfirst(strtolower($request->address_name)),
-            'number' => $request->address_number
+            'street' => strip_tags(ucfirst(strtolower(trim($request->address_name)))),
+            'number' => strip_tags(trim($request->address_number)),
         ],
         [
-            'zipcode' => $request->address_zipcode,
-            'city' => ucfirst(strtolower($request->address_city)),
+            'zipcode' => strip_tags(trim($request->address_zipcode)),
+            'city'    => strip_tags(ucfirst(strtolower(trim($request->address_city)))),
         ]
     );
 
-    $note = $request->note;
+    $note = $request->note ? strip_tags(trim($request->note)) : null;
     if (!$note) {
         $note = Task::where('address_id', $address->id)->latest()->value('note');
     }
@@ -129,11 +129,11 @@ class ScheduleController extends Controller
     $status = $lastTask ? $lastTask->status : 'open';
 
     Task::create([
-        'team_id' => $request->team_id, // 👈 altijd vanuit formulier
+        'team_id'    => $request->team_id, // 👈 altijd vanuit formulier
         'address_id' => $address->id,
-        'time' => $request->time,
-        'status' => $status,
-        'note' => $note,
+        'time'       => $request->time,
+        'status'     => $status,
+        'note'       => $note,
     ]);
 
     // ✅ Redirect naar dezelfde ploeg
@@ -141,6 +141,7 @@ class ScheduleController extends Controller
         ->route('schedule.index', ['team_id' => $request->team_id])
         ->with('success', 'Taak toegevoegd!');
 }
+
 
 
     public function checkTime(Request $request)
@@ -181,44 +182,67 @@ public function getTasksByTeam($teamId)
     ];
 
     if ($user->role === 'admin') {
-        // Admin kan elk team zien
-        $tasks = Task::with('address')->where('team_id', $teamId)->get();
+        $tasks = Task::with('address', 'team')->where('team_id', $teamId)->get();
     } else {
-        // User mag alleen zijn eigen team zien
         if ($teamId != $user->id) {
             abort(403);
         }
-        $tasks = Task::with('address')->where('team_id', $user->id)->get();
+        $tasks = Task::with('address', 'team')->where('team_id', $user->id)->get();
     }
 
     $events = $tasks->map(function ($task) use ($calendarColors, $statusClasses) {
+        // Huidige foto's & notitie
+        $currentPhotos = $task->photo ? explode(',', $task->photo) : [];
+        $currentNote   = $task->note ?? '';
+
+        // Default leeg
+        $previousPhotos = [];
+        $previousNotes  = [];
+
+        // 🔥 Als team een herstelploeg is → haal oude data op
+        if ($task->team && in_array($task->team->name, ['Herstelploeg 1', 'Herstelploeg 2'])) {
+            $previousPhotos = Task::where('address_id', $task->address_id)
+                ->where('id', '<', $task->id)
+                ->whereNotNull('photo')
+                ->pluck('photo')
+                ->flatMap(fn($p) => explode(',', $p))
+                ->toArray();
+
+            $previousNotes = Task::where('address_id', $task->address_id)
+                ->where('id', '<', $task->id)
+                ->whereNotNull('note')
+                ->pluck('note')
+                ->toArray();
+        }
+
         return [
             'id' => $task->id,
             'title' => $task->address->street . ' ' . ($task->address->number ?? ''),
             'start' => $task->time,
             'color' => $calendarColors[$task->status] ?? '#9CA3AF',
             'extendedProps' => [
-                'time' => \Carbon\Carbon::parse($task->time)->format('H:i'),
-                'address_name' => $task->address->street,
-                'address_number' => $task->address->number ?? '',
-                'zipcode' => $task->address->zipcode ?? '',
-                'city' => $task->address->city ?? '',
-                'status' => $task->status,
-                'statusColor' => $statusClasses[$task->status] ?? 'bg-gray-200 text-gray-800',
-                'note' => $task->note ?? '',
-                'current_note' => $task->note ?? '',
-                'previous_notes' => [],
-                'photos' => $task->photo ? explode(',', $task->photo) : [],
-                'current_photos' => $task->photo ? explode(',', $task->photo) : [],
-                'previous_photos' => [],
-                'team_id' => $task->team_id,
-                'team_name' => $task->team->name ?? '',
+                'time'            => \Carbon\Carbon::parse($task->time)->format('H:i'),
+                'address_name'    => $task->address->street,
+                'address_number'  => $task->address->number ?? '',
+                'zipcode'         => $task->address->zipcode ?? '',
+                'city'            => $task->address->city ?? '',
+                'status'          => $task->status,
+                'statusColor'     => $statusClasses[$task->status] ?? 'bg-gray-200 text-gray-800',
+                'note'            => $task->note ?? '',
+                'current_note'    => $currentNote,
+                'previous_notes'  => $previousNotes,
+                'photos'          => $currentPhotos,
+                'current_photos'  => $currentPhotos,
+                'previous_photos' => $previousPhotos,
+                'team_id'         => $task->team_id,
+                'team_name'       => $task->team->name ?? '',
             ]
         ];
     });
 
     return response()->json($events);
 }
+
 
 
 
@@ -237,7 +261,7 @@ public function getTasksByTeam($teamId)
 
 }
 
-    public function update(Request $request, Task $task)
+  public function update(Request $request, Task $task)
 {
     $user = Auth::user();
     if ($user->role !== 'admin') abort(403);
@@ -264,22 +288,22 @@ public function getTasksByTeam($teamId)
 
     $address = Address::firstOrCreate(
         [
-            'street' => ucfirst(strtolower($request->address_name)),
-            'number' => $request->address_number
+            'street' => strip_tags(ucfirst(strtolower(trim($request->address_name)))),
+            'number' => strip_tags(trim($request->address_number)),
         ],
         [
-            'zipcode' => $request->address_zipcode,
-            'city' => ucfirst(strtolower($request->address_city)),
+            'zipcode' => strip_tags(trim($request->address_zipcode)),
+            'city'    => strip_tags(ucfirst(strtolower(trim($request->address_city)))),
         ]
     );
 
     $task->update([
-        'team_id' => $user->role === 'admin' && $request->filled('team_id')
+        'team_id'    => $user->role === 'admin' && $request->filled('team_id')
             ? $request->team_id
             : $task->team_id,
         'address_id' => $address->id,
-        'time' => $request->time,
-        'note' => $request->note ?: $task->note,
+        'time'       => $request->time,
+        'note'       => $request->note ? strip_tags(trim($request->note)) : $task->note,
     ]);
 
     // 👇 check of redirect_to bestaat (tasks), anders ga je terug naar schedule

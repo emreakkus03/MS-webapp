@@ -9,11 +9,11 @@ use App\Http\Controllers\TaskController;
 use Illuminate\Support\Facades\Auth;
 use App\Events\TestEvent;
 
-
-Route::get('/fire-test', function () {
+Route::middleware('auth')->get('/fire-test', function () {
     broadcast(new TestEvent('Hallo vanuit Laravel Reverb!'));
     return "Event fired!";
 });
+
 
 Route::post('/notifications/clear', function () {
     Auth::user()->unreadNotifications->markAsRead();
@@ -24,7 +24,7 @@ Route::post('/notifications/clear', function () {
 Route::middleware('guest')->group(function () {
    
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
-    Route::post('/login', [LoginController::class, 'login']);
+    Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:5,1');
     Route::get('/', fn() => redirect()->route('login'));
     
     Route::get('/signin', fn() => view('signin.signin'));
@@ -77,8 +77,10 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/dropbox/members', [TaskController::class, 'listTeamMembers']);
     Route::get('/dropbox/preview', [TaskController::class, 'previewPhoto']);
 
-
+Route::get('/dropbox/create-adres', fn() => abort(404));
     Route::post('/dropbox/create-adres', [TaskController::class, 'createAdresFolder'])->name('dropbox.create_adres');
+    
+
     Route::post('/dropbox/upload-adres-photos', [TaskController::class, 'uploadAdresPhotos']);
     Route::post('/tasks/{id}/upload-photo', [TaskController::class, 'uploadPhoto']);
 });

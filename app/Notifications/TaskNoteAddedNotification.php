@@ -5,7 +5,7 @@ namespace App\Notifications;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 use Illuminate\Notifications\Messages\BroadcastMessage;
-use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use App\Models\Address;
 
 class TaskNoteAddedNotification extends Notification
@@ -28,7 +28,8 @@ class TaskNoteAddedNotification extends Notification
 
     public function broadcastOn(): array
     {
-        return [new Channel('admin-tasks')]; // algemene admin channel
+        // 🔹 Kanaal voor admin-taken
+        return [new PrivateChannel('admin-tasks')];
     }
 
     public function toDatabase(object $notifiable): array

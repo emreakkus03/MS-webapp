@@ -1,5 +1,5 @@
 <x-layouts.dashboard>
-    <h1 class="text-2xl font-bold mb-4">Ploeg Bewerken</h1>
+    <h1 class="text-2xl font-bold mb-4 text-center">Ploeg Bewerken</h1>
 
     <form action="{{ route('teams.update', $team->id) }}" method="POST" class="space-y-4 bg-white p-6 rounded shadow">
         @csrf
