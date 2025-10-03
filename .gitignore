@@ -8,6 +8,7 @@
 /storage/pail
 /vendor
 .env
+.env.example-copy
 .env.backup
 .env.production
 .phpactor.json
@@ -22,3 +23,4 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+backup.sql
