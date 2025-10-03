@@ -25,7 +25,7 @@
                     </select>
                 </div>
             @endif
-    
+
             @if (Auth::user()->role === 'admin')
                 <button type="button" onclick="openCreateModal()"
                     class="bg-[#283142] text-white px-2 py-2 mt-2  rounded hover:bg-[#B51D2D]">
@@ -48,11 +48,12 @@
                         @if (Auth::user()->role === 'admin')
                             <div>
                                 <label class="block text-sm font-medium">Ploeg</label>
-                               <select id="taskTeamSelect" name="team_id" required class="w-full border px-3 py-2 rounded">
-    @foreach ($teams as $team)
-        <option value="{{ $team->id }}">{{ $team->name }}</option>
-    @endforeach
-</select>
+                                <select id="taskTeamSelect" name="team_id" required
+                                    class="w-full border px-3 py-2 rounded">
+                                    @foreach ($teams as $team)
+                                        <option value="{{ $team->id }}">{{ $team->name }}</option>
+                                    @endforeach
+                                </select>
 
                             </div>
                         @endif
@@ -71,29 +72,30 @@
                         <div>
                             <label class="block text-sm font-medium">Adres (*)</label>
                             <input list="addresses" name="address_name" id="createAddress"
-                                class="w-full border px-3 py-2 rounded" placeholder="Typ hier een straat..."    autocomplete="new-password"  required>
+                                class="w-full border px-3 py-2 rounded" placeholder="Typ hier een straat..."
+                                autocomplete="new-password" required>
                             <!-- Suggesties dropdown -->
-    <div id="addressSuggestions"
-         class="absolute z-50 bg-white border rounded shadow mt-1 hidden max-h-40 overflow-y-auto">
-    </div>
+                            <div id="addressSuggestions"
+                                class="absolute z-50 bg-white border rounded shadow mt-1 hidden max-h-40 overflow-y-auto">
+                            </div>
                         </div>
 
                         <div>
                             <label class="block text-sm font-medium">Nummer (*)</label>
                             <input type="text" name="address_number" id="createNumber"
-                                class="w-full border px-3 py-2 rounded"  autocomplete="new-password" required>
+                                class="w-full border px-3 py-2 rounded" autocomplete="new-password" required>
                         </div>
 
                         <div>
                             <label class="block text-sm font-medium">Postcode (*)</label>
                             <input type="text" name="address_zipcode" id="createZip"
-                                class="w-full border px-3 py-2 rounded"  autocomplete="new-password" required>
+                                class="w-full border px-3 py-2 rounded" autocomplete="new-password" required>
                         </div>
 
                         <div>
                             <label class="block text-sm font-medium">Stad (*)</label>
                             <input type="text" name="address_city" id="createCity"
-                                class="w-full border px-3 py-2 rounded"  autocomplete="new-password" required>
+                                class="w-full border px-3 py-2 rounded" autocomplete="new-password" required>
                         </div>
 
                         <div>
@@ -210,108 +212,108 @@
         }
     });
 
-   document.addEventListener('DOMContentLoaded', function() {
-    var calendarEl = document.getElementById('calendar');
+    document.addEventListener('DOMContentLoaded', function() {
+        var calendarEl = document.getElementById('calendar');
 
-    // 👉 Detecteer mobiel
-    var isMobile = window.innerWidth < 768;
+        // 👉 Detecteer mobiel
+        var isMobile = window.innerWidth < 768;
 
-    var calendar = new FullCalendar.Calendar(calendarEl, {
-        // 👇 Gebruik dag-weergave op mobiel, anders maand
-        initialView: isMobile ? 'timeGridDay' : 'dayGridMonth',
-        selectable: true,
-        headerToolbar: {
-            left: 'prev,next',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek,timeGridDay'
-        },
-        aspectRatio: isMobile ? 0.7 : 1.35,
-        contentHeight: isMobile ? 'auto' : '700px',
-        expandRows: true,
+        var calendar = new FullCalendar.Calendar(calendarEl, {
+            // 👇 Gebruik dag-weergave op mobiel, anders maand
+            initialView: isMobile ? 'timeGridDay' : 'dayGridMonth',
+            selectable: true,
+            headerToolbar: {
+                left: 'prev,next',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay'
+            },
+            aspectRatio: isMobile ? 0.7 : 1.35,
+            contentHeight: isMobile ? 'auto' : '700px',
+            expandRows: true,
 
-        dateClick: function(info) {
-            openCreateModal(info.dateStr);
-        },
-        eventClick: function(info) {
-            openViewModal(info.event);
-        },
+            dateClick: function(info) {
+                openCreateModal(info.dateStr);
+            },
+            eventClick: function(info) {
+                openViewModal(info.event);
+            },
 
-        events: '/schedule/tasks/{{ Auth::user()->role === "admin" ? ($defaultTeamId ?? Auth::id()) : Auth::id() }}'
-    });
+            events: '/schedule/tasks/{{ Auth::user()->role === 'admin' ? $defaultTeamId ?? Auth::id() : Auth::id() }}'
+        });
 
 
 
 
         calendar.render();
         // === Tailwind op FullCalendar-toolbar toveren (responsive) ===
-function applyTailwindToToolbar() {
-  const root = document.getElementById('calendar');
-  const toolbar = root?.querySelector('.fc-header-toolbar');
-  if (!toolbar) return;
+        function applyTailwindToToolbar() {
+            const root = document.getElementById('calendar');
+            const toolbar = root?.querySelector('.fc-header-toolbar');
+            if (!toolbar) return;
 
-  // Layout (mobiel = stacked, desktop = row)
-  toolbar.classList.add(
-    'flex','flex-col','items-center','gap-4',
-    'p-4','rounded-lg','mb-6',
-    'md:flex-row','md:justify-between'
-  );
+            // Layout (mobiel = stacked, desktop = row)
+            toolbar.classList.add(
+                'flex', 'flex-col', 'items-center', 'gap-4',
+                'p-4', 'rounded-lg', 'mb-6',
+                'md:flex-row', 'md:justify-between'
+            );
 
-  // Titel (extra groot)
-  const title = toolbar.querySelector('.fc-toolbar-title');
-  if (title) {
-    title.classList.add(
-      'text-xl','font-bold','text-center',
-      'md:text-5xl','md:font-extrabold','md:flex-1','md:text-center'
-    );
-  }
+            // Titel (extra groot)
+            const title = toolbar.querySelector('.fc-toolbar-title');
+            if (title) {
+                title.classList.add(
+                    'text-xl', 'font-bold', 'text-center',
+                    'md:text-5xl', 'md:font-extrabold', 'md:flex-1', 'md:text-center'
+                );
+            }
 
-  // Chunks (prev/next, title, view-switcher)
-  const chunks = toolbar.querySelectorAll('.fc-toolbar-chunk');
-  if (chunks.length === 3) {
-    // prev/next
-    chunks[0].classList.add('flex','flex-row','gap-4','order-2','md:order-1');
+            // Chunks (prev/next, title, view-switcher)
+            const chunks = toolbar.querySelectorAll('.fc-toolbar-chunk');
+            if (chunks.length === 3) {
+                // prev/next
+                chunks[0].classList.add('flex', 'flex-row', 'gap-4', 'order-2', 'md:order-1');
 
-    // title midden (desktop)
-    chunks[1].classList.add('md:flex','order-1','md:order-2','justify-center','flex-1');
+                // title midden (desktop)
+                chunks[1].classList.add('md:flex', 'order-1', 'md:order-2', 'justify-center', 'flex-1');
 
-    // view-switcher rechts
-    chunks[2].classList.add('flex','flex-row','gap-4','order-3');
-  }
+                // view-switcher rechts
+                chunks[2].classList.add('flex', 'flex-row', 'gap-4', 'order-3');
+            }
 
-  // Buttons stylen (helemaal groot)
-  toolbar.querySelectorAll('.fc-button').forEach(btn => {
-    btn.classList.add(
-      'text-white','!border','!border-gray-200',
-      'px-4','py-3','rounded-lg','text-base','font-semibold',
-      'transition','duration-200',
-      'bg-[#283142]','hover:!bg-[#B51D2D]',
-      'focus:!outline-none','focus:!ring-2','focus:!ring-[#B51D2D]/40',
-      // desktop/laptop extreem groot
-      'md:px-20','md:py-10','md:text-3xl'
-    );
-  });
-
-  // Button-groepen spacing
-  toolbar.querySelectorAll('.fc-button-group').forEach(g => {
-    g.classList.add('flex','flex-row','space-x-4');
-  });
-}
-
-calendar.render();
-applyTailwindToToolbar();
-
-        @if (Auth::user()->role === 'admin')
-            document.getElementById('teamSelect').addEventListener('change', function() {
-                var teamId = this.value;
-                fetch('/schedule/tasks/' + teamId)
-                    .then(res => res.json())
-                    .then(events => {
-                        calendar.removeAllEvents();
-                        calendar.addEventSource(events);
-                    })
-                    .catch(err => console.error(err));
+            // Buttons stylen (helemaal groot)
+            toolbar.querySelectorAll('.fc-button').forEach(btn => {
+                btn.classList.add(
+                    'text-white', '!border', '!border-gray-200',
+                    'px-4', 'py-3', 'rounded-lg', 'text-base', 'font-semibold',
+                    'transition', 'duration-200',
+                    'bg-[#283142]', 'hover:!bg-[#B51D2D]',
+                    'focus:!outline-none', 'focus:!ring-2', 'focus:!ring-[#B51D2D]/40',
+                    // desktop/laptop extreem groot
+                    'md:px-20', 'md:py-10', 'md:text-3xl'
+                );
             });
-        @endif
+
+            // Button-groepen spacing
+            toolbar.querySelectorAll('.fc-button-group').forEach(g => {
+                g.classList.add('flex', 'flex-row', 'space-x-4');
+            });
+        }
+
+        calendar.render();
+        applyTailwindToToolbar();
+
+       @if (Auth::user()->role === 'admin')
+    document.getElementById('teamSelect').addEventListener('change', function() {
+        var teamId = this.value;
+
+        // Eerst alle oude events verwijderen
+        calendar.removeAllEventSources();
+
+        // 👉 FullCalendar zelf laten fetchen via de URL
+        calendar.addEventSource('/schedule/tasks/' + teamId);
+    });
+@endif
+
     });
 
     function openCreateModal(dateStr = null) {
@@ -327,10 +329,10 @@ applyTailwindToToolbar();
         document.getElementById('timeWarning').classList.add('hidden');
 
         const teamSelect = document.getElementById('teamSelect');
-const taskTeamSelect = document.getElementById('taskTeamSelect');
-if (teamSelect && taskTeamSelect) {
-    taskTeamSelect.value = teamSelect.value;
-}
+        const taskTeamSelect = document.getElementById('taskTeamSelect');
+        if (teamSelect && taskTeamSelect) {
+            taskTeamSelect.value = teamSelect.value;
+        }
 
 
         if (dateStr) {
@@ -579,91 +581,94 @@ if (teamSelect && taskTeamSelect) {
     }
 
     document.getElementById('taskForm')?.addEventListener('submit', function(e) {
-    e.preventDefault();
-    const formData = new FormData(this);
-    fetch(this.action, {
-        method: 'POST',
-        body: formData
-    }).then(res => {
-        if (res.ok) {
-            closeCreateModal();
-            // herlaad events voor huidig geselecteerd team
-            const teamId = document.getElementById('teamSelect')?.value || {{ $defaultTeamId }}
-            calendar.removeAllEvents();
-            calendar.addEventSource('/schedule/tasks/' + teamId);
-        }
+        e.preventDefault();
+        const formData = new FormData(this);
+        fetch(this.action, {
+            method: 'POST',
+            body: formData
+        }).then(res => {
+            if (res.ok) {
+                closeCreateModal();
+                // herlaad events voor huidig geselecteerd team
+                const teamId = document.getElementById('teamSelect')?.value || {{ $defaultTeamId }}
+                calendar.removeAllEvents();
+                calendar.addEventSource('/schedule/tasks/' + teamId);
+            }
+        });
     });
-});
 
-function setupAddressAutocomplete() {
-    const input = document.getElementById('createAddress');
-    const suggestions = document.getElementById('addressSuggestions');
+    function setupAddressAutocomplete() {
+        const input = document.getElementById('createAddress');
+        const suggestions = document.getElementById('addressSuggestions');
 
-    input.addEventListener('input', function () {
-        const query = this.value.trim();
-        if (query.length < 2) {
-            suggestions.classList.add('hidden');
-            return;
-        }
+        input.addEventListener('input', function() {
+            const query = this.value.trim();
+            if (query.length < 2) {
+                suggestions.classList.add('hidden');
+                return;
+            }
 
-        fetch(`/schedule/address-suggest?query=${encodeURIComponent(query)}`)
-            .then(res => res.json())
-            .then(data => {
-                suggestions.innerHTML = "";
-                if (data.length === 0) {
-                    suggestions.classList.add('hidden');
-                    return;
-                }
-
-                data.forEach(addr => {
-                    const option = document.createElement('div');
-                    option.className = "px-3 py-2 hover:bg-gray-100 cursor-pointer";
-                    option.textContent = `${addr.street} ${addr.number}, ${addr.zipcode} ${addr.city}`;
-                    option.onclick = () => {
-                        input.value = addr.street;
-                        document.getElementById('createNumber').value = addr.number ?? '';
-                        document.getElementById('createZip').value = addr.zipcode ?? '';
-                        document.getElementById('createCity').value = addr.city ?? '';
-                        document.getElementById('createNoteDisplay').textContent = addr.note ?? '';
+            fetch(`/schedule/address-suggest?query=${encodeURIComponent(query)}`)
+                .then(res => res.json())
+                .then(data => {
+                    suggestions.innerHTML = "";
+                    if (data.length === 0) {
                         suggestions.classList.add('hidden');
-                    };
-                    suggestions.appendChild(option);
+                        return;
+                    }
+
+                    data.forEach(addr => {
+                        const option = document.createElement('div');
+                        option.className = "px-3 py-2 hover:bg-gray-100 cursor-pointer";
+                        option.textContent =
+                            `${addr.street} ${addr.number}, ${addr.zipcode} ${addr.city}`;
+                        option.onclick = () => {
+                            input.value = addr.street;
+                            document.getElementById('createNumber').value = addr.number ?? '';
+                            document.getElementById('createZip').value = addr.zipcode ?? '';
+                            document.getElementById('createCity').value = addr.city ?? '';
+                            document.getElementById('createNoteDisplay').textContent = addr
+                                .note ?? '';
+                            suggestions.classList.add('hidden');
+                        };
+                        suggestions.appendChild(option);
+                    });
+
+                    suggestions.classList.remove('hidden');
                 });
+        });
 
-                suggestions.classList.remove('hidden');
-            });
-    });
-
-    // klik buiten → sluit dropdown
-    document.addEventListener('click', (e) => {
-        if (!suggestions.contains(e.target) && e.target !== input) {
-            suggestions.classList.add('hidden');
-        }
-    });
-}
-
-
+        // klik buiten → sluit dropdown
+        document.addEventListener('click', (e) => {
+            if (!suggestions.contains(e.target) && e.target !== input) {
+                suggestions.classList.add('hidden');
+            }
+        });
+    }
 </script>
 <style>
-@media (max-width: 768px) {
-  #calendar {
-    min-height: 80vh !important;
-    font-size: 14px !important;
-  }
+    @media (max-width: 768px) {
+        #calendar {
+            min-height: 80vh !important;
+            font-size: 14px !important;
+        }
 
-  .fc-toolbar-title {
-    font-size: 1.25rem !important; /* text-xl */
-    font-weight: bold !important;
-    text-align: center !important;
-  }
+        .fc-toolbar-title {
+            font-size: 1.25rem !important;
+            /* text-xl */
+            font-weight: bold !important;
+            text-align: center !important;
+        }
 
-  .fc-daygrid-day-frame,
-  .fc-timegrid-slot {
-    min-height: 3rem !important; /* hogere cellen */
-  }
+        .fc-daygrid-day-frame,
+        .fc-timegrid-slot {
+            min-height: 3rem !important;
+            /* hogere cellen */
+        }
 
-  .fc-daygrid-day {
-    padding: 8px !important; /* extra ruimte in maandweergave */
-  }
-}
+        .fc-daygrid-day {
+            padding: 8px !important;
+            /* extra ruimte in maandweergave */
+        }
+    }
 </style>
