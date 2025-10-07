@@ -17,6 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'login', // POST /login uitsluiten
             'logout',  
         ]);
+
+         // ✅ Voeg hier je custom sessie-check toe
+        $middleware->web(append: [
+            \App\Http\Middleware\CheckSessionIntegrity::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
