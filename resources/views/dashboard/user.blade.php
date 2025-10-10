@@ -131,15 +131,15 @@
 
                     <!-- Schade / Geen schade -->
                     <div>
-                        <label class="block text-sm font-medium">Beoordeling</label>
+                        <label class="block text-sm font-medium">Schade?</label>
                         <div class="flex flex-col sm:flex-row gap-2 sm:gap-6 mt-1">
                             <label class="flex items-center gap-2">
                                 <input type="radio" name="damage" value="none" id="damageNone">
-                                <span>Geen schade</span>
+                                <span>Nee</span>
                             </label>
                             <label class="flex items-center gap-2">
                                 <input type="radio" name="damage" value="damage" id="damageYes">
-                                <span>Schade</span>
+                                <span>Ja</span>
                             </label>
                         </div>
                         <p id="errorDamage" class="text-red-500 text-xs md:text-sm mt-1 hidden"></p>

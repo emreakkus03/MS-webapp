@@ -22,12 +22,21 @@ Route::post('/notifications/clear', function () {
 })->name('notifications.clear');
 
 
+Route::get('/', function () {
+    // Als de gebruiker al ingelogd is, stuur hem naar de juiste dashboard
+    if (Auth::check()) {
+        return Auth::user()->role === 'admin'
+            ? redirect()->route('dashboard.admin')
+            : redirect()->route('dashboard.user');
+    }
+
+    // Anders naar de loginpagina
+    return redirect()->route('login');
+});
+
 Route::middleware('guest')->group(function () {
-   
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
     Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:5,1');
-    Route::get('/', fn() => redirect()->route('login'));
-    
     Route::get('/signin', fn() => view('signin.signin'));
 });
 Route::middleware(['auth'])->group(function () {
