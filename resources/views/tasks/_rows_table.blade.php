@@ -48,7 +48,7 @@
             @if(count($photos) > 0)
                 <div class="flex flex-wrap gap-1">
                     @foreach($photos as $photo)
-                        <img src="/dropbox/preview?path={{ urlencode($photo) }}"
+                       <img src="{{ url('/dropbox/preview?path=' . urlencode(rawurldecode($photo))) }}"
                              onclick="openPhotoModal(this.src)"
                              class="w-12 h-12 md:w-14 md:h-14 lg:w-16 lg:h-16 object-cover rounded cursor-pointer border">
                     @endforeach

@@ -349,16 +349,19 @@ public function listRegios(DropboxService $dropbox, Request $request)
             $uploadPath = '/' . ltrim(preg_replace('/^\/?Perceel 1/i', '', $basePath . '/' . $filename), '/');
             $dbPath     = '/PERCEEL 1' . $basePath . '/' . $filename;
         } else {
-    // Perceel 2 → absoluut
-    $uploadPath = $basePath . '/' . $filename;
-    $dbPath     = $basePath . '/' . $filename; 
-}
+            // Perceel 2 → absoluut
+            $uploadPath = $basePath . '/' . $filename;
+            $dbPath     = $basePath . '/' . $filename; 
+        }
 
         // 🔹 upload naar Dropbox
         $dropbox->upload($request->namespace_id, $uploadPath, $file);
 
-        // 🔹 altijd nette absolute path in database opslaan
-        $photos[] = $dbPath;
+        // 🔹 encode komma’s zodat ze de CSV-scheiding niet breken
+        $safePath = str_replace(',', '%2C', $dbPath);
+
+        // 🔹 altijd nette absolute path in database opslaan (veilig)
+        $photos[] = $safePath;
     }
 
     $task->photo = implode(',', $photos);

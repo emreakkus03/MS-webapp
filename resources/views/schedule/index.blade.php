@@ -440,7 +440,7 @@
 
                 event.extendedProps.previous_photos.forEach(path => {
                     let img = document.createElement('img');
-                    img.src = `/dropbox/preview?path=${encodeURIComponent(path)}`;
+                    img.src = `/dropbox/preview?path=${encodeURIComponent(decodeURIComponent(path))}`;
                     img.classList.add("w-24", "h-24", "object-cover", "rounded", "border", "cursor-pointer",
                         "mr-2", "mt-1");
                     img.onclick = () => openPhotoModal(img.src);
@@ -457,7 +457,7 @@
 
                 event.extendedProps.current_photos.forEach(path => {
                     let img = document.createElement('img');
-                    img.src = `/dropbox/preview?path=${encodeURIComponent(path)}`;
+                    img.src = `/dropbox/preview?path=${encodeURIComponent(decodeURIComponent(path))}`;
                     img.classList.add("w-24", "h-24", "object-cover", "rounded", "border", "cursor-pointer",
                         "mr-2", "mt-1");
                     img.onclick = () => openPhotoModal(img.src);
@@ -479,7 +479,7 @@
             if (event.extendedProps.current_photos && event.extendedProps.current_photos.length > 0) {
                 event.extendedProps.current_photos.forEach(path => {
                     let img = document.createElement('img');
-                    img.src = `/dropbox/preview?path=${encodeURIComponent(path)}`;
+                    img.src = `/dropbox/preview?path=${encodeURIComponent(decodeURIComponent(path))}`;
                     img.classList.add("w-24", "h-24", "object-cover", "rounded", "border", "cursor-pointer",
                         "mr-2", "mt-1");
                     img.onclick = () => openPhotoModal(img.src);
