@@ -13,7 +13,7 @@
     <tr class="hover:bg-gray-50 transition">
         <!-- Datum & Tijd -->
         <td class="border px-3 py-2 text-sm whitespace-nowrap">
-            {{ \Carbon\Carbon::parse($task->time)->format('Y-m-d H:i') }}
+            {{ \Carbon\Carbon::parse($task->time)->format('d-m-Y H:i') }}
         </td>
 
         <!-- Adres -->

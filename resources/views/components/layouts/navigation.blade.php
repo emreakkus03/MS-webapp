@@ -133,6 +133,15 @@
                                 </a>
                             </li>
                         @endif
+                          <li>
+                                <a href="{{ route('leaves.index') }}"
+                                    class="flex items-center gap-3 px-4 py-2 rounded-md transition
+                          {{ request()->is('leaves*') ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
+                                    <img src="{{ asset('images/icon/briefcase.svg') }}" alt="Logo"
+                                        class="w-7 h-7 text-gray-500">
+                                    Verlofbeheer
+                                </a>
+                            </li>
                     </ul>
                 </nav>
 

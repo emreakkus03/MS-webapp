@@ -6,6 +6,7 @@ use App\Http\Controllers\TeamController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\LeaveRequestController;
 use Illuminate\Support\Facades\Auth;
 use App\Events\TestEvent;
 
@@ -83,4 +84,14 @@ Route::get('/dropbox/create-adres', fn() => abort(404));
 
     Route::post('/dropbox/upload-adres-photos', [TaskController::class, 'uploadAdresPhotos']);
     Route::post('/tasks/{id}/upload-photo', [TaskController::class, 'uploadPhoto']);
+});
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/leaves', [LeaveRequestController::class, 'index'])->name('leaves.index');
+    Route::get('/leaves/create', [LeaveRequestController::class, 'create'])->name('leaves.create');
+    Route::post('/leaves', [LeaveRequestController::class, 'store'])->name('leaves.store');
+    Route::post('/leaves/{id}/status', [LeaveRequestController::class, 'updateStatus'])->name('leaves.status');
+     Route::get('/leaves/{id}/edit', [LeaveRequestController::class, 'edit'])->name('leaves.edit');
+     Route::put('/leaves/{id}', [LeaveRequestController::class, 'update'])->name('leaves.update');
+    Route::delete('/leaves/{id}', [LeaveRequestController::class, 'destroy'])->name('leaves.destroy');
 });

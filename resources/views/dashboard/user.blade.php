@@ -54,7 +54,7 @@
                                     data-address="{{ $task->address->street }} {{ $task->address->number }}"
                                     data-zipcode="{{ $task->address->zipcode }}"
                                     data-city="{{ $task->address->city }}"
-                                    data-time="{{ \Carbon\Carbon::parse($task->time)->format('Y-m-d H:i') }}"
+                                    data-time="{{ \Carbon\Carbon::parse($task->time)->format('d-m-Y H:i') }}"
                                     data-status="{{ $task->status }}"
                                     data-note="{{ $task->current_note ?? '' }}"
                                     data-previous-notes='@json($task->previous_notes)'

@@ -31,34 +31,37 @@ class TeamController extends Controller
             ->with('filters', $request->only(['role', 'search']));
     }
 
-    public function store(Request $request)
+     public function store(Request $request)
     {
-        $team = auth()->guard()->user();
-        abort_unless($team && $team->role === 'admin', 403);
+        $user = auth()->guard()->user();
+        abort_unless($user && $user->role === 'admin', 403);
 
         $request->validate([
             'name' => 'required|string|unique:teams,name',
             'password' => 'required|string|min:6',
-            'role' => 'required|in:admin,team', // ✅ whitelist
+            'role' => 'required|in:admin,team', // ✅ alleen geldige rollen
             'members' => 'nullable|string',
         ]);
 
-        // 👉 input schoonmaken
+        // ✅ Schoonmaken van invoer
         $teamName = ucfirst(strtolower(e(strip_tags($request->name))));
         $role = e(strip_tags($request->role));
 
-        $members = null;
-        if ($request->members) {
-            $members = collect(explode(' ', $request->members))
-                ->map(fn($name) => ucfirst(strtolower(e(strip_tags($name)))))
-                ->implode(' ');
-        }
+        // ✅ Leden verwerken (met komma’s)
+        $members = $request->members
+            ? collect(explode(',', $request->members))
+                ->map(fn($name) => trim(ucwords(strtolower(e(strip_tags($name))))))
+                ->filter() // verwijder lege namen
+                ->implode(', ')
+            : null;
 
-        Team::create([
-            'name' => $teamName,
-            'password' => $request->password,
-            'members' => $members,
-        ])->role = $role; // ✅ role apart instellen
+        // ✅ Team aanmaken
+        $team = new Team();
+        $team->name = $teamName;
+        $team->password = $request->password;
+        $team->role = $role;
+        $team->members = $members;
+        $team->save();
 
         return redirect()->back()->with('success', 'Nieuwe ploeg succesvol aangemaakt!');
     }
@@ -73,7 +76,7 @@ class TeamController extends Controller
         return view('teams.edit', compact('team'));
     }
 
-    public function update(Request $request, $id)
+     public function update(Request $request, $id)
     {
         $team = Team::findOrFail($id);
 
@@ -83,19 +86,23 @@ class TeamController extends Controller
         $request->validate([
             'name' => 'required|string|unique:teams,name,' . $team->id,
             'password' => 'nullable|string|min:6',
-            'role' => 'required|in:admin,team', // ✅ whitelist
+            'role' => 'required|in:admin,team',
             'members' => 'nullable|string',
         ]);
 
-        // 👉 input schoonmaken
+        // ✅ Naam & rol schoonmaken
         $team->name = ucfirst(strtolower(e(strip_tags($request->name))));
         $team->role = e(strip_tags($request->role));
+
+        // ✅ Leden verwerken (werkt ook met samengestelde namen)
         $team->members = $request->members
-            ? collect(explode(' ', $request->members))
-                ->map(fn($name) => ucfirst(strtolower(e(strip_tags($name)))))
-                ->implode(' ')
+            ? collect(explode(',', $request->members))
+                ->map(fn($name) => trim(ucwords(strtolower(e(strip_tags($name))))))
+                ->filter()
+                ->implode(', ')
             : null;
 
+        // ✅ Alleen wachtwoord wijzigen als het is ingevuld
         if (!empty($request->password)) {
             $team->password = $request->password;
         }

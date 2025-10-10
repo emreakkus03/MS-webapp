@@ -34,6 +34,7 @@
                 <th class="px-4 py-2 border-b text-left font-semibold">Naam</th>
                 <th class="px-4 py-2 border-b text-left font-semibold">Leden</th>
                 <th class="px-4 py-2 border-b text-left font-semibold hidden sm:table-cell">Rol</th>
+                
                 <th class="px-4 py-2 border-b text-left font-semibold">Acties</th>
             </tr>
         </thead>
