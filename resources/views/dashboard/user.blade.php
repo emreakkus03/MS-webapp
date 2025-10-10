@@ -131,7 +131,7 @@
 
                     <!-- Schade / Geen schade -->
                     <div>
-                        <label class="block text-sm font-medium">Schade?</label>
+                        <label class="block text-sm font-medium">Herstel?</label>
                         <div class="flex flex-col sm:flex-row gap-2 sm:gap-6 mt-1">
                             <label class="flex items-center gap-2">
                                 <input type="radio" name="damage" value="none" id="damageNone">
