@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Task;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use App\Services\DropboxService;
 use App\Notifications\TaskCompletedNotification;
 use App\Models\Team; 
+use App\Jobs\UploadToDropboxJob;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Bus;
 
 class TaskController extends Controller
 {
@@ -323,55 +326,71 @@ public function listRegios(DropboxService $dropbox, Request $request)
 }
 
 
- public function uploadPhoto(Request $request, DropboxService $dropbox, $taskId)
+public function uploadPhoto(Request $request, DropboxService $dropbox, $taskId)
 {
     $request->validate([
         'namespace_id' => 'required|string',
         'path'         => 'required|string',
-        'photos'       => 'required|array|max:10',
-        'photos.*'     => 'image|mimes:jpeg,png,jpg|max:5120'
+        'photos'       => 'required',
     ]);
 
     $task   = Task::findOrFail($taskId);
     $photos = $task->photo ? explode(',', $task->photo) : [];
 
-    foreach ($request->file('photos', []) as $file) {
-        if (count($photos) >= 10) break;
+    // 👉 Controleer of het JSON-paths zijn of echte uploads
+    if (is_array($request->photos) && !is_a($request->photos[0] ?? null, \Illuminate\Http\UploadedFile::class)) {
+        // 🔹 JSON-variant → directe Dropbox-paden
+        foreach ($request->photos as $photoPath) {
+            $safePath = str_replace(',', '%2C', $photoPath);
 
-        $filename = uniqid() . '.' . $file->getClientOriginalExtension();
+            // 🧠 Voeg automatisch de juiste perceel-prefix toe
+            if ($request->namespace_id !== $dropbox->getFluviusNamespaceId()) {
+                // Perceel 1 (Aansluitingen)
+                if (!str_starts_with($safePath, '/PERCEEL 1')) {
+                    $safePath = '/PERCEEL 1' . $safePath;
+                }
+            } else {
+                // Perceel 2 (Fluvius / Graafwerk)
+                if (!str_starts_with($safePath, '/PERCEEL 2')) {
+                    $safePath = '/PERCEEL 2' . $safePath;
+                }
+            }
 
-        // ✅ het gekozen adrespad waar de foto’s direct in moeten komen
-        $basePath = rtrim($request->path, '/');
-
-        // ✅ uploadpad voor Dropbox (zonder dubbele map)
-        if ($request->namespace_id !== $dropbox->getFluviusNamespaceId()) {
-            // Perceel 1 → relatief
-            $uploadPath = '/' . ltrim(preg_replace('/^\/?Perceel 1/i', '', $basePath . '/' . $filename), '/');
-            $dbPath     = '/PERCEEL 1' . $basePath . '/' . $filename;
-        } else {
-            // Perceel 2 → absoluut
-            $uploadPath = $basePath . '/' . $filename;
-            $dbPath     = $basePath . '/' . $filename; 
+            $photos[] = $safePath;
         }
+    } else {
+        // 🔹 Multipart-variant → echte bestanden
+        foreach ($request->file('photos', []) as $file) {
+            if (count($photos) >= 20) break;
 
-        // 🔹 upload naar Dropbox
-        $dropbox->upload($request->namespace_id, $uploadPath, $file);
+            $filename = uniqid() . '.' . $file->getClientOriginalExtension();
+            $basePath = rtrim($request->path, '/');
 
-        // 🔹 encode komma’s zodat ze de CSV-scheiding niet breken
-        $safePath = str_replace(',', '%2C', $dbPath);
+            if ($request->namespace_id !== $dropbox->getFluviusNamespaceId()) {
+                // Perceel 1
+                $uploadPath = '/' . ltrim(preg_replace('/^\/?Perceel 1/i', '', $basePath . '/' . $filename), '/');
+                $dbPath     = '/PERCEEL 1' . $basePath . '/' . $filename;
+            } else {
+                // Perceel 2
+                $uploadPath = $basePath . '/' . $filename;
+                $dbPath     = '/PERCEEL 2' . $basePath . '/' . $filename;
+            }
 
-        // 🔹 altijd nette absolute path in database opslaan (veilig)
-        $photos[] = $safePath;
+            $dropbox->uploadStreamFast($request->namespace_id, $uploadPath, $file);
+
+            $photos[] = str_replace(',', '%2C', $dbPath);
+        }
     }
 
     $task->photo = implode(',', $photos);
     $task->save();
 
     return response()->json([
-        'message' => 'Foto(s) succesvol geüpload',
+        'message' => 'Foto(s) succesvol toegevoegd',
         'files'   => $photos
     ]);
 }
+
 
     public function listTeamMembers(DropboxService $dropbox)
     {
@@ -411,4 +430,58 @@ public function listRegios(DropboxService $dropbox, Request $request)
             ], 500);
         }
     }
+
+ public function startDropboxSession(DropboxService $dropbox)
+{
+    try {
+        $session = $dropbox->startUploadSession();
+
+        return response()->json([
+            'success'        => true,
+            'session_id'     => $session['session_id'] ?? null,
+            'access_token'   => $dropbox->getAccessToken(),
+            // 🔹 Voeg deze toe:
+            'team_member_id' => config('services.dropbox.team_member_id'),
+        ]);
+    } catch (\Throwable $e) {
+        Log::error('Dropbox upload session start failed', ['error' => $e->getMessage()]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Kon geen upload-sessie starten bij Dropbox.',
+            'error'   => $e->getMessage(),
+        ], 500);
+    }
+}
+public function uploadTemp(Request $request, $taskId)
+{
+    $task = Task::findOrFail($taskId);
+    $files = $request->file('photos', []);
+    $adresPath = $request->input('path');
+    $namespaceId = $request->input('namespace_id');
+
+    // ✅ Beperk tot max 20 foto’s
+    $files = array_slice($files, 0, 20);
+
+    // ✅ Parallel dispatchen (batch-queue)
+    $batch = [];
+    foreach ($files as $file) {
+        $path = $file->store('temp/uploads', 'local');
+        $batch[] = new UploadToDropboxJob($taskId, $path, $adresPath, $namespaceId);
+    }
+
+    // Laravel’s bus batch → meerdere jobs tegelijk dispatchen
+    if (count($batch)) {
+        Bus::batch($batch)
+            ->name("UploadToDropboxBatch-task-{$taskId}")
+            ->onQueue('uploads')
+            ->dispatch();
+    }
+
+    return response()->json([
+        'status' => 'queued',
+        'count'  => count($files),
+        'message'=> 'Bestanden in wachtrij geplaatst voor Dropbox-upload'
+    ]);
+}
+
 }

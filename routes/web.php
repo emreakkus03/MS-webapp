@@ -62,7 +62,7 @@ Route::middleware('auth')->group(function () {
 Route::middleware(['auth'])->group(function () {
     Route::get('/schedule', [ScheduleController::class, 'index'])->name('schedule.index');
     Route::post('/schedule', [ScheduleController::class, 'store'])->name('schedule.store');
-    Route::get('/schedule/tasks', [ScheduleController::class, 'tasks'])->name('schedule.tasks');
+    //Route::get('/schedule/tasks', [ScheduleController::class, 'tasks'])->name('schedule.tasks');
     Route::get('/schedule/tasks/{team}', [ScheduleController::class, 'getTasksByTeam'])->name('schedule.teamTasks');
     Route::get('/schedule/{task}/edit', [ScheduleController::class, 'edit'])->name('schedule.edit');
     Route::put('/schedule/{task}', [ScheduleController::class, 'update'])->name('schedule.update');
@@ -93,6 +93,12 @@ Route::get('/dropbox/create-adres', fn() => abort(404));
 
     Route::post('/dropbox/upload-adres-photos', [TaskController::class, 'uploadAdresPhotos']);
     Route::post('/tasks/{id}/upload-photo', [TaskController::class, 'uploadPhoto']);
+
+    Route::post('/dropbox/start-session', [TaskController::class, 'startDropboxSession'])
+    ->name('dropbox.start_session');
+
+   Route::post('/tasks/{task}/upload-temp', [TaskController::class, 'uploadTemp'])->name('tasks.uploadTemp');
+
 });
 
 Route::middleware(['auth'])->group(function () {

@@ -382,4 +382,131 @@ class DropboxService
 
         return $response->json()['link'] ?? null;
     }
+
+        /**
+     * ============================================================
+     * 🔹 DIRECT UPLOAD SESSIONS (voor client-side Dropbox uploads)
+     * ============================================================
+     */
+
+    // Haal een vers access token op (frontend mag dit tijdelijk gebruiken)
+    public function getAccessToken(): string
+    {
+        return $this->accessToken;
+    }
+
+  public function startUploadSession(): array
+{
+    $accessToken = $this->accessToken;
+
+    $response = Http::withToken($accessToken)
+        ->withHeaders([
+            'Content-Type' => 'application/octet-stream',
+            'Dropbox-API-Arg' => json_encode(['close' => false]),
+            // 🔹 heel belangrijk bij Business accounts:
+            'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
+        ])
+        ->send('POST', 'https://content.dropboxapi.com/2/files/upload_session/start', [
+            'body' => '', // lege body
+        ]);
+
+    if ($response->failed()) {
+        throw new \Exception(
+            "Dropbox upload_session/start failed: " . ($response->body() ?: 'unknown error')
+        );
+    }
+
+    return $response->json();
+}
+
+
+
+    // 2️⃣ Voeg chunk toe aan sessie
+    public function appendToSession(string $sessionId, string $binaryChunk, int $offset): void
+    {
+        $accessToken = $this->accessToken;
+
+        $res = Http::withToken($accessToken)
+            ->withHeaders([
+                'Content-Type' => 'application/octet-stream',
+                'Dropbox-API-Arg' => json_encode([
+                    'cursor' => [
+                        'session_id' => $sessionId,
+                        'offset'     => $offset
+                    ],
+                    'close' => false
+                ])
+            ])
+            ->send('POST', 'https://content.dropboxapi.com/2/files/upload_session/append_v2', [
+                'body' => $binaryChunk,
+            ]);
+
+        if ($res->failed()) {
+            throw new \Exception("Dropbox append_v2 failed: " . ($res->body() ?: 'unknown error'));
+        }
+    }
+
+    // 3️⃣ Sessie afronden en bestand opslaan
+    public function finishUploadSession(string $sessionId, int $offset, string $targetPath): array
+    {
+        $accessToken = $this->accessToken;
+
+        $res = Http::withToken($accessToken)
+            ->withHeaders([
+                'Content-Type' => 'application/octet-stream',
+                'Dropbox-API-Arg' => json_encode([
+                    'cursor' => [
+                        'session_id' => $sessionId,
+                        'offset'     => $offset
+                    ],
+                    'commit' => [
+                        'path' => $targetPath,
+                        'mode' => 'add',
+                        'autorename' => true,
+                        'mute' => false
+                    ]
+                ])
+            ])
+            ->send('POST', 'https://content.dropboxapi.com/2/files/upload_session/finish', [
+                'body' => '',
+            ]);
+
+        if ($res->failed()) {
+            throw new \Exception("Dropbox finish failed: " . ($res->body() ?: 'unknown error'));
+        }
+
+        return $res->json();
+    }
+
+    public function uploadStreamFast($namespaceId, $path, $file)
+{
+    $accessToken = $this->getMemberAccessToken();
+    $client = new \GuzzleHttp\Client(['base_uri' => 'https://content.dropboxapi.com/2/']);
+
+    $dropboxPath = '/' . ltrim($path, '/');
+
+    $headers = [
+        'Authorization' => 'Bearer ' . $accessToken,
+        'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
+        'Dropbox-API-Path-Root' => json_encode([
+            '.tag' => 'namespace_id',
+            'namespace_id' => $namespaceId
+        ]),
+        'Dropbox-API-Arg' => json_encode([
+            'path' => $dropboxPath,
+            'mode' => 'add',
+            'autorename' => true,
+            'mute' => false
+        ]),
+        'Content-Type' => 'application/octet-stream'
+    ];
+
+    $client->request('POST', 'files/upload', [
+        'headers' => $headers,
+        'body' => fopen($file->getRealPath(), 'r'),
+        'timeout' => 120,
+    ]);
+}
+
+
 }

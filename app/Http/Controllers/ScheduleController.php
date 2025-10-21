@@ -81,11 +81,10 @@ class ScheduleController extends Controller
  public function store(Request $request)
 {
     $user = Auth::user();
-
-    // ✅ Alleen admins mogen taken inplannen
-    if ($user->role !== 'admin') {
-        abort(403, 'Alleen admins kunnen taken inplannen.');
-    }
+// ✅ Admins kunnen voor elk team plannen, gewone gebruikers alleen voor hun eigen team
+if ($user->role !== 'admin') {
+    $request->merge(['team_id' => $user->id]);
+}
 
     $request->validate([
         'time' => 'required|date',
@@ -181,14 +180,17 @@ public function getTasksByTeam($teamId)
         'reopened' => 'bg-red-200 text-red-800',
     ];
 
-    if ($user->role === 'admin') {
-        $tasks = Task::with('address', 'team')->where('team_id', $teamId)->get();
-    } else {
-        if ($teamId != $user->id) {
-            abort(403);
-        }
-        $tasks = Task::with('address', 'team')->where('team_id', $user->id)->get();
+   if ($user->role === 'admin') {
+    // Admin mag alle teams zien
+    $tasks = Task::with('address', 'team')->where('team_id', $teamId)->get();
+} else {
+    // Teams loggen zelf in, dus Auth::user()->id == team_id
+    if ($teamId != $user->id) {
+        abort(403, 'Je hebt geen toegang tot dit team.');
     }
+
+    $tasks = Task::with('address', 'team')->where('team_id', $user->id)->get();
+}
 
     $events = $tasks->map(function ($task) use ($calendarColors, $statusClasses) {
         // Huidige foto's & notitie
@@ -243,28 +245,28 @@ public function getTasksByTeam($teamId)
     return response()->json($events);
 }
 
-
-
-
-
-    public function edit(Task $task)
+  public function edit(Task $task)
 {
     $user = Auth::user();
-    if ($user->role !== 'admin') abort(403);
+
+    // ✅ Alleen admin of eigen team mag bewerken
+    if ($user->role !== 'admin' && $task->team_id !== $user->id) {
+        abort(403, 'Je hebt geen rechten om deze taak te bewerken.');
+    }
 
     $teams = Team::orderBy('name')->get();
     $addresses = Address::orderBy('street')->get();
-
-       $redirect = request('redirect', url()->previous());
+    $redirect = request('redirect', url()->previous());
 
     return view('schedule.edit', compact('task', 'teams', 'addresses', 'redirect'));
-
 }
 
   public function update(Request $request, Task $task)
 {
     $user = Auth::user();
-    if ($user->role !== 'admin') abort(403);
+     if ($user->role !== 'admin' && $task->team_id !== $user->id) {
+        abort(403, 'Je hebt geen rechten om deze taak te bewerken of verwijderen.');
+    }
 
     $request->validate([
         'time' => 'required|date',
@@ -316,7 +318,10 @@ public function getTasksByTeam($teamId)
     public function destroy(Task $task)
     {
         $user = Auth::user();
-        if ($user->role !== 'admin') abort(403);
+         if ($user->role !== 'admin' && $task->team_id !== $user->id) {
+        abort(403, 'Je hebt geen rechten om deze taak te verwijderen.');
+    }
+
 
         $task->delete();
         return redirect()->back()->with('success', 'Taak verwijderd!');

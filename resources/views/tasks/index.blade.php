@@ -66,16 +66,27 @@
         </div>
     </div>
 
-    <!-- Foto Lightbox -->
-    <div id="photoModal" class="fixed inset-0 bg-black bg-opacity-75 hidden items-center justify-center z-50">
-        <!-- Sluitknop -->
-        <span onclick="closePhotoModal()"
-              class="absolute top-5 right-8 text-white text-3xl cursor-pointer">&times;</span>
+    <!-- 🔹 Gedeelde Foto-Lightbox -->
+<div id="photoLightbox"
+     class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50 select-none">
+    <!-- Sluitknop -->
+    <span id="closeLightbox"
+          class="absolute top-5 right-8 text-white text-4xl cursor-pointer">&times;</span>
 
-        <!-- Grote foto -->
-        <img id="photoModalImg" src=""
-             class="max-h-[90%] max-w-[90%] rounded shadow-lg border-4 border-white" />
-    </div>
+    <!-- Pijlen -->
+    <button id="prevPhoto"
+            class="absolute left-5 text-white text-5xl p-2 bg-black bg-opacity-40 rounded-full hover:bg-opacity-70">
+        &#10094;
+    </button>
+    <button id="nextPhoto"
+            class="absolute right-5 text-white text-5xl p-2 bg-black bg-opacity-40 rounded-full hover:bg-opacity-70">
+        &#10095;
+    </button>
+
+    <!-- Grote foto -->
+    <img id="lightboxImg" src=""
+         class="max-h-[90%] max-w-[90%] rounded shadow-lg border-4 border-white transition-transform duration-300" />
+</div>
 
     <!-- Delete Modal -->
 <div id="deleteModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
@@ -187,4 +198,66 @@ document.getElementById('confirmDeleteBtn').addEventListener('click', function()
         });
     });
 });
+
+// ==================== 🖼️ Gedeelde Lightbox ====================
+document.addEventListener("DOMContentLoaded", () => {
+    const lightbox = document.getElementById("photoLightbox");
+    const lightboxImg = document.getElementById("lightboxImg");
+    const closeBtn = document.getElementById("closeLightbox");
+    const prevBtn = document.getElementById("prevPhoto");
+    const nextBtn = document.getElementById("nextPhoto");
+
+    let images = [];
+    let currentIndex = 0;
+
+    // Klik op foto → open lightbox
+    document.querySelectorAll("img[onclick^='openPhotoModal']").forEach((img, index, arr) => {
+        img.addEventListener("click", () => {
+            images = arr;
+            currentIndex = index;
+            showImage(currentIndex);
+        });
+    });
+
+    function showImage(index) {
+        if (index < 0) index = images.length - 1;
+        if (index >= images.length) index = 0;
+        currentIndex = index;
+        lightboxImg.src = images[currentIndex].src;
+        lightbox.classList.remove("hidden");
+        lightbox.classList.add("flex");
+    }
+
+    prevBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        showImage(currentIndex - 1);
+    });
+    nextBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        showImage(currentIndex + 1);
+    });
+
+    closeBtn.addEventListener("click", () => {
+        lightbox.classList.add("hidden");
+        lightbox.classList.remove("flex");
+    });
+
+    lightbox.addEventListener("click", (e) => {
+        if (e.target === lightbox) {
+            lightbox.classList.add("hidden");
+            lightbox.classList.remove("flex");
+        }
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (lightbox.classList.contains("hidden")) return;
+        if (e.key === "ArrowLeft") showImage(currentIndex - 1);
+        if (e.key === "ArrowRight") showImage(currentIndex + 1);
+        if (e.key === "Escape") {
+            lightbox.classList.add("hidden");
+            lightbox.classList.remove("flex");
+        }
+    });
+});
+
 </script>

@@ -52,28 +52,30 @@
                                            block md:table-row mb-3 md:mb-0 rounded-lg md:rounded-none shadow md:shadow-none border md:border-0 p-3 md:p-0"
                                     data-task-id="{{ $task->id }}"
                                     data-address="{{ $task->address->street }} {{ $task->address->number }}"
-                                    data-zipcode="{{ $task->address->zipcode }}"
-                                    data-city="{{ $task->address->city }}"
+                                    data-zipcode="{{ $task->address->zipcode }}" data-city="{{ $task->address->city }}"
                                     data-time="{{ \Carbon\Carbon::parse($task->time)->format('d-m-Y H:i') }}"
-                                    data-status="{{ $task->status }}"
-                                    data-note="{{ $task->current_note ?? '' }}"
+                                    data-status="{{ $task->status }}" data-note="{{ $task->current_note ?? '' }}"
                                     data-previous-notes='@json($task->previous_notes)'
                                     data-damage="{{ $task->note ? 'damage' : 'none' }}">
 
                                     <!-- Tijd -->
-                                    <td class="block md:table-cell md:border px-0 md:px-4 lg:px-6 py-1 md:py-3 font-semibold md:font-normal">
+                                    <td
+                                        class="block md:table-cell md:border px-0 md:px-4 lg:px-6 py-1 md:py-3 font-semibold md:font-normal">
                                         {{ \Carbon\Carbon::parse($task->time)->format('H:i') }}
                                     </td>
 
                                     <!-- Adres -->
-                                    <td class="block md:table-cell md:border px-0 md:px-4 lg:px-6 py-1 md:py-3 whitespace-normal break-words">
+                                    <td
+                                        class="block md:table-cell md:border px-0 md:px-4 lg:px-6 py-1 md:py-3 whitespace-normal break-words">
                                         {{ $task->address->street }} {{ $task->address->number }},
                                         {{ $task->address->zipcode }} {{ $task->address->city }}
                                     </td>
 
                                     <!-- Status -->
-                                    <td class="block md:table-cell md:border px-0 md:px-4 lg:px-6 py-1 md:py-3 capitalize mt-2 md:mt-0">
-                                        <span class="px-2 py-1 rounded text-xs md:text-sm font-semibold {{ $statusColor }}">
+                                    <td
+                                        class="block md:table-cell md:border px-0 md:px-4 lg:px-6 py-1 md:py-3 capitalize mt-2 md:mt-0">
+                                        <span
+                                            class="px-2 py-1 rounded text-xs md:text-sm font-semibold {{ $statusColor }}">
                                             {{ $task->status }}
                                         </span>
                                     </td>
@@ -93,7 +95,7 @@
                     </div>
                     <div class="w-full bg-gray-200 rounded-full h-3 mt-4">
                         <div class="bg-green-500 h-3 rounded-full"
-                             style="width: {{ ($tasksFinished / $tasksTotal) * 100 }}%"></div>
+                            style="width: {{ ($tasksFinished / $tasksTotal) * 100 }}%"></div>
                     </div>
                     <p class="text-xs md:text-sm lg:text-base text-gray-600 mb-0">
                         {{ $tasksFinished }} van {{ $tasksTotal }} taken voltooid
@@ -115,7 +117,7 @@
                     <!-- Status -->
                     <div class="flex gap-2">
                         <img src="{{ asset('images/icon/info.svg') }}" alt="Information-icon"
-                             class="w-6 h-6 md:w-7 md:h-7 text-gray-500 mt-1 md:mt-2">
+                            class="w-6 h-6 md:w-7 md:h-7 text-gray-500 mt-1 md:mt-2">
                         <div>
                             <label class="block text-xs md:text-sm font-semibold text-gray-700 mb-1">Status</label>
                             <div class="flex items-center gap-2 text-gray-700 text-sm md:text-base">
@@ -148,8 +150,7 @@
                     <!-- Notitie veld -->
                     <div id="noteWrapper" class="hidden">
                         <label class="block text-sm font-medium">Notitie</label>
-                        <textarea name="note" rows="2"
-                                  class="w-full border px-3 py-2 rounded text-sm md:text-base"></textarea>
+                        <textarea name="note" rows="2" class="w-full border px-3 py-2 rounded text-sm md:text-base"></textarea>
                         <p id="errorNote" class="text-red-500 text-xs md:text-sm mt-1 hidden"></p>
                     </div>
 
@@ -157,14 +158,14 @@
                     <div>
                         <label class="block text-sm font-medium">Type werk</label>
                         <select id="perceelSelect"
-                                class="w-full border px-3 py-2 rounded mt-1 text-sm md:text-base"></select>
+                            class="w-full border px-3 py-2 rounded mt-1 text-sm md:text-base"></select>
                         <p id="errorPerceel" class="text-red-500 text-xs md:text-sm mt-1 hidden"></p>
                     </div>
 
                     <div>
                         <label class="block text-sm font-medium">Map</label>
-                        <select id="regioSelect"
-                                class="w-full border px-3 py-2 rounded mt-1 text-sm md:text-base" disabled></select>
+                        <select id="regioSelect" class="w-full border px-3 py-2 rounded mt-1 text-sm md:text-base"
+                            disabled></select>
                         <p id="errorRegio" class="text-red-500 text-xs md:text-sm mt-1 hidden"></p>
                     </div>
 
@@ -172,28 +173,29 @@
                         <label class="block text-sm font-medium">Adres</label>
                         <div class="flex gap-2 items-center mt-1">
                             <input type="text" id="adresComboInput" placeholder="Zoek of kies adres..."
-                                   class="border px-3 py-2 rounded w-full text-sm md:text-base"
-                                   disabled autocomplete="off">
+                                class="border px-3 py-2 rounded w-full text-sm md:text-base" disabled
+                                autocomplete="off">
                             <button type="button" id="newAdresBtn"
-                                    class="flex items-center justify-center bg-gray-200 w-8 h-8 rounded hover:bg-gray-300">+
+                                class="flex items-center justify-center bg-gray-200 w-8 h-8 rounded hover:bg-gray-300">+
                             </button>
                         </div>
 
                         <select id="adresSelect" name="folder" class="hidden"></select>
 
                         <div id="adresDropdown"
-                             class="absolute z-10 mt-1 w-full bg-white border rounded shadow max-h-60 overflow-auto hidden"></div>
+                            class="absolute z-10 mt-1 w-full bg-white border rounded shadow max-h-60 overflow-auto hidden">
+                        </div>
 
                         <button type="button" id="loadMoreAdressenBtn"
-                                class="mt-2 text-blue-600 text-xs md:text-sm underline hidden">Meer laden...</button>
+                            class="mt-2 text-blue-600 text-xs md:text-sm underline hidden">Meer laden...</button>
                         <p id="errorAdres" class="text-red-500 text-xs md:text-sm mt-1 hidden"></p>
                     </div>
 
                     <!-- Foto upload -->
                     <div>
-                        <label class="block text-sm font-medium">Upload foto's (Max 10 foto's)</label>
+                        <label class="block text-sm font-medium">Upload foto's (Max 20 foto's)</label>
                         <input type="file" id="photoUpload" name="photos[]" accept="image/*" multiple
-                               class="w-full border px-3 py-2 rounded mt-1 text-sm md:text-base">
+                            class="w-full border px-3 py-2 rounded mt-1 text-sm md:text-base">
                         <p id="errorPhoto" class="text-red-500 text-xs md:text-sm mt-1 hidden"></p>
                         <div id="photoPreview" class="flex flex-wrap gap-2 mt-2"></div>
                     </div>
@@ -201,7 +203,7 @@
                     <!-- Knop -->
                     <div>
                         <button type="submit" id="finishButton"
-                                class="w-full bg-[#283142] text-white py-2 rounded hover:bg-[#B51D2D] transition text-sm md:text-base">
+                            class="w-full bg-[#283142] text-white py-2 rounded hover:bg-[#B51D2D] transition text-sm md:text-base">
                             Voltooien
                         </button>
                     </div>
@@ -211,9 +213,44 @@
     </div>
 
 
+<!-- 🔹 Algemene Upload Progress Popup -->
+<div id="uploadProgressPopup"
+    class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-lg p-6 shadow-xl w-80 text-center">
+        <h2 class="text-lg font-semibold mb-4">Bezig met uploaden...</h2>
+        <div class="w-full bg-gray-200 rounded-full h-3 mb-3">
+            <div id="uploadProgressBar" class="bg-blue-600 h-3 rounded-full" style="width: 0%;"></div>
+        </div>
+        <p id="uploadProgressText" class="text-sm text-gray-600">0%</p>
+    </div>
+</div>
+<!-- 🔹 Lightbox met navigatie -->
+<div id="photoLightbox"
+    class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50 select-none">
+    
+    <!-- Sluitknop -->
+    <span id="closeLightbox" class="absolute top-5 right-8 text-white text-4xl cursor-pointer">&times;</span>
+    
+    <!-- Pijlen -->
+    <button id="prevPhoto"
+        class="absolute left-5 text-white text-5xl p-2 bg-black bg-opacity-40 rounded-full hover:bg-opacity-70">
+        &#10094;
+    </button>
+    <button id="nextPhoto"
+        class="absolute right-5 text-white text-5xl p-2 bg-black bg-opacity-40 rounded-full hover:bg-opacity-70">
+        &#10095;
+    </button>
+
+    <!-- Grote afbeelding -->
+    <img id="lightboxImage" src=""
+        class="max-h-[90%] max-w-[90%] rounded shadow-lg border-4 border-white transition-transform duration-300" />
+</div>
 
 
-    <script>
+    <script type="module">
+        import imageCompression from "https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/+esm";
+
+
         async function loadPercelen() {
             let res = await fetch("/dropbox/percelen");
             let data = await res.json();
@@ -391,19 +428,19 @@
 
             try {
                 const res = await fetch("{{ route('dropbox.create_adres') }}", {
-    method: "POST",
-    headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-    },
-    body: JSON.stringify({
-        namespace_id: namespaceId,
-        path: regioPath,
-        adres: name
-    })
-});
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify({
+                        namespace_id: namespaceId,
+                        path: regioPath,
+                        adres: name
+                    })
+                });
 
-const json = await res.json();
+                const json = await res.json();
 
 
                 if (res.status === 201 && json.success) {
@@ -430,274 +467,652 @@ const json = await res.json();
         });
 
 
-        // Foto preview
-        document.getElementById("photoUpload").addEventListener("change", (e) => {
-            let files = [...e.target.files];
-            let preview = document.getElementById("photoPreview");
-            preview.innerHTML = "";
+      // ✅ Progressbar element toevoegen
+const progressWrapper = document.createElement("div");
+progressWrapper.className = "w-full bg-gray-200 rounded h-3 mt-2 hidden";
+const progressBar = document.createElement("div");
+progressBar.className = "bg-green-500 h-3 rounded w-0";
+progressWrapper.appendChild(progressBar);
+document.getElementById("photoPreview").after(progressWrapper);
 
-            if (files.length > 10) {
-    alert("Je mag maximaal 10 foto's uploaden.");
-    files = files.slice(0, 10);
+document.getElementById("photoUpload").addEventListener("change", (e) => {
+// === Lightbox met navigatie ===
+const lightbox = document.getElementById("photoLightbox");
+const lightboxImg = document.getElementById("lightboxImage");
+const closeLightbox = document.getElementById("closeLightbox");
+const prevPhoto = document.getElementById("prevPhoto");
+const nextPhoto = document.getElementById("nextPhoto");
+
+let previewImages = []; // array met alle img elementen
+let currentIndex = 0;
+
+// Open lightbox bij klik
+document.getElementById("photoPreview").addEventListener("click", (e) => {
+    if (e.target.tagName === "IMG") {
+        previewImages = [...document.querySelectorAll("#photoPreview img")];
+        currentIndex = previewImages.indexOf(e.target);
+        showImage(currentIndex);
+    }
+});
+
+// Toon afbeelding op basis van index
+function showImage(index) {
+    if (index < 0) index = previewImages.length - 1;
+    if (index >= previewImages.length) index = 0;
+    currentIndex = index;
+
+    lightboxImg.src = previewImages[currentIndex].src;
+    lightbox.classList.remove("hidden");
+    lightbox.classList.add("flex");
 }
 
-            files.forEach(file => {
-                if (file.size > 5 * 1024 * 1024) {
-                    alert(`Bestand ${file.name} is groter dan 5MB en wordt overgeslagen.`);
-                    return;
-                }
-                let reader = new FileReader();
-                reader.onload = (ev) => {
-                    let img = document.createElement("img");
-                    img.src = ev.target.result;
-                    img.classList.add("h-16", "w-16", "object-cover", "rounded");
-                    preview.appendChild(img);
-                };
-                reader.readAsDataURL(file);
-            });
-        });
+// Navigatie
+prevPhoto.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showImage(currentIndex - 1);
+});
 
-        function showError(id, message) {
-            let el = document.getElementById(id);
-            if (el) {
-                el.textContent = message;
-                el.classList.remove("hidden");
-            }
-        }
+nextPhoto.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showImage(currentIndex + 1);
+});
 
-        function clearErrors() {
-            ["errorPerceel", "errorRegio", "errorAdres", "errorPhoto", "errorDamage", "errorNote"]
-            .forEach(id => {
-                let el = document.getElementById(id);
-                if (el) {
-                    el.textContent = "";
-                    el.classList.add("hidden");
-                }
-            });
-        }
+// Sluiten
+closeLightbox.addEventListener("click", () => {
+    lightbox.classList.add("hidden");
+    lightbox.classList.remove("flex");
+});
 
-        function validateForm() {
-            clearErrors();
-
-            let perceelSelect = document.getElementById("perceelSelect");
-            let regioSelect = document.getElementById("regioSelect");
-            let adresSelect = document.getElementById("adresSelect");
-            let photoUpload = document.getElementById("photoUpload");
-            let damageNone = document.getElementById("damageNone");
-            let damageYes = document.getElementById("damageYes");
-            let noteField = document.querySelector('#finishForm textarea[name="note"]');
-
-            let isValid = true;
-
-            if (!perceelSelect.value) {
-                showError("errorPerceel", "Kies een perceel.");
-                isValid = false;
-            }
-
-            if (!regioSelect.value) {
-                showError("errorRegio", "Kies een regio (Webapp uploads).");
-                isValid = false;
-            }
-
-            if (!adresSelect.value) {
-                showError("errorAdres", "Kies of maak een adresmap.");
-                isValid = false;
-            }
-
-            if (photoUpload.files.length === 0) {
-                showError("errorPhoto", "Upload minstens 1 foto.");
-                isValid = false;
-            }
-
-            if (!damageNone.checked && !damageYes.checked) {
-                showError("errorDamage", "Selecteer of er schade is of niet.");
-                isValid = false;
-            }
-
-            if (damageYes.checked && !noteField.value.trim()) {
-                showError("errorNote", "Notitie is verplicht bij schade.");
-                isValid = false;
-            }
-
-            return isValid;
-        }
-
-
-
-       
-document.getElementById("finishForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    
-    if (!validateForm()) return;
-
-    let form = e.target;
-    let taskId = form.action.match(/tasks\/(\d+)/)?.[1];
-    let formData = new FormData(form);
-
-    
-    let files = [...document.getElementById("photoUpload").files].slice(0, 10);
-
-    if (files.length > 0) {
-        let adresSelect = document.getElementById("adresSelect");
-        let namespaceId = adresSelect.options[adresSelect.selectedIndex]?.dataset.namespace;
-        let uploadData = new FormData();
-
-        files.forEach(f => {
-            if (f.size <= 5 * 1024 * 1024) {
-                uploadData.append("photos[]", f);
-            }
-        });
-
-        uploadData.append("namespace_id", namespaceId);
-        uploadData.append("path", adresSelect.value);
-
-        // Gebruik de "echte" backend naam (Perceel 1 of Perceel 2)
-        let perceelOriginal = document.getElementById("perceelSelect").selectedOptions[0]?.dataset.original;
-        if (perceelOriginal) {
-            uploadData.append("perceel_name", perceelOriginal);
-        }
-
-        let resUpload = await fetch(`/tasks/${taskId}/upload-photo`, {
-            method: "POST",
-            headers: {
-                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-            },
-            body: uploadData
-        });
-
-        if (!resUpload.ok) {
-            alert("Fout bij uploaden");
-            return;
-        }
+lightbox.addEventListener("click", (e) => {
+    if (e.target === lightbox) {
+        lightbox.classList.add("hidden");
+        lightbox.classList.remove("flex");
     }
+});
 
-    // Daarna taakstatus aanpassen
-    let resFinish = await fetch(`/tasks/${taskId}/finish`, {
-        method: "POST",
-        headers: {
-            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-            "Accept": "application/json"
-        },
-        body: formData
-    });
-
-    if (resFinish.ok) {
-        const json = await resFinish.json();
-        alert("Taak succesvol afgerond!");
-
-        // Status in tabel bijwerken
-        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
-        if (row) {
-            row.dataset.status = json.status;
-            row.querySelector("td:nth-child(3) span").textContent = json.status;
-
-            // ✅ Kleur realtime aanpassen
-            const statusSpan = row.querySelector("td:nth-child(3) span");
-            statusSpan.className = "px-2 py-1 rounded text-sm font-semibold"; // reset basis classes
-
-            switch (json.status) {
-                case "open":
-                    statusSpan.classList.add("bg-gray-200", "text-gray-800");
-                    break;
-                case "in behandeling":
-                    statusSpan.classList.add("bg-yellow-200", "text-yellow-800");
-                    break;
-                case "finished":
-                    statusSpan.classList.add("bg-green-200", "text-green-800");
-                    break;
-                default:
-                    statusSpan.classList.add("bg-gray-200", "text-gray-800");
-            }
-        }
-
-        // ✅ Formulier leegmaken
-        form.reset();
-        document.getElementById("photoPreview").innerHTML = "";
-        clearErrors();
-
-        // Ook handmatig velden legen die niet door reset() gecleared worden
-        document.getElementById('taskStatus').textContent = "";
-        document.getElementById('taskAddressTitle').textContent = "";
-        document.getElementById('taskZipCity').textContent = "";
-        document.getElementById('taskTimeTitle').textContent = "";
-
-        // ✅ Paneel sluiten
-        document.getElementById("taskFormPanel").classList.add("hidden");
-    } else {
-        alert("Fout bij afronden van taak");
+// Toetsenbord ondersteuning (← → en Esc)
+document.addEventListener("keydown", (e) => {
+    if (lightbox.classList.contains("hidden")) return;
+    if (e.key === "ArrowLeft") showImage(currentIndex - 1);
+    if (e.key === "ArrowRight") showImage(currentIndex + 1);
+    if (e.key === "Escape") {
+        lightbox.classList.add("hidden");
+        lightbox.classList.remove("flex");
     }
 });
 
 
-        // Bij openen taakformulier
-        function openTaskForm(taskId, address, time, status, note) {
-            loadPercelen();
+    let files = [...e.target.files];
+    let preview = document.getElementById("photoPreview");
+    preview.innerHTML = "";
 
-            const panel = document.getElementById('taskFormPanel');
-            panel.classList.remove('hidden');
+    if (files.length > 20) {
+        alert("Je mag maximaal 20 foto's uploaden.");
+        files = files.slice(0, 20);
+    }
 
-            const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+    files.forEach(file => {
+        if (file.size > 5 * 1024 * 1024) {
+            alert(`Bestand ${file.name} is groter dan 5MB en wordt overgeslagen.`);
+            return;
+        }
+        let reader = new FileReader();
+        reader.onload = (ev) => {
+            let img = document.createElement("img");
+            img.src = ev.target.result;
+            img.classList.add("h-16", "w-16", "object-cover", "rounded", "cursor-pointer");
+            preview.appendChild(img);
+        };
+        reader.readAsDataURL(file);
+    });
 
-            document.getElementById('taskAddressTitle').textContent = row.dataset.address;
-            document.getElementById('taskZipCity').textContent = row.dataset.zipcode + " " + row.dataset.city;
-            document.getElementById('taskTimeTitle').textContent = time;
-            document.getElementById('taskStatus').textContent = status;
+    progressWrapper.classList.add("hidden"); // reset progress
+});
 
-            let form = document.getElementById('finishForm');
-            let finishButton = document.getElementById('finishButton');
-            let noteWrapper = document.getElementById('noteWrapper');
-            let noteField = document.querySelector('#finishForm textarea[name="note"]');
-            let damageNone = document.getElementById('damageNone');
-            let damageYes = document.getElementById('damageYes');
+                    function showError(id, message) {
+                        let el = document.getElementById(id);
+                        if (el) {
+                            el.textContent = message;
+                            el.classList.remove("hidden");
+                        }
+                    }
 
-            // ✅ altijd reset
-            damageNone.checked = false;
-            damageYes.checked = false;
-            noteWrapper.classList.add('hidden');
-            noteField.value = '';
+                    function clearErrors() {
+                        ["errorPerceel", "errorRegio", "errorAdres", "errorPhoto", "errorDamage", "errorNote"]
+                        .forEach(id => {
+                            let el = document.getElementById(id);
+                            if (el) {
+                                el.textContent = "";
+                                el.classList.add("hidden");
+                            }
+                        });
+                    }
 
-            if (status === 'finished') {
-                form.action = "";
-                finishButton.classList.add('hidden');
-                damageNone.disabled = true;
-                damageYes.disabled = true;
-                noteField.setAttribute('readonly', true);
-            } else {
-                form.action = `/tasks/${taskId}/finish`;
-                finishButton.classList.remove('hidden');
-                damageNone.disabled = false;
-                damageYes.disabled = false;
-                noteField.removeAttribute('readonly');
-            }
+                    function validateForm() {
+                        clearErrors();
 
-            // Event listeners (herstel)
-            damageNone.addEventListener('change', () => {
-                if (damageNone.checked) {
-                    noteWrapper.classList.add('hidden');
-                    noteField.value = '';
-                }
-            });
+                        let perceelSelect = document.getElementById("perceelSelect");
+                        let regioSelect = document.getElementById("regioSelect");
+                        let adresSelect = document.getElementById("adresSelect");
 
-            damageYes.addEventListener('change', () => {
-                if (damageYes.checked) {
-                    noteWrapper.classList.remove('hidden');
-                }
-            });
+                        let photoUpload = document.getElementById("photoUpload");
+                        let damageNone = document.getElementById("damageNone");
+                        let damageYes = document.getElementById("damageYes");
+                        let noteField = document.querySelector('#finishForm textarea[name="note"]');
+
+                        let isValid = true;
+
+                        if (!perceelSelect.value) {
+                            showError("errorPerceel", "Kies een perceel.");
+                            isValid = false;
+                        }
+
+                        if (!regioSelect.value) {
+                            showError("errorRegio", "Kies een regio (Webapp uploads).");
+                            isValid = false;
+                        }
+
+                        if (!adresSelect.value) {
+                            showError("errorAdres", "Kies of maak een adresmap.");
+                            isValid = false;
+                        }
+
+                        if (photoUpload.files.length === 0) {
+                            showError("errorPhoto", "Upload minstens 1 foto.");
+                            isValid = false;
+                        }
+
+                        if (!damageNone.checked && !damageYes.checked) {
+                            showError("errorDamage", "Selecteer of er schade is of niet.");
+                            isValid = false;
+                        }
+
+                        if (damageYes.checked && !noteField.value.trim()) {
+                            showError("errorNote", "Notitie is verplicht bij schade.");
+                            isValid = false;
+                        }
+
+                        return isValid;
+                    }
+                    // Compressie + upload
+                    async function compressAndUpload(files, namespaceId, adresSelect, perceelOriginal, taskId) {
+                        const MAX_PARALLEL = 3; // voor mobiel
+                        const compressedFiles = await Promise.all(files.map(f =>
+                            imageCompression(f, {
+                                maxSizeMB: 0.7,
+                                maxWidthOrHeight: 1920,
+                                useWebWorker: true
+                            })
+                        ));
+
+                        const queue = [...compressedFiles];
+                        
+                        let completed = 0;
+
+                        // Upload in parallel
+                        const workers = new Array(MAX_PARALLEL).fill(null).map(async () => {
+                            while (queue.length) {
+                                const file = queue.shift();
+                                try {
+                                    const {
+                                        session_id,
+                                        access_token,
+                                        team_member_id
+                                    } = await startDropboxSession();
+                                    if (!session_id || !access_token) continue;
+
+                                    const filename = `${Date.now()}_${file.name}`;
+                                    const isPerceel1 = /perceel\s*1/i.test(perceelOriginal);
+                                    const targetPath = isPerceel1 ?
+                                        `${adresSelect.value}/${filename}` :
+                                        `/${adresSelect.value}/${filename}`;
+
+                                    const result = await uploadToDropbox(
+                                        file,
+                                        access_token,
+                                        session_id,
+                                        targetPath,
+                                        team_member_id,
+                                        namespaceId,
+                                        isPerceel1
+                                    );
+
+                                    const storedPath = isPerceel1 ?
+                                        `/PERCEEL 1${result.path_display}` :
+                                        `/PERCEEL 2${result.path_display}`;
+
+                                    await fetch(`/tasks/${taskId}/upload-photo`, {
+                                        method: "POST",
+                                        headers: {
+                                            "X-CSRF-TOKEN": document.querySelector(
+                                                    'meta[name="csrf-token"]')
+                                                .content,
+                                            "Content-Type": "application/json"
+                                        },
+                                        body: JSON.stringify({
+                                            namespace_id: namespaceId,
+                                            path: adresSelect.value,
+                                            photos: [storedPath]
+                                        })
+                                    });
+                                } catch (err) {
+                                    console.warn("Upload mislukt, opnieuw proberen…", err);
+                                    await new Promise(r => setTimeout(r, 2000)); // korte retry-wait
+                                } finally {
+                                    completed++;
+                                }
+                            }
+                        });
+
+                        await Promise.allSettled(workers);
+                    }
+
+                    // ===============================================
+                    // 🔹 Compressie & Upload helpers
+                    // ===============================================
+
+                    // 1️⃣ Comprimeer foto's voor upload
+                    /* ——— 3. Snelle compressie instellingen ——— */
+                    async function compressImages(files) {
+                        const options = {
+                            maxSizeMB: 0.25, // 250 KB max
+                            maxWidthOrHeight: 800, // kleiner
+                            useWebWorker: true,
+                            initialQuality: 0.6
+                        };
+
+                        const compressed = [];
+                        for (const file of files) {
+                            try {
+                                const comp = await imageCompression(file, options);
+                                compressed.push(comp);
+                            } catch (err) {
+                                console.error("Compressie mislukt:", file.name);
+                                compressed.push(file);
+                            }
+                        }
+                        return compressed;
+                    }
+
+                    /* ——— 4. Dropbox sessie starten ——— */
+                    async function startDropboxSession() {
+                        const res = await fetch("/dropbox/start-session", {
+                            method: "POST",
+                            headers: {
+                                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                                "Accept": "application/json"
+                            }
+                        });
+                        return await res.json();
+                    }
+
+                    /* ——— 5. Upload bestand in chunks met progress bar ——— */
+                    // ✅ Supersnelle versie met kleinere chunks + progress
+                    // ⚡ Geoptimaliseerde uploadfunctie (kleinere chunks + progress)
+                    async function uploadToDropbox(file, accessToken, sessionId, targetPath, teamMemberId, namespaceId, isPerceel1) {
+    const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
+    let offset = 0;
+
+    const makeHeaders = (extra = {}) => ({
+        "Authorization": `Bearer ${accessToken}`,
+        "Dropbox-API-Select-User": teamMemberId,
+        "Dropbox-API-Path-Root": JSON.stringify({
+            ".tag": "namespace_id",
+            "namespace_id": namespaceId
+        }),
+        "Content-Type": "application/octet-stream",
+        ...extra
+    });
+
+    // Helper om even te pauzeren
+    const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+    while (offset < file.size) {
+        const chunk = file.slice(offset, offset + CHUNK_SIZE);
+
+        let res = await fetch("https://content.dropboxapi.com/2/files/upload_session/append_v2", {
+            method: "POST",
+            headers: makeHeaders({
+                "Dropbox-API-Arg": JSON.stringify({
+                    cursor: { session_id: sessionId, offset },
+                    close: false
+                })
+            }),
+            body: chunk
+        });
+
+        // Retry bij rate limit
+        if (res.status === 429) {
+            const retryAfter = parseInt(res.headers.get("Retry-After")) || 1000;
+            console.warn(`⏳ Dropbox te druk, wacht ${retryAfter}ms...`);
+            await wait(retryAfter);
+            continue;
         }
 
-        // Openen via rij-klik
-        document.querySelectorAll("tbody tr").forEach(row => {
-            row.addEventListener("click", function() {
-                openTaskForm(
-                    this.dataset.taskId,
-                    this.dataset.address,
-                    this.dataset.time,
-                    this.dataset.status,
-                    this.dataset.note
-                );
-            });
+        if (!res.ok) throw new Error(await res.text());
+        offset += chunk.size;
+    }
+
+    // Finish upload (met retry)
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const finish = await fetch("https://content.dropboxapi.com/2/files/upload_session/finish", {
+            method: "POST",
+            headers: makeHeaders({
+                "Dropbox-API-Arg": JSON.stringify({
+                    cursor: { session_id: sessionId, offset },
+                    commit: { path: targetPath, mode: "add", autorename: true, mute: false }
+                })
+            }),
+            body: ""
         });
+
+        if (finish.status === 429) {
+            const retryAfter = parseInt(finish.headers.get("Retry-After")) || 1000;
+            console.warn(`🚦 Rate-limit bij finish, wacht ${retryAfter}ms`);
+            await wait(retryAfter);
+            continue;
+        }
+
+        if (!finish.ok) throw new Error(await finish.text());
+        return await finish.json();
+    }
+
+    throw new Error("Dropbox finish faalde na 3 pogingen");
+}
+
+
+                    async function uploadInBatches(files, taskId, namespaceId, adresPath) {
+                        const batchSize = 5;
+                        for (let i = 0; i < files.length; i += batchSize) {
+                            const batch = files.slice(i, i + batchSize);
+                            await Promise.all(batch.map(f => {
+                                const fd = new FormData();
+                                fd.append("photos[]", f);
+                                fd.append("namespace_id", namespaceId);
+                                fd.append("path", adresPath);
+                                return fetch(`/tasks/${taskId}/upload-temp`, {
+                                    method: "POST",
+                                    headers: {
+                                        "X-CSRF-TOKEN": document.querySelector(
+                                            'meta[name="csrf-token"]').content
+                                    },
+                                    body: fd
+                                });
+                            }));
+                        }
+                    }
+
+
+
+
+
+
+
+
+                 // 🔹 Submit handler met compressie + upload + progress
+// 🔹 Submit handler met compressie + upload + progress
+// 🔹 Submit handler met compressie + upload + progress
+document.getElementById("finishForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    const form = e.target;
+    const taskId = form.action.match(/tasks\/(\d+)/)?.[1];
+    const formData = new FormData(form);
+    const files = [...document.getElementById("photoUpload").files].slice(0, 30); // ✅ Max 30
+    const adresSelect = document.getElementById("adresSelect");
+    const namespaceId = adresSelect.options[adresSelect.selectedIndex]?.dataset.namespace;
+    const adresPath = adresSelect.value;
+
+    const finishButton = document.getElementById("finishButton");
+    finishButton.disabled = true;
+    finishButton.textContent = "Bezig met uploaden...";
+
+    // 🔹 Loader tonen
+    const loader = document.createElement("div");
+    loader.className = "fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50";
+    loader.innerHTML = `
+        <div class="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
+            <svg class="animate-spin h-8 w-8 text-[#B51D2D] mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <p id="loaderText" class="text-gray-700 text-sm font-medium">Bezig met uploaden van foto's... even geduld 🙏</p>
+        </div>
+    `;
+    document.body.appendChild(loader);
+
+    try {
+        const uploadedPaths = []; // 🔹 verzamel alle paden hier
+
+        if (files.length > 0) {
+            // ✅ Parallel compressie
+            const compressOptions = {
+                maxSizeMB: 0.8,
+                maxWidthOrHeight: 1920,
+                useWebWorker: true,
+                initialQuality: 0.8
+            };
+
+            const compressedFiles = await Promise.all(
+                files.map(f => imageCompression(f, compressOptions).catch(() => f))
+            );
+
+            // ✅ Upload direct naar Dropbox in batches (3 tegelijk)
+            const batchSize = 3;
+            const uploadStart = performance.now();
+
+            for (let i = 0; i < compressedFiles.length; i += batchSize) {
+                const batch = compressedFiles.slice(i, i + batchSize);
+                await Promise.all(batch.map(async (file) => {
+                    try {
+                        const { session_id, access_token, team_member_id } = await startDropboxSession();
+                        if (!session_id || !access_token) throw new Error("Geen geldige sessie ontvangen");
+
+                        const filename = `${Date.now()}_${file.name}`;
+                        const targetPath = `${adresPath}/${filename}`;
+
+                        const result = await uploadToDropbox(
+                            file,
+                            access_token,
+                            session_id,
+                            targetPath,
+                            team_member_id,
+                            namespaceId,
+                            true
+                        );
+
+                        // 🔹 voeg elk pad toe aan lijst
+                        uploadedPaths.push(result.path_display);
+
+                        console.log(`✅ ${file.name} geüpload naar Dropbox`);
+                    } catch (err) {
+                        console.error("❌ Fout bij upload naar Dropbox:", err);
+                    }
+                }));
+            }
+
+            // 🔹 Alle uploads voltooid → alles in één keer opslaan
+            if (uploadedPaths.length > 0) {
+                await fetch(`/tasks/${taskId}/upload-photo`, {
+                    method: "POST",
+                    headers: {
+                        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        namespace_id: namespaceId,
+                        path: adresPath,
+                        photos: uploadedPaths
+                    })
+                });
+            }
+
+            const uploadEnd = performance.now();
+            console.log(`📸 Uploadtijd (frontend direct naar Dropbox): ${((uploadEnd - uploadStart) / 1000).toFixed(2)}s`);
+            showToast(`✅ ${files.length} foto's rechtstreeks naar Dropbox geüpload!`);
+        }
+
+        // ✅ Status bijwerken (logica blijft exact zoals nu)
+        const resFinish = await fetch(`/tasks/${taskId}/finish`, {
+            method: "POST",
+            headers: {
+                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                "Accept": "application/json"
+            },
+            body: formData
+        });
+
+        if (resFinish.ok) {
+            const json = await resFinish.json();
+            updateTaskStatusRow(taskId, json.status);
+            showToast("🎉 Taak succesvol afgerond!");
+            closeTaskForm();
+
+            // ✅ Loader netjes afsluiten met korte "Klaar!" fade-out
+            const loaderText = document.getElementById("loaderText");
+            loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
+            setTimeout(() => {
+                loader.classList.add("opacity-0", "transition-opacity", "duration-700");
+                setTimeout(() => loader.remove(), 700);
+            }, 600);
+        } else {
+            showToast("⚠️ Fout bij afronden van taak.");
+            const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
+            if (loaderEl) loaderEl.remove();
+        }
+
+    } catch (err) {
+        console.error("Upload fout:", err);
+        showToast("❌ Upload mislukt. Probeer opnieuw.");
+        const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
+        if (loaderEl) loaderEl.remove();
+    } finally {
+        finishButton.disabled = false;
+        finishButton.textContent = "Voltooien";
+    }
+});
+
+
+
+
+
+
+                    // 🔹 Toast helper
+                    function showToast(message, duration = 4000) {
+                        const toast = document.createElement("div");
+                        toast.textContent = message;
+                        toast.className =
+                            "fixed bottom-5 right-5 bg-gray-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm transition-opacity animate-fadeIn";
+                        document.body.appendChild(toast);
+                        setTimeout(() => toast.remove(), duration);
+                    }
+
+                    // 🔹 Status update helper
+                    function updateTaskStatusRow(taskId, newStatus) {
+                        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+                        if (!row) return;
+                        row.dataset.status = newStatus;
+                        const span = row.querySelector("td:nth-child(3) span");
+                        span.textContent = newStatus;
+                        span.className = "px-2 py-1 rounded text-sm font-semibold";
+                        switch (newStatus) {
+                            case "finished":
+                                span.classList.add("bg-green-200", "text-green-800");
+                                break;
+                            case "in behandeling":
+                                span.classList.add("bg-yellow-200", "text-yellow-800");
+                                break;
+                            default:
+                                span.classList.add("bg-gray-200", "text-gray-800");
+                        }
+                    }
+
+                    // 🔹 Form sluiten helper
+                    function closeTaskForm() {
+                        const panel = document.getElementById("taskFormPanel");
+                        const form = document.getElementById("finishForm");
+                        form.reset();
+                        document.getElementById("photoPreview").innerHTML = "";
+                        clearErrors();
+                        panel.classList.add("hidden");
+
+                        document.getElementById('taskStatus').textContent = "";
+                        document.getElementById('taskAddressTitle').textContent = "";
+                        document.getElementById('taskZipCity').textContent = "";
+                        document.getElementById('taskTimeTitle').textContent = "";
+                    }
+
+
+
+                    // Bij openen taakformulier
+                    function openTaskForm(taskId, address, time, status, note) {
+                        loadPercelen();
+
+                        const panel = document.getElementById('taskFormPanel');
+                        panel.classList.remove('hidden');
+
+                        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+
+                        document.getElementById('taskAddressTitle').textContent = row.dataset.address;
+                        document.getElementById('taskZipCity').textContent = row.dataset.zipcode + " " + row.dataset.city;
+                        document.getElementById('taskTimeTitle').textContent = time;
+                        document.getElementById('taskStatus').textContent = status;
+
+                        let form = document.getElementById('finishForm');
+                        let finishButton = document.getElementById('finishButton');
+                        let noteWrapper = document.getElementById('noteWrapper');
+                        let noteField = document.querySelector('#finishForm textarea[name="note"]');
+                        let damageNone = document.getElementById('damageNone');
+                        let damageYes = document.getElementById('damageYes');
+
+                        // ✅ altijd reset
+                        damageNone.checked = false;
+                        damageYes.checked = false;
+                        noteWrapper.classList.add('hidden');
+                        noteField.value = '';
+
+                        if (status === 'finished') {
+                            form.action = "";
+                            finishButton.classList.add('hidden');
+                            damageNone.disabled = true;
+                            damageYes.disabled = true;
+                            noteField.setAttribute('readonly', true);
+                        } else {
+                            form.action = `/tasks/${taskId}/finish`;
+                            finishButton.classList.remove('hidden');
+                            damageNone.disabled = false;
+                            damageYes.disabled = false;
+                            noteField.removeAttribute('readonly');
+                        }
+
+                        // Event listeners (herstel)
+                        damageNone.addEventListener('change', () => {
+                            if (damageNone.checked) {
+                                noteWrapper.classList.add('hidden');
+                                noteField.value = '';
+                            }
+                        });
+
+                        damageYes.addEventListener('change', () => {
+                            if (damageYes.checked) {
+                                noteWrapper.classList.remove('hidden');
+                            }
+                        });
+                    }
+
+                    // Openen via rij-klik
+                    document.querySelectorAll("tbody tr").forEach(row => {
+                        row.addEventListener("click", function() {
+                            openTaskForm(
+                                this.dataset.taskId,
+                                this.dataset.address,
+                                this.dataset.time,
+                                this.dataset.status,
+                                this.dataset.note
+                            );
+                        });
+                    });
     </script>
 
 </x-layouts.dashboard>

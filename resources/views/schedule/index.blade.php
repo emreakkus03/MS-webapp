@@ -26,19 +26,19 @@
                 </div>
             @endif
 
-            @if (Auth::user()->role === 'admin')
+            
                 <button type="button" onclick="openCreateModal()"
                     class="bg-[#283142] text-white px-2 py-2 mt-2  rounded hover:bg-[#B51D2D]">
                     Nieuwe Taak
                 </button>
-            @endif
+            
         </div>
 
         <!-- Kalender -->
         <div id="calendar" class="mb-6 w-full min-h-[700px]"></div>
 
         <!-- Modal voor nieuwe taak -->
-        @if (Auth::user()->role === 'admin')
+        
             <div id="createModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
                 <div class="bg-white rounded-lg shadow-lg w-full max-w-lg p-6">
                     <h2 class="text-lg font-semibold mb-4">Nieuwe Taak Toevoegen</h2>
@@ -116,7 +116,7 @@
                     </form>
                 </div>
             </div>
-        @endif
+     
 
         <!-- Modal om taak te bekijken -->
         <!-- Modal om taak te bekijken -->
@@ -126,7 +126,7 @@
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-lg font-semibold">Taak Details</h2>
 
-                    @if (Auth::user()->role === 'admin')
+                    
                         <div class="relative">
                             <!-- 3 puntjes knop -->
                             <button id="actionsMenuBtn" type="button"
@@ -152,7 +152,7 @@
                                 </form>
                             </div>
                         </div>
-                    @endif
+                
                 </div>
 
                 <div class="space-y-2">
@@ -164,7 +164,7 @@
                     <p><strong>Opmerking:</strong> <span id="viewNote"></span></p>
                     <div id="photosSection">
                         <strong id="photosLabel">Fotos:</strong>
-                        <div id="viewPhotos" class="flex flex-wrap gap-2 mt-2"></div>
+                        <div id="viewPhotos" class="photo-grid mt-2"></div>
                     </div>
                 </div>
 
@@ -179,16 +179,28 @@
 
 
     </div>
-    <!-- Foto Lightbox -->
-    <div id="photoModal" class="fixed inset-0 bg-black bg-opacity-75 hidden items-center justify-center z-50">
-        <!-- Sluitknop -->
-        <span onclick="closePhotoModal()"
-            class="absolute top-5 right-8 text-white text-3xl cursor-pointer">&times;</span>
+    <!-- 🔹 Gedeelde Foto-Lightbox (oude + nieuwe foto's) -->
+<div id="photoLightbox"
+     class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50 select-none">
+    <!-- Sluitknop -->
+    <span id="closeLightbox"
+          class="absolute top-5 right-8 text-white text-4xl cursor-pointer">&times;</span>
 
-        <!-- Grote foto -->
-        <img id="photoModalImg" src=""
-            class="max-h-[90%] max-w-[90%] rounded shadow-lg border-4 border-white" />
-    </div>
+    <!-- Pijlen -->
+    <button id="prevPhoto"
+            class="absolute left-5 text-white text-5xl p-2 bg-black bg-opacity-40 rounded-full hover:bg-opacity-70">
+        &#10094;
+    </button>
+    <button id="nextPhoto"
+            class="absolute right-5 text-white text-5xl p-2 bg-black bg-opacity-40 rounded-full hover:bg-opacity-70">
+        &#10095;
+    </button>
+
+    <!-- Grote foto -->
+    <img id="lightboxImg" src=""
+         class="max-h-[90%] max-w-[90%] rounded shadow-lg border-4 border-white transition-transform duration-300" />
+</div>
+
 
 </x-layouts.dashboard>
 
@@ -238,7 +250,8 @@
                 openViewModal(info.event);
             },
 
-            events: '/schedule/tasks/{{ Auth::user()->role === 'admin' ? $defaultTeamId ?? Auth::id() : Auth::id() }}'
+           events: '/schedule/tasks/{{ Auth::user()->role === 'admin' ? ($defaultTeamId ?? Auth::user()->id ?? 1) : (Auth::user()->id ?? 1) }}'
+
         });
 
 
@@ -329,10 +342,14 @@
         document.getElementById('timeWarning').classList.add('hidden');
 
         const teamSelect = document.getElementById('teamSelect');
-        const taskTeamSelect = document.getElementById('taskTeamSelect');
-        if (teamSelect && taskTeamSelect) {
-            taskTeamSelect.value = teamSelect.value;
-        }
+        @if (Auth::user()->role !== 'admin')
+    const taskTeamSelect = document.getElementById('taskTeamSelect');
+    if (taskTeamSelect) {
+        taskTeamSelect.value = "{{ Auth::user()->team_id }}";
+        taskTeamSelect.disabled = true;
+    }
+@endif
+
 
 
         if (dateStr) {
@@ -543,24 +560,18 @@
 
         deleteForm.action = `/schedule/${event.id}`;
 
-        @if (Auth::user()->role === 'admin')
-            editBtn.classList.remove('hidden');
-            deleteForm.classList.remove('hidden');
-        @else
-            editBtn.classList.add('hidden');
-            deleteForm.classList.add('hidden');
-        @endif
+     // 🔹 Toon edit/delete als het jouw eigen taak is of als je admin bent
+const currentTeamId = {{ Auth::user()->id }};
+const taskTeamId = event.extendedProps.team_id;
 
+if ({{ Auth::user()->role === "'admin'" ? 'true' : 'false' }} || currentTeamId === taskTeamId) {
+    editBtn.classList.remove('hidden');
+    deleteForm.classList.remove('hidden');
+} else {
+    editBtn.classList.add('hidden');
+    deleteForm.classList.add('hidden');
+}
 
-        deleteForm.action = `/schedule/${event.id}`;
-
-        @if (Auth::user()->role === 'admin')
-            editBtn.classList.remove('hidden');
-            deleteForm.classList.remove('hidden');
-        @else
-            editBtn.classList.add('hidden');
-            deleteForm.classList.add('hidden');
-        @endif
 
     }
 
@@ -569,16 +580,20 @@
         document.getElementById('viewModal').classList.remove('flex');
     }
 
-    function openPhotoModal(src) {
-        document.getElementById('photoModalImg').src = src;
-        document.getElementById('photoModal').classList.remove('hidden');
-        document.getElementById('photoModal').classList.add('flex');
-    }
+   function openPhotoModal(src) {
+    const lightbox = document.getElementById('photoLightbox');
+    const lightboxImg = document.getElementById('lightboxImg');
+    lightboxImg.src = src;
+    lightbox.classList.remove('hidden');
+    lightbox.classList.add('flex');
+}
 
-    function closePhotoModal() {
-        document.getElementById('photoModal').classList.add('hidden');
-        document.getElementById('photoModal').classList.remove('flex');
-    }
+function closePhotoModal() {
+    const lightbox = document.getElementById('photoLightbox');
+    lightbox.classList.add('hidden');
+    lightbox.classList.remove('flex');
+}
+
 
     document.getElementById('taskForm')?.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -645,6 +660,70 @@
             }
         });
     }
+
+    // ==================== 🖼️ Gedeelde Lightbox (werkt ook voor dynamische foto's) ====================
+document.addEventListener("DOMContentLoaded", () => {
+    const lightbox = document.getElementById("photoLightbox");
+    const lightboxImg = document.getElementById("lightboxImg");
+    const closeBtn = document.getElementById("closeLightbox");
+    const prevBtn = document.getElementById("prevPhoto");
+    const nextBtn = document.getElementById("nextPhoto");
+
+    let images = [];
+    let currentIndex = 0;
+
+   document.body.addEventListener("click", (e) => {
+    if (e.target.tagName === "IMG" && e.target.closest("#viewPhotos")) {
+        // verzamel ALLE zichtbare foto's in het foto-gedeelte
+        images = Array.from(document.querySelectorAll("#viewPhotos img"));
+        currentIndex = images.indexOf(e.target);
+        showImage(currentIndex);
+    }
+});
+
+
+    function showImage(index) {
+        if (!images.length) return;
+        if (index < 0) index = images.length - 1;
+        if (index >= images.length) index = 0;
+        currentIndex = index;
+        lightboxImg.src = images[currentIndex].src;
+        lightbox.classList.remove("hidden");
+        lightbox.classList.add("flex");
+    }
+
+    prevBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        showImage(currentIndex - 1);
+    });
+    nextBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        showImage(currentIndex + 1);
+    });
+
+    closeBtn.addEventListener("click", () => {
+        lightbox.classList.add("hidden");
+        lightbox.classList.remove("flex");
+    });
+
+    lightbox.addEventListener("click", (e) => {
+        if (e.target === lightbox) {
+            lightbox.classList.add("hidden");
+            lightbox.classList.remove("flex");
+        }
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (lightbox.classList.contains("hidden")) return;
+        if (e.key === "ArrowLeft") showImage(currentIndex - 1);
+        if (e.key === "ArrowRight") showImage(currentIndex + 1);
+        if (e.key === "Escape") {
+            lightbox.classList.add("hidden");
+            lightbox.classList.remove("flex");
+        }
+    });
+});
+
 </script>
 <style>
     @media (max-width: 768px) {
@@ -671,4 +750,41 @@
             /* extra ruimte in maandweergave */
         }
     }
+
+  .photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  grid-auto-rows: 60px;
+  gap: 4px;
+  max-height: 250px; /* kleiner venster */
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Alle afbeeldingen even groot */
+.photo-grid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.photo-grid img:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+/* Scrollbar minimalistisch */
+.photo-grid::-webkit-scrollbar {
+  width: 6px;
+}
+.photo-grid::-webkit-scrollbar-thumb {
+  background-color: #b5b5b5;
+  border-radius: 4px;
+}
+
+
 </style>
