@@ -34,7 +34,6 @@
             </div>
         </form>
 
-        <!-- Desktop/tablet tabel -->
        <!-- Desktop/tablet tabel -->
 <div class="overflow-x-auto hidden md:block">
     <table class="w-full border border-gray-300 rounded shadow text-sm">

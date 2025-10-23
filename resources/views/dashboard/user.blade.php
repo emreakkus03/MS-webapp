@@ -213,78 +213,78 @@
     </div>
 
 
-<!-- 🔹 Algemene Upload Progress Popup -->
-<div id="uploadProgressPopup"
-    class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-    <div class="bg-white rounded-lg p-6 shadow-xl w-80 text-center">
-        <h2 class="text-lg font-semibold mb-4">Bezig met uploaden...</h2>
-        <div class="w-full bg-gray-200 rounded-full h-3 mb-3">
-            <div id="uploadProgressBar" class="bg-blue-600 h-3 rounded-full" style="width: 0%;"></div>
+    <!-- 🔹 Algemene Upload Progress Popup -->
+    <div id="uploadProgressPopup"
+        class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 shadow-xl w-80 text-center">
+            <h2 class="text-lg font-semibold mb-4">Bezig met uploaden...</h2>
+            <div class="w-full bg-gray-200 rounded-full h-3 mb-3">
+                <div id="uploadProgressBar" class="bg-blue-600 h-3 rounded-full" style="width: 0%;"></div>
+            </div>
+            <p id="uploadProgressText" class="text-sm text-gray-600">0%</p>
         </div>
-        <p id="uploadProgressText" class="text-sm text-gray-600">0%</p>
     </div>
-</div>
-<!-- 🔹 Lightbox met navigatie -->
-<div id="photoLightbox"
-    class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50 select-none">
-    
-    <!-- Sluitknop -->
-    <span id="closeLightbox" class="absolute top-5 right-8 text-white text-4xl cursor-pointer">&times;</span>
-    
-    <!-- Pijlen -->
-    <button id="prevPhoto"
-        class="absolute left-5 text-white text-5xl p-2 bg-black bg-opacity-40 rounded-full hover:bg-opacity-70">
-        &#10094;
-    </button>
-    <button id="nextPhoto"
-        class="absolute right-5 text-white text-5xl p-2 bg-black bg-opacity-40 rounded-full hover:bg-opacity-70">
-        &#10095;
-    </button>
+    <!-- 🔹 Lightbox met navigatie -->
+    <div id="photoLightbox"
+        class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50 select-none">
 
-    <!-- Grote afbeelding -->
-    <img id="lightboxImage" src=""
-        class="max-h-[90%] max-w-[90%] rounded shadow-lg border-4 border-white transition-transform duration-300" />
-</div>
+        <!-- Sluitknop -->
+        <span id="closeLightbox" class="absolute top-5 right-8 text-white text-4xl cursor-pointer">&times;</span>
+
+        <!-- Pijlen -->
+        <button id="prevPhoto"
+            class="absolute left-5 text-white text-5xl p-2 bg-black bg-opacity-40 rounded-full hover:bg-opacity-70">
+            &#10094;
+        </button>
+        <button id="nextPhoto"
+            class="absolute right-5 text-white text-5xl p-2 bg-black bg-opacity-40 rounded-full hover:bg-opacity-70">
+            &#10095;
+        </button>
+
+        <!-- Grote afbeelding -->
+        <img id="lightboxImage" src=""
+            class="max-h-[90%] max-w-[90%] rounded shadow-lg border-4 border-white transition-transform duration-300" />
+    </div>
 
 
     <script type="module">
         import imageCompression from "https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/+esm";
 
-// ===============================================
-// 🔹 Tijdelijke adresmap: checken en herstellen
-// ===============================================
-function checkTempAdres() {
-    const data = localStorage.getItem("tempAdresFolder");
-    if (!data) return;
+        // ===============================================
+        // 🔹 Tijdelijke adresmap: checken en herstellen
+        // ===============================================
+        function checkTempAdres() {
+            const data = localStorage.getItem("tempAdresFolder");
+            if (!data) return;
 
-    try {
-        const temp = JSON.parse(data);
+            try {
+                const temp = JSON.parse(data);
 
-        // ✅ Check of map nog geldig is (10 minuten)
-        if (Date.now() > temp.expiresAt) {
-            console.log("🕒 Tijdelijke map verlopen — verwijderen");
-            localStorage.removeItem("tempAdresFolder");
-            return;
-        }
+                // ✅ Check of map nog geldig is (10 minuten)
+                if (Date.now() > temp.expiresAt) {
+                    console.log("🕒 Tijdelijke map verlopen — verwijderen");
+                    localStorage.removeItem("tempAdresFolder");
+                    return;
+                }
 
-        // 🔹 Nog geldig → toon deze map in dropdown
-        const input = document.getElementById("adresComboInput");
-        const select = document.getElementById("adresSelect");
+                // 🔹 Nog geldig → toon deze map in dropdown
+                const input = document.getElementById("adresComboInput");
+                const select = document.getElementById("adresSelect");
 
-        input.value = temp.name;
-        select.innerHTML = `
+                input.value = temp.name;
+                select.innerHTML = `
             <option value="${temp.path}" data-namespace="${temp.namespace}" selected>
                 ${temp.name}
             </option>`;
-        select.disabled = false;
-    } catch (err) {
-        console.error("❌ Fout bij lezen tijdelijke map:", err);
-        localStorage.removeItem("tempAdresFolder");
-    }
-}
+                select.disabled = false;
+            } catch (err) {
+                console.error("❌ Fout bij lezen tijdelijke map:", err);
+                localStorage.removeItem("tempAdresFolder");
+            }
+        }
 
-// 🔸 Controleer tijdelijke map bij pagina-load
-document.addEventListener("DOMContentLoaded", checkTempAdres);
+        // 🔸 Controleer tijdelijke map bij pagina-load
+        document.addEventListener("DOMContentLoaded", checkTempAdres);
 
         async function loadPercelen() {
             let res = await fetch("/dropbox/percelen");
@@ -431,82 +431,82 @@ document.addEventListener("DOMContentLoaded", checkTempAdres);
             }
         });
 
-       
+
 
         // Nieuwe adresmap
-       document.getElementById("newAdresBtn").addEventListener("click", async () => {
-    const regioSelect = document.getElementById("regioSelect");
+        document.getElementById("newAdresBtn").addEventListener("click", async () => {
+            const regioSelect = document.getElementById("regioSelect");
 
-    // Altijd Webapp uploads forceren
-    const webappOption = [...regioSelect.options].find(opt =>
-        opt.textContent.toLowerCase().includes("webapp uploads")
-    );
+            // Altijd Webapp uploads forceren
+            const webappOption = [...regioSelect.options].find(opt =>
+                opt.textContent.toLowerCase().includes("webapp uploads")
+            );
 
-    if (!webappOption) {
-        alert("Map 'Webapp uploads' niet gevonden. Kies eerst perceel 1 of 2.");
-        return;
-    }
+            if (!webappOption) {
+                alert("Map 'Webapp uploads' niet gevonden. Kies eerst perceel 1 of 2.");
+                return;
+            }
 
-    const regioPath = webappOption.value;
-    const namespaceId = webappOption.dataset.namespace;
+            const regioPath = webappOption.value;
+            const namespaceId = webappOption.dataset.namespace;
 
-    const name = prompt("Naam nieuwe adresmap:");
-    if (!name) return;
+            const name = prompt("Naam nieuwe adresmap:");
+            if (!name) return;
 
-    try {
-        const res = await fetch("{{ route('dropbox.create_adres') }}", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRF-TOKEN": document.querySelector('meta[name=\"csrf-token\"]').content
-            },
-            body: JSON.stringify({
-                namespace_id: namespaceId,
-                path: regioPath,
-                adres: name
-            })
-        });
+            try {
+                const res = await fetch("{{ route('dropbox.create_adres') }}", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector('meta[name=\"csrf-token\"]').content
+                    },
+                    body: JSON.stringify({
+                        namespace_id: namespaceId,
+                        path: regioPath,
+                        adres: name
+                    })
+                });
 
-        const json = await res.json();
+                const json = await res.json();
 
-        if (res.status === 201 && json.success) {
-            alert(json.message || "Adresmap aangemaakt in Webapp uploads.");
+                if (res.status === 201 && json.success) {
+                    alert(json.message || "Adresmap aangemaakt in Webapp uploads.");
 
-            // ✅ Alleen de nieuw gemaakte map tonen
-            const input = document.getElementById("adresComboInput");
-            const select = document.getElementById("adresSelect");
-            const drop = document.getElementById("adresDropdown");
+                    // ✅ Alleen de nieuw gemaakte map tonen
+                    const input = document.getElementById("adresComboInput");
+                    const select = document.getElementById("adresSelect");
+                    const drop = document.getElementById("adresDropdown");
 
-            input.value = json.folder.name;
-            select.innerHTML = `
+                    input.value = json.folder.name;
+                    select.innerHTML = `
                 <option value="${json.folder.path}" data-namespace="${json.folder.namespace}" selected>
                     ${json.folder.name}
                 </option>`;
-            select.disabled = false;
-            drop.classList.add("hidden");
+                    select.disabled = false;
+                    drop.classList.add("hidden");
 
-            // 🕒 10 minuten geldig (tijdelijke opslag)
-            const expiresAt = Date.now() + (10 * 60 * 1000);
-            localStorage.setItem("tempAdresFolder", JSON.stringify({
-                path: json.folder.path,
-                namespace: json.folder.namespace,
-                name: json.folder.name,
-                expiresAt
-            }));
+                    // 🕒 10 minuten geldig (tijdelijke opslag)
+                    const expiresAt = Date.now() + (10 * 60 * 1000);
+                    localStorage.setItem("tempAdresFolder", JSON.stringify({
+                        path: json.folder.path,
+                        namespace: json.folder.namespace,
+                        name: json.folder.name,
+                        expiresAt
+                    }));
 
-            console.log("💾 Tijdelijke map opgeslagen (vervalt over 10 minuten)");
-        } else {
-            alert(json.message || "Kon adresmap niet maken.");
-        }
-    } catch (err) {
-        console.error(err);
-        alert("Serverfout bij map maken.");
-    }
-});
+                    console.log("💾 Tijdelijke map opgeslagen (vervalt over 10 minuten)");
+                } else {
+                    alert(json.message || "Kon adresmap niet maken.");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Serverfout bij map maken.");
+            }
+        });
 
 
 
-      // ✅ Progressbar element toevoegen
+        // ✅ Progressbar element toevoegen
 const progressWrapper = document.createElement("div");
 progressWrapper.className = "w-full bg-gray-200 rounded h-3 mt-2 hidden";
 const progressBar = document.createElement("div");
@@ -515,72 +515,67 @@ progressWrapper.appendChild(progressBar);
 document.getElementById("photoPreview").after(progressWrapper);
 
 document.getElementById("photoUpload").addEventListener("change", (e) => {
-// === Lightbox met navigatie ===
-const lightbox = document.getElementById("photoLightbox");
-const lightboxImg = document.getElementById("lightboxImage");
-const closeLightbox = document.getElementById("closeLightbox");
-const prevPhoto = document.getElementById("prevPhoto");
-const nextPhoto = document.getElementById("nextPhoto");
+    // === Lightbox met navigatie ===
+    const lightbox = document.getElementById("photoLightbox");
+    const lightboxImg = document.getElementById("lightboxImage");
+    const closeLightbox = document.getElementById("closeLightbox");
+    const prevPhoto = document.getElementById("prevPhoto");
+    const nextPhoto = document.getElementById("nextPhoto");
 
-let previewImages = []; // array met alle img elementen
-let currentIndex = 0;
+    let previewImages = [];
+    let currentIndex = 0;
 
-// Open lightbox bij klik
-document.getElementById("photoPreview").addEventListener("click", (e) => {
-    if (e.target.tagName === "IMG") {
-        previewImages = [...document.querySelectorAll("#photoPreview img")];
-        currentIndex = previewImages.indexOf(e.target);
-        showImage(currentIndex);
+    // Open lightbox bij klik
+    document.getElementById("photoPreview").addEventListener("click", (e) => {
+        if (e.target.tagName === "IMG") {
+            previewImages = [...document.querySelectorAll("#photoPreview img")];
+            currentIndex = previewImages.indexOf(e.target);
+            showImage(currentIndex);
+        }
+    });
+
+    function showImage(index) {
+        if (index < 0) index = previewImages.length - 1;
+        if (index >= previewImages.length) index = 0;
+        currentIndex = index;
+        lightboxImg.src = previewImages[currentIndex].src;
+        lightbox.classList.remove("hidden");
+        lightbox.classList.add("flex");
     }
-});
 
-// Toon afbeelding op basis van index
-function showImage(index) {
-    if (index < 0) index = previewImages.length - 1;
-    if (index >= previewImages.length) index = 0;
-    currentIndex = index;
+    prevPhoto.addEventListener("click", (e) => {
+        e.stopPropagation();
+        showImage(currentIndex - 1);
+    });
 
-    lightboxImg.src = previewImages[currentIndex].src;
-    lightbox.classList.remove("hidden");
-    lightbox.classList.add("flex");
-}
+    nextPhoto.addEventListener("click", (e) => {
+        e.stopPropagation();
+        showImage(currentIndex + 1);
+    });
 
-// Navigatie
-prevPhoto.addEventListener("click", (e) => {
-    e.stopPropagation();
-    showImage(currentIndex - 1);
-});
-
-nextPhoto.addEventListener("click", (e) => {
-    e.stopPropagation();
-    showImage(currentIndex + 1);
-});
-
-// Sluiten
-closeLightbox.addEventListener("click", () => {
-    lightbox.classList.add("hidden");
-    lightbox.classList.remove("flex");
-});
-
-lightbox.addEventListener("click", (e) => {
-    if (e.target === lightbox) {
+    closeLightbox.addEventListener("click", () => {
         lightbox.classList.add("hidden");
         lightbox.classList.remove("flex");
-    }
-});
+    });
 
-// Toetsenbord ondersteuning (← → en Esc)
-document.addEventListener("keydown", (e) => {
-    if (lightbox.classList.contains("hidden")) return;
-    if (e.key === "ArrowLeft") showImage(currentIndex - 1);
-    if (e.key === "ArrowRight") showImage(currentIndex + 1);
-    if (e.key === "Escape") {
-        lightbox.classList.add("hidden");
-        lightbox.classList.remove("flex");
-    }
-});
+    lightbox.addEventListener("click", (e) => {
+        if (e.target === lightbox) {
+            lightbox.classList.add("hidden");
+            lightbox.classList.remove("flex");
+        }
+    });
 
+    document.addEventListener("keydown", (e) => {
+        if (lightbox.classList.contains("hidden")) return;
+        if (e.key === "ArrowLeft") showImage(currentIndex - 1);
+        if (e.key === "ArrowRight") showImage(currentIndex + 1);
+        if (e.key === "Escape") {
+            lightbox.classList.add("hidden");
+            lightbox.classList.remove("flex");
+        }
+    });
 
+    // === Previews ===
     let files = [...e.target.files];
     let preview = document.getElementById("photoPreview");
     preview.innerHTML = "";
@@ -595,361 +590,119 @@ document.addEventListener("keydown", (e) => {
             alert(`Bestand ${file.name} is groter dan 5MB en wordt overgeslagen.`);
             return;
         }
-        let reader = new FileReader();
-        reader.onload = (ev) => {
-            let img = document.createElement("img");
-            img.src = ev.target.result;
-            img.classList.add("h-16", "w-16", "object-cover", "rounded", "cursor-pointer");
-            preview.appendChild(img);
-        };
-        reader.readAsDataURL(file);
+
+        // 🔥 NIEUWE METHODE: gebruik blob URL i.p.v. FileReader
+        const objectUrl = URL.createObjectURL(file);
+
+        let img = document.createElement("img");
+        img.src = objectUrl;
+        img.classList.add("h-16", "w-16", "object-cover", "rounded", "cursor-pointer");
+        preview.appendChild(img);
+
+        // Ruim blob URL op wanneer de afbeelding verdwijnt
+        img.onload = () => URL.revokeObjectURL(objectUrl);
     });
 
     progressWrapper.classList.add("hidden"); // reset progress
 });
 
-                    function showError(id, message) {
-                        let el = document.getElementById(id);
-                        if (el) {
-                            el.textContent = message;
-                            el.classList.remove("hidden");
-                        }
-                    }
-
-                    function clearErrors() {
-                        ["errorPerceel", "errorRegio", "errorAdres", "errorPhoto", "errorDamage", "errorNote"]
-                        .forEach(id => {
-                            let el = document.getElementById(id);
-                            if (el) {
-                                el.textContent = "";
-                                el.classList.add("hidden");
-                            }
-                        });
-                    }
-
-                    function validateForm() {
-                        clearErrors();
-
-                        let perceelSelect = document.getElementById("perceelSelect");
-                        let regioSelect = document.getElementById("regioSelect");
-                        let adresSelect = document.getElementById("adresSelect");
-
-                        let photoUpload = document.getElementById("photoUpload");
-                        let damageNone = document.getElementById("damageNone");
-                        let damageYes = document.getElementById("damageYes");
-                        let noteField = document.querySelector('#finishForm textarea[name="note"]');
-
-                        let isValid = true;
-
-                        if (!perceelSelect.value) {
-                            showError("errorPerceel", "Kies een perceel.");
-                            isValid = false;
-                        }
-
-                        if (!regioSelect.value) {
-                            showError("errorRegio", "Kies een regio (Webapp uploads).");
-                            isValid = false;
-                        }
-
-                        if (!adresSelect.value) {
-                            showError("errorAdres", "Kies of maak een adresmap.");
-                            isValid = false;
-                        }
-
-                        if (photoUpload.files.length === 0) {
-                            showError("errorPhoto", "Upload minstens 1 foto.");
-                            isValid = false;
-                        }
-
-                        if (!damageNone.checked && !damageYes.checked) {
-                            showError("errorDamage", "Selecteer of er schade is of niet.");
-                            isValid = false;
-                        }
-
-                        if (damageYes.checked && !noteField.value.trim()) {
-                            showError("errorNote", "Notitie is verplicht bij schade.");
-                            isValid = false;
-                        }
-
-                        return isValid;
-                    }
-                    // Compressie + upload
-                    async function compressAndUpload(files, namespaceId, adresSelect, perceelOriginal, taskId) {
-                        const MAX_PARALLEL = 3; // voor mobiel
-                        const compressedFiles = await Promise.all(files.map(f =>
-                            imageCompression(f, {
-                                maxSizeMB: 0.7,
-                                maxWidthOrHeight: 1920,
-                                useWebWorker: true
-                            })
-                        ));
-
-                        const queue = [...compressedFiles];
-                        
-                        let completed = 0;
-
-                        // Upload in parallel
-                        const workers = new Array(MAX_PARALLEL).fill(null).map(async () => {
-                            while (queue.length) {
-                                const file = queue.shift();
-                                try {
-                                    const {
-                                        session_id,
-                                        access_token,
-                                        team_member_id
-                                    } = await startDropboxSession();
-                                    if (!session_id || !access_token) continue;
-
-                                    const filename = `${Date.now()}_${file.name}`;
-                                    const isPerceel1 = /perceel\s*1/i.test(perceelOriginal);
-                                    const targetPath = isPerceel1 ?
-                                        `${adresSelect.value}/${filename}` :
-                                        `/${adresSelect.value}/${filename}`;
-
-                                    const result = await uploadToDropbox(
-                                        file,
-                                        access_token,
-                                        session_id,
-                                        targetPath,
-                                        team_member_id,
-                                        namespaceId,
-                                        isPerceel1
-                                    );
-
-                                    const storedPath = isPerceel1 ?
-                                        `/PERCEEL 1${result.path_display}` :
-                                        `/PERCEEL 2${result.path_display}`;
-
-                                    await fetch(`/tasks/${taskId}/upload-photo`, {
-                                        method: "POST",
-                                        headers: {
-                                            "X-CSRF-TOKEN": document.querySelector(
-                                                    'meta[name="csrf-token"]')
-                                                .content,
-                                            "Content-Type": "application/json"
-                                        },
-                                        body: JSON.stringify({
-                                            namespace_id: namespaceId,
-                                            path: adresSelect.value,
-                                            photos: [storedPath]
-                                        })
-                                    });
-                                } catch (err) {
-                                    console.warn("Upload mislukt, opnieuw proberen…", err);
-                                    await new Promise(r => setTimeout(r, 2000)); // korte retry-wait
-                                } finally {
-                                    completed++;
-                                }
-                            }
-                        });
-
-                        await Promise.allSettled(workers);
-                    }
-
-                    // ===============================================
-                    // 🔹 Compressie & Upload helpers
-                    // ===============================================
-
-                    // 1️⃣ Comprimeer foto's voor upload
-                    /* ——— 3. Snelle compressie instellingen ——— */
-                    async function compressImages(files) {
-                        const options = {
-                            maxSizeMB: 0.25, // 250 KB max
-                            maxWidthOrHeight: 800, // kleiner
-                            useWebWorker: true,
-                            initialQuality: 0.6
-                        };
-
-                        const compressed = [];
-                        for (const file of files) {
-                            try {
-                                const comp = await imageCompression(file, options);
-                                compressed.push(comp);
-                            } catch (err) {
-                                console.error("Compressie mislukt:", file.name);
-                                compressed.push(file);
-                            }
-                        }
-                        return compressed;
-                    }
-
-                    /* ——— 4. Dropbox sessie starten ——— */
-                    async function startDropboxSession() {
-                        const res = await fetch("/dropbox/start-session", {
-                            method: "POST",
-                            headers: {
-                                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                                "Accept": "application/json"
-                            }
-                        });
-                        return await res.json();
-                    }
-
-                    /* ——— 5. Upload bestand in chunks met progress bar ——— */
-                    // ✅ Supersnelle versie met kleinere chunks + progress
-                    // ⚡ Geoptimaliseerde uploadfunctie (kleinere chunks + progress)
-                    async function uploadToDropbox(file, accessToken, sessionId, targetPath, teamMemberId, namespaceId, isPerceel1) {
-    const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
-    let offset = 0;
-
-    const makeHeaders = (extra = {}) => ({
-        "Authorization": `Bearer ${accessToken}`,
-        "Dropbox-API-Select-User": teamMemberId,
-        "Dropbox-API-Path-Root": JSON.stringify({
-            ".tag": "namespace_id",
-            "namespace_id": namespaceId
-        }),
-        "Content-Type": "application/octet-stream",
-        ...extra
-    });
-
-    // Helper om even te pauzeren
-    const wait = (ms) => new Promise(r => setTimeout(r, ms));
-
-    while (offset < file.size) {
-        const chunk = file.slice(offset, offset + CHUNK_SIZE);
-
-        let res = await fetch("https://content.dropboxapi.com/2/files/upload_session/append_v2", {
-            method: "POST",
-            headers: makeHeaders({
-                "Dropbox-API-Arg": JSON.stringify({
-                    cursor: { session_id: sessionId, offset },
-                    close: false
-                })
-            }),
-            body: chunk
-        });
-
-        // Retry bij rate limit
-        if (res.status === 429) {
-            const retryAfter = parseInt(res.headers.get("Retry-After")) || 1000;
-            console.warn(`⏳ Dropbox te druk, wacht ${retryAfter}ms...`);
-            await wait(retryAfter);
-            continue;
+        function showError(id, message) {
+            let el = document.getElementById(id);
+            if (el) {
+                el.textContent = message;
+                el.classList.remove("hidden");
+            }
         }
 
-        if (!res.ok) throw new Error(await res.text());
-        offset += chunk.size;
-    }
-
-    // Finish upload (met retry)
-    for (let attempt = 0; attempt < 3; attempt++) {
-        const finish = await fetch("https://content.dropboxapi.com/2/files/upload_session/finish", {
-            method: "POST",
-            headers: makeHeaders({
-                "Dropbox-API-Arg": JSON.stringify({
-                    cursor: { session_id: sessionId, offset },
-                    commit: { path: targetPath, mode: "add", autorename: true, mute: false }
-                })
-            }),
-            body: ""
-        });
-
-        if (finish.status === 429) {
-            const retryAfter = parseInt(finish.headers.get("Retry-After")) || 1000;
-            console.warn(`🚦 Rate-limit bij finish, wacht ${retryAfter}ms`);
-            await wait(retryAfter);
-            continue;
+        function clearErrors() {
+            ["errorPerceel", "errorRegio", "errorAdres", "errorPhoto", "errorDamage", "errorNote"]
+            .forEach(id => {
+                let el = document.getElementById(id);
+                if (el) {
+                    el.textContent = "";
+                    el.classList.add("hidden");
+                }
+            });
         }
 
-        if (!finish.ok) throw new Error(await finish.text());
-        return await finish.json();
-    }
+        function validateForm() {
+            clearErrors();
 
-    throw new Error("Dropbox finish faalde na 3 pogingen");
-}
+            let perceelSelect = document.getElementById("perceelSelect");
+            let regioSelect = document.getElementById("regioSelect");
+            let adresSelect = document.getElementById("adresSelect");
 
+            let photoUpload = document.getElementById("photoUpload");
+            let damageNone = document.getElementById("damageNone");
+            let damageYes = document.getElementById("damageYes");
+            let noteField = document.querySelector('#finishForm textarea[name="note"]');
 
-                    async function uploadInBatches(files, taskId, namespaceId, adresPath) {
-                        const batchSize = 5;
-                        for (let i = 0; i < files.length; i += batchSize) {
-                            const batch = files.slice(i, i + batchSize);
-                            await Promise.all(batch.map(f => {
-                                const fd = new FormData();
-                                fd.append("photos[]", f);
-                                fd.append("namespace_id", namespaceId);
-                                fd.append("path", adresPath);
-                                return fetch(`/tasks/${taskId}/upload-temp`, {
-                                    method: "POST",
-                                    headers: {
-                                        "X-CSRF-TOKEN": document.querySelector(
-                                            'meta[name="csrf-token"]').content
-                                    },
-                                    body: fd
-                                });
-                            }));
-                        }
-                    }
+            let isValid = true;
 
+            if (!perceelSelect.value) {
+                showError("errorPerceel", "Kies een perceel.");
+                isValid = false;
+            }
 
+            if (!regioSelect.value) {
+                showError("errorRegio", "Kies een regio (Webapp uploads).");
+                isValid = false;
+            }
 
+            if (!adresSelect.value) {
+                showError("errorAdres", "Kies of maak een adresmap.");
+                isValid = false;
+            }
 
+            if (photoUpload.files.length === 0) {
+                showError("errorPhoto", "Upload minstens 1 foto.");
+                isValid = false;
+            }
 
+            if (!damageNone.checked && !damageYes.checked) {
+                showError("errorDamage", "Selecteer of er schade is of niet.");
+                isValid = false;
+            }
 
+            if (damageYes.checked && !noteField.value.trim()) {
+                showError("errorNote", "Notitie is verplicht bij schade.");
+                isValid = false;
+            }
 
+            return isValid;
+        }
+        // Compressie + upload
+        async function compressAndUpload(files, namespaceId, adresSelect, perceelOriginal, taskId) {
+            const MAX_PARALLEL = 3; // voor mobiel
+            const compressedFiles = await Promise.all(files.map(f =>
+                imageCompression(f, {
+                    maxSizeMB: 0.7,
+                    maxWidthOrHeight: 1920,
+                    useWebWorker: true
+                })
+            ));
 
-                 // 🔹 Submit handler met compressie + upload + progress
-// 🔹 Submit handler met compressie + upload + progress
-// 🔹 Submit handler met compressie + upload + progress
-document.getElementById("finishForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!validateForm()) return;
+            const queue = [...compressedFiles];
 
-    const form = e.target;
-    const taskId = form.action.match(/tasks\/(\d+)/)?.[1];
-    const formData = new FormData(form);
-    const files = [...document.getElementById("photoUpload").files].slice(0, 30); // ✅ Max 30
-    const adresSelect = document.getElementById("adresSelect");
-    const namespaceId = adresSelect.options[adresSelect.selectedIndex]?.dataset.namespace;
-    const adresPath = adresSelect.value;
+            let completed = 0;
 
-    const finishButton = document.getElementById("finishButton");
-    finishButton.disabled = true;
-    finishButton.textContent = "Bezig met uploaden...";
-
-    // 🔹 Loader tonen
-    const loader = document.createElement("div");
-    loader.className = "fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50";
-    loader.innerHTML = `
-        <div class="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
-            <svg class="animate-spin h-8 w-8 text-[#B51D2D] mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-            </svg>
-            <p id="loaderText" class="text-gray-700 text-sm font-medium">Bezig met uploaden van foto's... even geduld 🙏</p>
-        </div>
-    `;
-    document.body.appendChild(loader);
-
-    try {
-        const uploadedPaths = []; // 🔹 verzamel alle paden hier
-
-        if (files.length > 0) {
-            // ✅ Parallel compressie
-            const compressOptions = {
-                maxSizeMB: 0.8,
-                maxWidthOrHeight: 1920,
-                useWebWorker: true,
-                initialQuality: 0.8
-            };
-
-            const compressedFiles = await Promise.all(
-                files.map(f => imageCompression(f, compressOptions).catch(() => f))
-            );
-
-            // ✅ Upload direct naar Dropbox in batches (3 tegelijk)
-            const batchSize = 3;
-            const uploadStart = performance.now();
-
-            for (let i = 0; i < compressedFiles.length; i += batchSize) {
-                const batch = compressedFiles.slice(i, i + batchSize);
-                await Promise.all(batch.map(async (file) => {
+            // Upload in parallel
+            const workers = new Array(MAX_PARALLEL).fill(null).map(async () => {
+                while (queue.length) {
+                    const file = queue.shift();
                     try {
-                        const { session_id, access_token, team_member_id } = await startDropboxSession();
-                        if (!session_id || !access_token) throw new Error("Geen geldige sessie ontvangen");
+                        const {
+                            session_id,
+                            access_token,
+                            team_member_id
+                        } = await startDropboxSession();
+                        if (!session_id || !access_token) continue;
 
                         const filename = `${Date.now()}_${file.name}`;
-                        const targetPath = `${adresPath}/${filename}`;
+                        const isPerceel1 = /perceel\s*1/i.test(perceelOriginal);
+                        const targetPath = isPerceel1 ?
+                            `${adresSelect.value}/${filename}` :
+                            `/${adresSelect.value}/${filename}`;
 
                         const result = await uploadToDropbox(
                             file,
@@ -958,205 +711,483 @@ document.getElementById("finishForm").addEventListener("submit", async (e) => {
                             targetPath,
                             team_member_id,
                             namespaceId,
-                            true
+                            isPerceel1
                         );
 
-                        // 🔹 voeg elk pad toe aan lijst
-                        uploadedPaths.push(result.path_display);
+                        const storedPath = isPerceel1 ?
+                            `/PERCEEL 1${result.path_display}` :
+                            `/PERCEEL 2${result.path_display}`;
 
-                        console.log(`✅ ${file.name} geüpload naar Dropbox`);
+                        await fetch(`/tasks/${taskId}/upload-photo`, {
+                            method: "POST",
+                            headers: {
+                                "X-CSRF-TOKEN": document.querySelector(
+                                        'meta[name="csrf-token"]')
+                                    .content,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({
+                                namespace_id: namespaceId,
+                                path: adresSelect.value,
+                                photos: [storedPath]
+                            })
+                        });
                     } catch (err) {
-                        console.error("❌ Fout bij upload naar Dropbox:", err);
+                        console.warn("Upload mislukt, opnieuw proberen…", err);
+                        await new Promise(r => setTimeout(r, 2000)); // korte retry-wait
+                    } finally {
+                        completed++;
                     }
-                }));
+                }
+            });
+
+            await Promise.allSettled(workers);
+        }
+
+        // ===============================================
+        // 🔹 Compressie & Upload helpers
+        // ===============================================
+
+        // 1️⃣ Comprimeer foto's voor upload
+        /* ——— 3. Snelle compressie instellingen ——— */
+        async function compressImages(files) {
+            const options = {
+                maxSizeMB: 0.25, // 250 KB max
+                maxWidthOrHeight: 800, // kleiner
+                useWebWorker: true,
+                initialQuality: 0.6
+            };
+
+            const compressed = [];
+            for (const file of files) {
+                try {
+                    const comp = await imageCompression(file, options);
+                    compressed.push(comp);
+                } catch (err) {
+                    console.error("Compressie mislukt:", file.name);
+                    compressed.push(file);
+                }
+            }
+            return compressed;
+        }
+
+        /* ——— 4. Dropbox sessie starten ——— */
+        async function startDropboxSession() {
+            const res = await fetch("/dropbox/start-session", {
+                method: "POST",
+                headers: {
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                    "Accept": "application/json"
+                }
+            });
+            return await res.json();
+        }
+
+        /* ——— 5. Upload bestand in chunks met progress bar ——— */
+        // ✅ Supersnelle versie met kleinere chunks + progress
+        // ⚡ Geoptimaliseerde uploadfunctie (kleinere chunks + progress)
+        async function uploadToDropbox(file, accessToken, sessionId, targetPath, teamMemberId, namespaceId, isPerceel1) {
+            const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
+            let offset = 0;
+
+            const makeHeaders = (extra = {}) => ({
+                "Authorization": `Bearer ${accessToken}`,
+                "Dropbox-API-Select-User": teamMemberId,
+                "Dropbox-API-Path-Root": JSON.stringify({
+                    ".tag": "namespace_id",
+                    "namespace_id": namespaceId
+                }),
+                "Content-Type": "application/octet-stream",
+                ...extra
+            });
+
+            // Helper om even te pauzeren
+            const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+            while (offset < file.size) {
+                const chunk = file.slice(offset, offset + CHUNK_SIZE);
+
+                let res = await fetch("https://content.dropboxapi.com/2/files/upload_session/append_v2", {
+                    method: "POST",
+                    headers: makeHeaders({
+                        "Dropbox-API-Arg": JSON.stringify({
+                            cursor: {
+                                session_id: sessionId,
+                                offset
+                            },
+                            close: false
+                        })
+                    }),
+                    body: chunk
+                });
+
+                // Retry bij rate limit
+                if (res.status === 429) {
+                    const retryAfter = parseInt(res.headers.get("Retry-After")) || 1000;
+                    console.warn(`⏳ Dropbox te druk, wacht ${retryAfter}ms...`);
+                    await wait(retryAfter);
+                    continue;
+                }
+
+                if (!res.ok) throw new Error(await res.text());
+                offset += chunk.size;
             }
 
-            // 🔹 Alle uploads voltooid → alles in één keer opslaan
-            if (uploadedPaths.length > 0) {
-                await fetch(`/tasks/${taskId}/upload-photo`, {
+            // Finish upload (met retry)
+            for (let attempt = 0; attempt < 3; attempt++) {
+                const finish = await fetch("https://content.dropboxapi.com/2/files/upload_session/finish", {
+                    method: "POST",
+                    headers: makeHeaders({
+                        "Dropbox-API-Arg": JSON.stringify({
+                            cursor: {
+                                session_id: sessionId,
+                                offset
+                            },
+                            commit: {
+                                path: targetPath,
+                                mode: "add",
+                                autorename: true,
+                                mute: false
+                            }
+                        })
+                    }),
+                    body: ""
+                });
+
+                if (finish.status === 429) {
+                    const retryAfter = parseInt(finish.headers.get("Retry-After")) || 1000;
+                    console.warn(`🚦 Rate-limit bij finish, wacht ${retryAfter}ms`);
+                    await wait(retryAfter);
+                    continue;
+                }
+
+                if (!finish.ok) throw new Error(await finish.text());
+                return await finish.json();
+            }
+
+            throw new Error("Dropbox finish faalde na 3 pogingen");
+        }
+
+
+        async function uploadInBatches(files, taskId, namespaceId, adresPath) {
+            const batchSize = 5;
+            for (let i = 0; i < files.length; i += batchSize) {
+                const batch = files.slice(i, i + batchSize);
+                await Promise.all(batch.map(f => {
+                    const fd = new FormData();
+                    fd.append("photos[]", f);
+                    fd.append("namespace_id", namespaceId);
+                    fd.append("path", adresPath);
+                    return fetch(`/tasks/${taskId}/upload-temp`, {
+                        method: "POST",
+                        headers: {
+                            "X-CSRF-TOKEN": document.querySelector(
+                                'meta[name="csrf-token"]').content
+                        },
+                        body: fd
+                    });
+                }));
+            }
+        }
+
+
+
+
+
+// 🔹 Helper voor batch-compressie zonder UI blokkering
+async function compressInBatches(files, options, batchSize = 3) {
+    const compressed = [];
+    for (let i = 0; i < files.length; i += batchSize) {
+        const batch = files.slice(i, i + batchSize);
+        const results = await Promise.all(
+            batch.map(f => imageCompression(f, options).catch(() => f))
+        );
+        compressed.push(...results);
+
+        // 👉 kleine ademruimte om UI niet te blokkeren
+        await new Promise(r => setTimeout(r, 10));
+    }
+    return compressed;
+}
+
+
+
+        // 🔹 Submit handler met compressie + upload + progress
+        // 🔹 Submit handler met compressie + upload + progress
+        // 🔹 Submit handler met compressie + upload + progress
+        document.getElementById("finishForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            if (!validateForm()) return;
+
+            const form = e.target;
+            const taskId = form.action.match(/tasks\/(\d+)/)?.[1];
+            const formData = new FormData(form);
+            const files = [...document.getElementById("photoUpload").files].slice(0, 30); // ✅ Max 30
+            const adresSelect = document.getElementById("adresSelect");
+            const namespaceId = adresSelect.options[adresSelect.selectedIndex]?.dataset.namespace;
+            const adresPath = adresSelect.value;
+
+            const finishButton = document.getElementById("finishButton");
+            finishButton.disabled = true;
+            finishButton.textContent = "Bezig met uploaden...";
+
+            // 🔹 Loader tonen
+            const loader = document.createElement("div");
+            loader.className =
+                "fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50";
+            loader.innerHTML = `
+        <div class="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
+            <svg class="animate-spin h-8 w-8 text-[#B51D2D] mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <p id="loaderText" class="text-gray-700 text-sm font-medium">Bezig met uploaden van foto's... even geduld 🙏</p>
+        </div>
+    `;
+            document.body.appendChild(loader);
+
+            try {
+                const uploadedPaths = []; // 🔹 verzamel alle paden hier
+
+                if (files.length > 0) {
+                    // ✅ Parallel compressie
+                    const compressOptions = {
+                        maxSizeMB: 0.6,
+                        maxWidthOrHeight: 1920,
+                        useWebWorker: true,
+                        initialQuality: 0.7
+                    };
+
+          const compressedFiles = await compressInBatches(files, compressOptions, 3);
+
+                    // ✅ Upload direct naar Dropbox in batches (3 tegelijk)
+                    const batchSize = 3;
+                    const uploadStart = performance.now();
+
+                    for (let i = 0; i < compressedFiles.length; i += batchSize) {
+                        const batch = compressedFiles.slice(i, i + batchSize);
+                        await Promise.all(batch.map(async (file) => {
+                            try {
+                                const {
+                                    session_id,
+                                    access_token,
+                                    team_member_id
+                                } = await startDropboxSession();
+                                if (!session_id || !access_token) throw new Error(
+                                    "Geen geldige sessie ontvangen");
+
+                                const filename = `${Date.now()}_${file.name}`;
+                                const targetPath = `${adresPath}/${filename}`;
+
+                                const result = await uploadToDropbox(
+                                    file,
+                                    access_token,
+                                    session_id,
+                                    targetPath,
+                                    team_member_id,
+                                    namespaceId,
+                                    true
+                                );
+
+                                // 🔹 voeg elk pad toe aan lijst
+                                uploadedPaths.push(result.path_display);
+
+                                console.log(`✅ ${file.name} geüpload naar Dropbox`);
+                            } catch (err) {
+                                console.error("❌ Fout bij upload naar Dropbox:", err);
+                            }
+                        }));
+                    }
+
+                    // 🔹 Alle uploads voltooid → alles in één keer opslaan
+                    if (uploadedPaths.length > 0) {
+                        await fetch(`/tasks/${taskId}/upload-photo`, {
+                            method: "POST",
+                            headers: {
+                                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')
+                                    .content,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({
+                                namespace_id: namespaceId,
+                                path: adresPath,
+                                photos: uploadedPaths
+                            })
+                        });
+                    }
+
+                    const uploadEnd = performance.now();
+                    console.log(
+                        `📸 Uploadtijd (frontend direct naar Dropbox): ${((uploadEnd - uploadStart) / 1000).toFixed(2)}s`
+                        );
+                    showToast(`✅ ${files.length} foto's rechtstreeks naar Dropbox geüpload!`);
+                }
+
+                // ✅ Status bijwerken (logica blijft exact zoals nu)
+                const resFinish = await fetch(`/tasks/${taskId}/finish`, {
                     method: "POST",
                     headers: {
                         "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                        "Content-Type": "application/json"
+                        "Accept": "application/json"
                     },
-                    body: JSON.stringify({
-                        namespace_id: namespaceId,
-                        path: adresPath,
-                        photos: uploadedPaths
-                    })
+                    body: formData
                 });
+
+                if (resFinish.ok) {
+                    const json = await resFinish.json();
+                    updateTaskStatusRow(taskId, json.status);
+                    showToast("🎉 Taak succesvol afgerond!");
+                    closeTaskForm();
+
+                    // ✅ Loader netjes afsluiten met korte "Klaar!" fade-out
+                    const loaderText = document.getElementById("loaderText");
+                    loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
+                    setTimeout(() => {
+                        loader.classList.add("opacity-0", "transition-opacity", "duration-700");
+                        setTimeout(() => loader.remove(), 700);
+                    }, 600);
+                } else {
+                    showToast("⚠️ Fout bij afronden van taak.");
+                    const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
+                    if (loaderEl) loaderEl.remove();
+                }
+
+            } catch (err) {
+                console.error("Upload fout:", err);
+                showToast("❌ Upload mislukt. Probeer opnieuw.");
+                const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
+                if (loaderEl) loaderEl.remove();
+            } finally {
+                finishButton.disabled = false;
+                finishButton.textContent = "Voltooien";
             }
-
-            const uploadEnd = performance.now();
-            console.log(`📸 Uploadtijd (frontend direct naar Dropbox): ${((uploadEnd - uploadStart) / 1000).toFixed(2)}s`);
-            showToast(`✅ ${files.length} foto's rechtstreeks naar Dropbox geüpload!`);
-        }
-
-        // ✅ Status bijwerken (logica blijft exact zoals nu)
-        const resFinish = await fetch(`/tasks/${taskId}/finish`, {
-            method: "POST",
-            headers: {
-                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                "Accept": "application/json"
-            },
-            body: formData
         });
 
-        if (resFinish.ok) {
-            const json = await resFinish.json();
-            updateTaskStatusRow(taskId, json.status);
-            showToast("🎉 Taak succesvol afgerond!");
-            closeTaskForm();
 
-            // ✅ Loader netjes afsluiten met korte "Klaar!" fade-out
-            const loaderText = document.getElementById("loaderText");
-            loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
-            setTimeout(() => {
-                loader.classList.add("opacity-0", "transition-opacity", "duration-700");
-                setTimeout(() => loader.remove(), 700);
-            }, 600);
-        } else {
-            showToast("⚠️ Fout bij afronden van taak.");
-            const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
-            if (loaderEl) loaderEl.remove();
+
+
+
+
+        // 🔹 Toast helper
+        function showToast(message, duration = 4000) {
+            const toast = document.createElement("div");
+            toast.textContent = message;
+            toast.className =
+                "fixed bottom-5 right-5 bg-gray-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm transition-opacity animate-fadeIn";
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), duration);
         }
 
-    } catch (err) {
-        console.error("Upload fout:", err);
-        showToast("❌ Upload mislukt. Probeer opnieuw.");
-        const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
-        if (loaderEl) loaderEl.remove();
-    } finally {
-        finishButton.disabled = false;
-        finishButton.textContent = "Voltooien";
-    }
-});
+        // 🔹 Status update helper
+        function updateTaskStatusRow(taskId, newStatus) {
+            const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+            if (!row) return;
+            row.dataset.status = newStatus;
+            const span = row.querySelector("td:nth-child(3) span");
+            span.textContent = newStatus;
+            span.className = "px-2 py-1 rounded text-sm font-semibold";
+            switch (newStatus) {
+                case "finished":
+                    span.classList.add("bg-green-200", "text-green-800");
+                    break;
+                case "in behandeling":
+                    span.classList.add("bg-yellow-200", "text-yellow-800");
+                    break;
+                default:
+                    span.classList.add("bg-gray-200", "text-gray-800");
+            }
+        }
+
+        // 🔹 Form sluiten helper
+        function closeTaskForm() {
+            const panel = document.getElementById("taskFormPanel");
+            const form = document.getElementById("finishForm");
+            form.reset();
+            document.getElementById("photoPreview").innerHTML = "";
+            clearErrors();
+            panel.classList.add("hidden");
+
+            document.getElementById('taskStatus').textContent = "";
+            document.getElementById('taskAddressTitle').textContent = "";
+            document.getElementById('taskZipCity').textContent = "";
+            document.getElementById('taskTimeTitle').textContent = "";
+        }
 
 
 
+        // Bij openen taakformulier
+        function openTaskForm(taskId, address, time, status, note) {
+            loadPercelen();
+            document.getElementById("adresSelect").innerHTML = "";
+            document.getElementById("adresComboInput").value = "";
+            document.getElementById("adresSelect").disabled = true;
+            document.getElementById("adresDropdown").classList.add("hidden");
+            localStorage.removeItem("tempAdresFolder");
 
+            const panel = document.getElementById('taskFormPanel');
+            panel.classList.remove('hidden');
 
+            const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
 
-                    // 🔹 Toast helper
-                    function showToast(message, duration = 4000) {
-                        const toast = document.createElement("div");
-                        toast.textContent = message;
-                        toast.className =
-                            "fixed bottom-5 right-5 bg-gray-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm transition-opacity animate-fadeIn";
-                        document.body.appendChild(toast);
-                        setTimeout(() => toast.remove(), duration);
-                    }
+            document.getElementById('taskAddressTitle').textContent = row.dataset.address;
+            document.getElementById('taskZipCity').textContent = row.dataset.zipcode + " " + row.dataset.city;
+            document.getElementById('taskTimeTitle').textContent = time;
+            document.getElementById('taskStatus').textContent = status;
 
-                    // 🔹 Status update helper
-                    function updateTaskStatusRow(taskId, newStatus) {
-                        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
-                        if (!row) return;
-                        row.dataset.status = newStatus;
-                        const span = row.querySelector("td:nth-child(3) span");
-                        span.textContent = newStatus;
-                        span.className = "px-2 py-1 rounded text-sm font-semibold";
-                        switch (newStatus) {
-                            case "finished":
-                                span.classList.add("bg-green-200", "text-green-800");
-                                break;
-                            case "in behandeling":
-                                span.classList.add("bg-yellow-200", "text-yellow-800");
-                                break;
-                            default:
-                                span.classList.add("bg-gray-200", "text-gray-800");
-                        }
-                    }
+            let form = document.getElementById('finishForm');
+            let finishButton = document.getElementById('finishButton');
+            let noteWrapper = document.getElementById('noteWrapper');
+            let noteField = document.querySelector('#finishForm textarea[name="note"]');
+            let damageNone = document.getElementById('damageNone');
+            let damageYes = document.getElementById('damageYes');
 
-                    // 🔹 Form sluiten helper
-                    function closeTaskForm() {
-                        const panel = document.getElementById("taskFormPanel");
-                        const form = document.getElementById("finishForm");
-                        form.reset();
-                        document.getElementById("photoPreview").innerHTML = "";
-                        clearErrors();
-                        panel.classList.add("hidden");
+            // ✅ altijd reset
+            damageNone.checked = false;
+            damageYes.checked = false;
+            noteWrapper.classList.add('hidden');
+            noteField.value = '';
 
-                        document.getElementById('taskStatus').textContent = "";
-                        document.getElementById('taskAddressTitle').textContent = "";
-                        document.getElementById('taskZipCity').textContent = "";
-                        document.getElementById('taskTimeTitle').textContent = "";
-                    }
+            if (status === 'finished') {
+                form.action = "";
+                finishButton.classList.add('hidden');
+                damageNone.disabled = true;
+                damageYes.disabled = true;
+                noteField.setAttribute('readonly', true);
+            } else {
+                form.action = `/tasks/${taskId}/finish`;
+                finishButton.classList.remove('hidden');
+                damageNone.disabled = false;
+                damageYes.disabled = false;
+                noteField.removeAttribute('readonly');
+            }
 
+            // Event listeners (herstel)
+            damageNone.addEventListener('change', () => {
+                if (damageNone.checked) {
+                    noteWrapper.classList.add('hidden');
+                    noteField.value = '';
+                }
+            });
 
+            damageYes.addEventListener('change', () => {
+                if (damageYes.checked) {
+                    noteWrapper.classList.remove('hidden');
+                }
+            });
+        }
 
-                    // Bij openen taakformulier
-                    function openTaskForm(taskId, address, time, status, note) {
-                        loadPercelen();
-document.getElementById("adresSelect").innerHTML = "";
-document.getElementById("adresComboInput").value = "";
-document.getElementById("adresSelect").disabled = true;
-document.getElementById("adresDropdown").classList.add("hidden");
-localStorage.removeItem("tempAdresFolder");
-
-                        const panel = document.getElementById('taskFormPanel');
-                        panel.classList.remove('hidden');
-
-                        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
-
-                        document.getElementById('taskAddressTitle').textContent = row.dataset.address;
-                        document.getElementById('taskZipCity').textContent = row.dataset.zipcode + " " + row.dataset.city;
-                        document.getElementById('taskTimeTitle').textContent = time;
-                        document.getElementById('taskStatus').textContent = status;
-
-                        let form = document.getElementById('finishForm');
-                        let finishButton = document.getElementById('finishButton');
-                        let noteWrapper = document.getElementById('noteWrapper');
-                        let noteField = document.querySelector('#finishForm textarea[name="note"]');
-                        let damageNone = document.getElementById('damageNone');
-                        let damageYes = document.getElementById('damageYes');
-
-                        // ✅ altijd reset
-                        damageNone.checked = false;
-                        damageYes.checked = false;
-                        noteWrapper.classList.add('hidden');
-                        noteField.value = '';
-
-                        if (status === 'finished') {
-                            form.action = "";
-                            finishButton.classList.add('hidden');
-                            damageNone.disabled = true;
-                            damageYes.disabled = true;
-                            noteField.setAttribute('readonly', true);
-                        } else {
-                            form.action = `/tasks/${taskId}/finish`;
-                            finishButton.classList.remove('hidden');
-                            damageNone.disabled = false;
-                            damageYes.disabled = false;
-                            noteField.removeAttribute('readonly');
-                        }
-
-                        // Event listeners (herstel)
-                        damageNone.addEventListener('change', () => {
-                            if (damageNone.checked) {
-                                noteWrapper.classList.add('hidden');
-                                noteField.value = '';
-                            }
-                        });
-
-                        damageYes.addEventListener('change', () => {
-                            if (damageYes.checked) {
-                                noteWrapper.classList.remove('hidden');
-                            }
-                        });
-                    }
-
-                    // Openen via rij-klik
-                    document.querySelectorAll("tbody tr").forEach(row => {
-                        row.addEventListener("click", function() {
-                            openTaskForm(
-                                this.dataset.taskId,
-                                this.dataset.address,
-                                this.dataset.time,
-                                this.dataset.status,
-                                this.dataset.note
-                            );
-                        });
-                    });
+        // Openen via rij-klik
+        document.querySelectorAll("tbody tr").forEach(row => {
+            row.addEventListener("click", function() {
+                openTaskForm(
+                    this.dataset.taskId,
+                    this.dataset.address,
+                    this.dataset.time,
+                    this.dataset.status,
+                    this.dataset.note
+                );
+            });
+        });
     </script>
 
 </x-layouts.dashboard>
