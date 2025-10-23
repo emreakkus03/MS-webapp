@@ -561,10 +561,11 @@
         deleteForm.action = `/schedule/${event.id}`;
 
      // 🔹 Toon edit/delete als het jouw eigen taak is of als je admin bent
-const currentTeamId = {{ Auth::user()->id }};
-const taskTeamId = event.extendedProps.team_id;
+const currentUserId = {{ Auth::user()->id }};
+const isAdmin = {{ Auth::user()->role === 'admin' ? 'true' : 'false' }};
+const taskOwnerId = event.extendedProps.team_id;
 
-if ({{ Auth::user()->role === "'admin'" ? 'true' : 'false' }} || currentTeamId === taskTeamId) {
+if (isAdmin || currentUserId === taskOwnerId) {
     editBtn.classList.remove('hidden');
     deleteForm.classList.remove('hidden');
 } else {

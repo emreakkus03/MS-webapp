@@ -250,6 +250,41 @@
     <script type="module">
         import imageCompression from "https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/+esm";
 
+// ===============================================
+// 🔹 Tijdelijke adresmap: checken en herstellen
+// ===============================================
+function checkTempAdres() {
+    const data = localStorage.getItem("tempAdresFolder");
+    if (!data) return;
+
+    try {
+        const temp = JSON.parse(data);
+
+        // ✅ Check of map nog geldig is (10 minuten)
+        if (Date.now() > temp.expiresAt) {
+            console.log("🕒 Tijdelijke map verlopen — verwijderen");
+            localStorage.removeItem("tempAdresFolder");
+            return;
+        }
+
+        // 🔹 Nog geldig → toon deze map in dropdown
+        const input = document.getElementById("adresComboInput");
+        const select = document.getElementById("adresSelect");
+
+        input.value = temp.name;
+        select.innerHTML = `
+            <option value="${temp.path}" data-namespace="${temp.namespace}" selected>
+                ${temp.name}
+            </option>`;
+        select.disabled = false;
+    } catch (err) {
+        console.error("❌ Fout bij lezen tijdelijke map:", err);
+        localStorage.removeItem("tempAdresFolder");
+    }
+}
+
+// 🔸 Controleer tijdelijke map bij pagina-load
+document.addEventListener("DOMContentLoaded", checkTempAdres);
 
         async function loadPercelen() {
             let res = await fetch("/dropbox/percelen");
@@ -293,7 +328,6 @@
 
                 // ✅ Automatisch selecteren
                 regioSelect.value = webappOnly[0].path;
-                loadAdressen(webappOnly[0].namespace, webappOnly[0].path);
             } else {
                 // ❌ Geen Webapp uploads → zet melding in de dropdown
                 regioSelect.innerHTML = "<option value=''>Geen 'Webapp uploads' map gevonden</option>";
@@ -397,74 +431,79 @@
             }
         });
 
-        // Regio → laad adressen
-        document.getElementById("regioSelect").addEventListener("change", (e) => {
-            let namespaceId = e.target.options[e.target.selectedIndex].dataset.namespace;
-            if (e.target.value) {
-                loadAdressen(namespaceId, e.target.value);
-            }
-        });
+       
 
         // Nieuwe adresmap
-        // Nieuwe adresmap (altijd binnen Webapp uploads)
-        document.getElementById("newAdresBtn").addEventListener("click", async () => {
-            const regioSelect = document.getElementById("regioSelect");
+       document.getElementById("newAdresBtn").addEventListener("click", async () => {
+    const regioSelect = document.getElementById("regioSelect");
 
-            // Altijd Webapp uploads forceren
-            const webappOption = [...regioSelect.options].find(opt =>
-                opt.textContent.toLowerCase().includes("webapp uploads")
-            );
+    // Altijd Webapp uploads forceren
+    const webappOption = [...regioSelect.options].find(opt =>
+        opt.textContent.toLowerCase().includes("webapp uploads")
+    );
 
-            if (!webappOption) {
-                alert("Map 'Webapp uploads' niet gevonden. Kies eerst perceel 1 of 2.");
-                return;
-            }
+    if (!webappOption) {
+        alert("Map 'Webapp uploads' niet gevonden. Kies eerst perceel 1 of 2.");
+        return;
+    }
 
-            const regioPath = webappOption.value;
-            const namespaceId = webappOption.dataset.namespace;
+    const regioPath = webappOption.value;
+    const namespaceId = webappOption.dataset.namespace;
 
-            const name = prompt("Naam nieuwe adresmap:");
-            if (!name) return;
+    const name = prompt("Naam nieuwe adresmap:");
+    if (!name) return;
 
-            try {
-                const res = await fetch("{{ route('dropbox.create_adres') }}", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-                    },
-                    body: JSON.stringify({
-                        namespace_id: namespaceId,
-                        path: regioPath,
-                        adres: name
-                    })
-                });
-
-                const json = await res.json();
-
-
-                if (res.status === 201 && json.success) {
-                    alert(json.message || "Adresmap aangemaakt in Webapp uploads.");
-
-                    await loadAdressen(namespaceId, regioPath, null, "");
-
-                    const input = document.getElementById("adresComboInput");
-                    const select = document.getElementById("adresSelect");
-                    const drop = document.getElementById("adresDropdown");
-
-                    input.value = json.folder.name;
-                    select.innerHTML =
-                        `<option value="${json.folder.path}" data-namespace="${json.folder.namespace}" selected>${json.folder.name}</option>`;
-                    drop.classList.add("hidden");
-
-                } else {
-                    alert(json.message || "Kon adresmap niet maken.");
-                }
-            } catch (err) {
-                console.error(err);
-                alert("Serverfout bij map maken.");
-            }
+    try {
+        const res = await fetch("{{ route('dropbox.create_adres') }}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-TOKEN": document.querySelector('meta[name=\"csrf-token\"]').content
+            },
+            body: JSON.stringify({
+                namespace_id: namespaceId,
+                path: regioPath,
+                adres: name
+            })
         });
+
+        const json = await res.json();
+
+        if (res.status === 201 && json.success) {
+            alert(json.message || "Adresmap aangemaakt in Webapp uploads.");
+
+            // ✅ Alleen de nieuw gemaakte map tonen
+            const input = document.getElementById("adresComboInput");
+            const select = document.getElementById("adresSelect");
+            const drop = document.getElementById("adresDropdown");
+
+            input.value = json.folder.name;
+            select.innerHTML = `
+                <option value="${json.folder.path}" data-namespace="${json.folder.namespace}" selected>
+                    ${json.folder.name}
+                </option>`;
+            select.disabled = false;
+            drop.classList.add("hidden");
+
+            // 🕒 10 minuten geldig (tijdelijke opslag)
+            const expiresAt = Date.now() + (10 * 60 * 1000);
+            localStorage.setItem("tempAdresFolder", JSON.stringify({
+                path: json.folder.path,
+                namespace: json.folder.namespace,
+                name: json.folder.name,
+                expiresAt
+            }));
+
+            console.log("💾 Tijdelijke map opgeslagen (vervalt over 10 minuten)");
+        } else {
+            alert(json.message || "Kon adresmap niet maken.");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Serverfout bij map maken.");
+    }
+});
+
 
 
       // ✅ Progressbar element toevoegen
@@ -1048,6 +1087,11 @@ document.getElementById("finishForm").addEventListener("submit", async (e) => {
                     // Bij openen taakformulier
                     function openTaskForm(taskId, address, time, status, note) {
                         loadPercelen();
+document.getElementById("adresSelect").innerHTML = "";
+document.getElementById("adresComboInput").value = "";
+document.getElementById("adresSelect").disabled = true;
+document.getElementById("adresDropdown").classList.add("hidden");
+localStorage.removeItem("tempAdresFolder");
 
                         const panel = document.getElementById('taskFormPanel');
                         panel.classList.remove('hidden');
