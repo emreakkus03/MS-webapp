@@ -250,6 +250,34 @@
     <script type="module">
         import imageCompression from "https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/+esm";
 
+        // 💤 Voorkom dat uploads pauzeren als scherm uitgaat (Android wake lock)
+if ("wakeLock" in navigator) {
+    let wakeLock = null;
+
+    async function requestWakeLock() {
+        try {
+            wakeLock = await navigator.wakeLock.request("screen");
+            console.log("🔋 Wake Lock actief — scherm blijft aan tijdens upload");
+            wakeLock.addEventListener("release", () => {
+                console.log("💤 Wake Lock vrijgegeven");
+            });
+        } catch (err) {
+            console.warn("⚠️ Wake Lock niet toegestaan:", err);
+        }
+    }
+
+    // Automatisch activeren bij uploadstart of focus
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && !wakeLock) {
+            requestWakeLock();
+        }
+    });
+
+    // Initieel aanvragen
+    requestWakeLock();
+}
+
+
         // ===============================================
         // 🔹 Tijdelijke adresmap: checken en herstellen
         // ===============================================
@@ -786,87 +814,78 @@ document.getElementById("photoUpload").addEventListener("change", (e) => {
         /* ——— 5. Upload bestand in chunks met progress bar ——— */
         // ✅ Supersnelle versie met kleinere chunks + progress
         // ⚡ Geoptimaliseerde uploadfunctie (kleinere chunks + progress)
-        async function uploadToDropbox(file, accessToken, sessionId, targetPath, teamMemberId, namespaceId, isPerceel1) {
-            const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
-            let offset = 0;
+       // ⚡ Supersnelle en stabiele Dropbox uploader (8MB chunks)
+async function uploadToDropbox(file, accessToken, sessionId, targetPath, teamMemberId, namespaceId) {
+    const CHUNK_SIZE = 8 * 1024 * 1024; // grotere chunks → minder overhead
+    let offset = 0;
 
-            const makeHeaders = (extra = {}) => ({
-                "Authorization": `Bearer ${accessToken}`,
-                "Dropbox-API-Select-User": teamMemberId,
-                "Dropbox-API-Path-Root": JSON.stringify({
-                    ".tag": "namespace_id",
-                    "namespace_id": namespaceId
-                }),
-                "Content-Type": "application/octet-stream",
-                ...extra
-            });
+    const makeHeaders = (extra = {}) => ({
+        "Authorization": `Bearer ${accessToken}`,
+        "Dropbox-API-Select-User": teamMemberId,
+        "Dropbox-API-Path-Root": JSON.stringify({
+            ".tag": "namespace_id",
+            "namespace_id": namespaceId
+        }),
+        "Content-Type": "application/octet-stream",
+        ...extra
+    });
 
-            // Helper om even te pauzeren
-            const wait = (ms) => new Promise(r => setTimeout(r, ms));
+    const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
-            while (offset < file.size) {
-                const chunk = file.slice(offset, offset + CHUNK_SIZE);
+    while (offset < file.size) {
+        const chunk = file.slice(offset, offset + CHUNK_SIZE);
+        const res = await fetch("https://content.dropboxapi.com/2/files/upload_session/append_v2", {
+            method: "POST",
+            headers: makeHeaders({
+                "Dropbox-API-Arg": JSON.stringify({
+                    cursor: { session_id: sessionId, offset },
+                    close: false
+                })
+            }),
+            body: chunk
+        });
 
-                let res = await fetch("https://content.dropboxapi.com/2/files/upload_session/append_v2", {
-                    method: "POST",
-                    headers: makeHeaders({
-                        "Dropbox-API-Arg": JSON.stringify({
-                            cursor: {
-                                session_id: sessionId,
-                                offset
-                            },
-                            close: false
-                        })
-                    }),
-                    body: chunk
-                });
-
-                // Retry bij rate limit
-                if (res.status === 429) {
-                    const retryAfter = parseInt(res.headers.get("Retry-After")) || 1000;
-                    console.warn(`⏳ Dropbox te druk, wacht ${retryAfter}ms...`);
-                    await wait(retryAfter);
-                    continue;
-                }
-
-                if (!res.ok) throw new Error(await res.text());
-                offset += chunk.size;
-            }
-
-            // Finish upload (met retry)
-            for (let attempt = 0; attempt < 3; attempt++) {
-                const finish = await fetch("https://content.dropboxapi.com/2/files/upload_session/finish", {
-                    method: "POST",
-                    headers: makeHeaders({
-                        "Dropbox-API-Arg": JSON.stringify({
-                            cursor: {
-                                session_id: sessionId,
-                                offset
-                            },
-                            commit: {
-                                path: targetPath,
-                                mode: "add",
-                                autorename: true,
-                                mute: false
-                            }
-                        })
-                    }),
-                    body: ""
-                });
-
-                if (finish.status === 429) {
-                    const retryAfter = parseInt(finish.headers.get("Retry-After")) || 1000;
-                    console.warn(`🚦 Rate-limit bij finish, wacht ${retryAfter}ms`);
-                    await wait(retryAfter);
-                    continue;
-                }
-
-                if (!finish.ok) throw new Error(await finish.text());
-                return await finish.json();
-            }
-
-            throw new Error("Dropbox finish faalde na 3 pogingen");
+        if (res.status === 429) {
+            const retryAfter = parseInt(res.headers.get("Retry-After")) || 1500;
+            await wait(retryAfter);
+            continue;
         }
+
+        if (!res.ok) throw new Error(await res.text());
+        offset += chunk.size;
+    }
+
+    // ✅ Finish upload
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const finish = await fetch("https://content.dropboxapi.com/2/files/upload_session/finish", {
+            method: "POST",
+            headers: makeHeaders({
+                "Dropbox-API-Arg": JSON.stringify({
+                    cursor: { session_id: sessionId, offset },
+                    commit: {
+                        path: targetPath,
+                        mode: "add",
+                        autorename: true,
+                        mute: false
+                    }
+                })
+            }),
+            body: ""
+        });
+
+        if (finish.status === 429) {
+            const retryAfter = parseInt(finish.headers.get("Retry-After")) || 1500;
+            await wait(retryAfter);
+            continue;
+        }
+
+        if (!finish.ok) throw new Error(await finish.text());
+        return await finish.json();
+    }
+
+    throw new Error("Dropbox finish faalde na 3 pogingen");
+}
+
 
 
         async function uploadInBatches(files, taskId, namespaceId, adresPath) {
@@ -894,21 +913,26 @@ document.getElementById("photoUpload").addEventListener("change", (e) => {
 
 
 
-// 🔹 Helper voor batch-compressie zonder UI blokkering
-async function compressInBatches(files, options, batchSize = 3) {
+// 🔹 Geoptimaliseerde compressie voor Android Chrome (stabieler)
+async function compressInBatches(files, options, batchSize = 2) {
     const compressed = [];
     for (let i = 0; i < files.length; i += batchSize) {
         const batch = files.slice(i, i + batchSize);
         const results = await Promise.all(
-            batch.map(f => imageCompression(f, options).catch(() => f))
+            batch.map(async (file) => {
+                try {
+                    return await imageCompression(file, options);
+                } catch {
+                    return file;
+                }
+            })
         );
         compressed.push(...results);
-
-        // 👉 kleine ademruimte om UI niet te blokkeren
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 25)); // ademruimte voor Chrome
     }
     return compressed;
 }
+
 
 
 
@@ -951,14 +975,16 @@ async function compressInBatches(files, options, batchSize = 3) {
 
                 if (files.length > 0) {
                     // ✅ Parallel compressie
-                    const compressOptions = {
-                        maxSizeMB: 0.6,
-                        maxWidthOrHeight: 1920,
-                        useWebWorker: true,
-                        initialQuality: 0.7
-                    };
+                  const compressOptions = {
+    maxSizeMB: 0.45, // kleiner = sneller
+    maxWidthOrHeight: 1280, // goed voor mobiel
+    useWebWorker: true,
+    initialQuality: 0.65
+};
 
-          const compressedFiles = await compressInBatches(files, compressOptions, 3);
+// Android Chrome → minder RAM = kleinere batch
+const compressedFiles = await compressInBatches(files, compressOptions, 2);
+
 
                     // ✅ Upload direct naar Dropbox in batches (3 tegelijk)
                     const batchSize = 3;
@@ -1023,15 +1049,53 @@ async function compressInBatches(files, options, batchSize = 3) {
                     showToast(`✅ ${files.length} foto's rechtstreeks naar Dropbox geüpload!`);
                 }
 
-                // ✅ Status bijwerken (logica blijft exact zoals nu)
-                const resFinish = await fetch(`/tasks/${taskId}/finish`, {
-                    method: "POST",
-                    headers: {
-                        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                        "Accept": "application/json"
-                    },
-                    body: formData
-                });
+                // ✅ Status bijwerken, maar met sendBeacon fallback
+const finishUrl = `/tasks/${taskId}/finish`;
+
+if (navigator.sendBeacon) {
+    // Stuur achtergrondrequest (zelfs als gebruiker Chrome sluit)
+    const beaconData = new FormData(form);
+    beaconData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
+    navigator.sendBeacon(finishUrl, beaconData);
+    console.log("📡 Task finish verzonden via sendBeacon");
+
+    // ⚡ Direct visueel afronden voor de gebruiker
+    showToast("🎉 Taak succesvol afgerond!");
+    closeTaskForm();
+    const loaderText = document.getElementById("loaderText");
+    loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
+    setTimeout(() => {
+        loader.classList.add("opacity-0", "transition-opacity", "duration-700");
+        setTimeout(() => loader.remove(), 700);
+    }, 600);
+
+} else {
+    // Fallback: normale fetch (voor oude browsers)
+    const resFinish = await fetch(finishUrl, {
+        method: "POST",
+        headers: {
+            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+            "Accept": "application/json"
+        },
+        body: formData
+    });
+
+    if (resFinish.ok) {
+        const json = await resFinish.json();
+        updateTaskStatusRow(taskId, json.status);
+        showToast("🎉 Taak succesvol afgerond!");
+        closeTaskForm();
+        const loaderText = document.getElementById("loaderText");
+        loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
+        setTimeout(() => {
+            loader.classList.add("opacity-0", "transition-opacity", "duration-700");
+            setTimeout(() => loader.remove(), 700);
+        }, 600);
+    } else {
+        const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
+        if (loaderEl) loaderEl.remove();
+    }
+}
 
                 if (resFinish.ok) {
                     const json = await resFinish.json();
@@ -1054,7 +1118,6 @@ async function compressInBatches(files, options, batchSize = 3) {
 
             } catch (err) {
                 console.error("Upload fout:", err);
-                showToast("❌ Upload mislukt. Probeer opnieuw.");
                 const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
                 if (loaderEl) loaderEl.remove();
             } finally {
