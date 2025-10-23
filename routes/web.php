@@ -9,6 +9,7 @@ use App\Http\Controllers\TaskController;
 use App\Http\Controllers\LeaveRequestController;
 use Illuminate\Support\Facades\Auth;
 use App\Events\TestEvent;
+use Illuminate\Notifications\DatabaseNotification;
 
 Route::middleware('auth')->get('/fire-test', function () {
     broadcast(new TestEvent('Hallo vanuit Laravel Reverb!'));
@@ -21,6 +22,34 @@ Route::post('/notifications/clear', function () {
     return back();
 })->name('notifications.clear');
 
+Route::post('/notifications/delete', function () {
+    $user = Auth::user();
+
+    if ($user->role !== 'admin') {
+        abort(403, 'Geen toegang om notificaties te verwijderen.');
+    }
+
+    $user->notifications()->delete();
+
+    return back()->with('success', 'Alle notificaties verwijderd.');
+})->name('notifications.delete');
+
+Route::delete('/notifications/{id}', function ($id) {
+    $user = Auth::user();
+
+    // Alleen admin mag notificaties verwijderen
+    if ($user->role !== 'admin') {
+        abort(403, 'Geen toegang om notificaties te verwijderen.');
+    }
+
+    $notification = DatabaseNotification::find($id);
+    if ($notification && $notification->notifiable_id === $user->id) {
+        $notification->delete();
+        return back()->with('success', 'Notificatie verwijderd.');
+    }
+
+    return back()->with('error', 'Notificatie niet gevonden of niet van jou.');
+})->name('notifications.destroy'); 
 
 Route::get('/', function () {
     // Als de gebruiker al ingelogd is, stuur hem naar de juiste dashboard
@@ -89,16 +118,11 @@ Route::middleware(['auth'])->group(function () {
 
 Route::get('/dropbox/create-adres', fn() => abort(404));
     Route::post('/dropbox/create-adres', [TaskController::class, 'createAdresFolder'])->name('dropbox.create_adres');
-    
-
     Route::post('/dropbox/upload-adres-photos', [TaskController::class, 'uploadAdresPhotos']);
     Route::post('/tasks/{id}/upload-photo', [TaskController::class, 'uploadPhoto']);
-
     Route::post('/dropbox/start-session', [TaskController::class, 'startDropboxSession'])
     ->name('dropbox.start_session');
-
    Route::post('/tasks/{task}/upload-temp', [TaskController::class, 'uploadTemp'])->name('tasks.uploadTemp');
-
 });
 
 Route::middleware(['auth'])->group(function () {
