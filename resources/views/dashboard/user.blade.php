@@ -493,6 +493,16 @@ if ("wakeLock" in navigator) {
             const name = prompt("Naam nieuwe adresmap:");
             if (!name) return;
 
+            let safeName = name
+    .replace(/,/g, '')                // verwijder komma’s
+    .replace(/[^a-zA-Z0-9 _-]/g, '')  // verwijder rare tekens
+    .replace(/\s+/g, ' ')             // dubbele spaties → 1 spatie
+    .trim();                          // spaties begin/eind weg
+
+if (!safeName) {
+    alert("Ongeldige mapnaam. Gebruik enkel letters en cijfers.");
+    return;
+}
             try {
                 const res = await fetch("{{ route('dropbox.create_adres') }}", {
                     method: "POST",
@@ -503,7 +513,7 @@ if ("wakeLock" in navigator) {
                     body: JSON.stringify({
                         namespace_id: namespaceId,
                         path: regioPath,
-                        adres: name
+                        adres: safeName
                     })
                 });
 
