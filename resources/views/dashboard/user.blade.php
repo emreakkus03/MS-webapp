@@ -636,8 +636,8 @@ document.getElementById("photoUpload").addEventListener("change", (e) => {
     }
 
     files.forEach(file => {
-        if (file.size > 5 * 1024 * 1024) {
-            alert(`Bestand ${file.name} is groter dan 5MB en wordt overgeslagen.`);
+        if (file.size > 30 * 1024 * 1024) {
+            alert(`Bestand ${file.name} is groter dan 30MB en wordt overgeslagen.`);
             return;
         }
 
