@@ -1,0 +1,10 @@
+app:
+  php:
+    upload_max_filesize: 256M
+    post_max_size: 256M
+    memory_limit: 512M
+  queue:
+    connection: database
+    processes: 1
+    sleep: 10
+    tries: 3
