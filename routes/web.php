@@ -16,6 +16,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 
+Route::get('/ping', function () {
+    return response('pong', 200);
+});
 
 Route::middleware(['auth'])->group(function () {
     Route::post('/r2/presigned-url', function (Request $request) {
