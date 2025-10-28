@@ -2,6 +2,18 @@
 
     <head>
         <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script>
+        // Voeg globale CSRF headers toe aan alle fetch requests
+        window.defaultFetch = window.fetch;
+        window.fetch = async (url, options = {}) => {
+            options.headers = {
+                ...(options.headers || {}),
+                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+            };
+            options.credentials = "same-origin"; // ✅ cookies (sessie) meesturen
+            return window.defaultFetch(url, options);
+        };
+    </script>
     </head>
 
     <!-- Datum -->
@@ -193,7 +205,7 @@
 
                     <!-- Foto upload -->
                     <div>
-                        <label class="block text-sm font-medium">Upload foto's (Max 20 foto's)</label>
+                        <label class="block text-sm font-medium">Upload foto's (Max 30 foto's)</label>
                         <input type="file" id="photoUpload" name="photos[]" accept="image/*" multiple
                             class="w-full border px-3 py-2 rounded mt-1 text-sm md:text-base">
                         <p id="errorPhoto" class="text-red-500 text-xs md:text-sm mt-1 hidden"></p>
@@ -608,9 +620,9 @@ document.getElementById("photoUpload").addEventListener("change", (e) => {
     let preview = document.getElementById("photoPreview");
     preview.innerHTML = "";
 
-    if (files.length > 20) {
-        alert("Je mag maximaal 20 foto's uploaden.");
-        files = files.slice(0, 20);
+    if (files.length > 30) {
+        alert("Je mag maximaal 30 foto's uploaden.");
+        files = files.slice(0, 30);
     }
 
     files.forEach(file => {
@@ -699,78 +711,6 @@ document.getElementById("photoUpload").addEventListener("change", (e) => {
 
             return isValid;
         }
-        // Compressie + upload
-        async function compressAndUpload(files, namespaceId, adresSelect, perceelOriginal, taskId) {
-            const MAX_PARALLEL = 3; // voor mobiel
-            const compressedFiles = await Promise.all(files.map(f =>
-                imageCompression(f, {
-                    maxSizeMB: 0.7,
-                    maxWidthOrHeight: 1920,
-                    useWebWorker: true
-                })
-            ));
-
-            const queue = [...compressedFiles];
-
-            let completed = 0;
-
-            // Upload in parallel
-            const workers = new Array(MAX_PARALLEL).fill(null).map(async () => {
-                while (queue.length) {
-                    const file = queue.shift();
-                    try {
-                        const {
-                            session_id,
-                            access_token,
-                            team_member_id
-                        } = await startDropboxSession();
-                        if (!session_id || !access_token) continue;
-
-                        const filename = `${Date.now()}_${file.name}`;
-                        const isPerceel1 = /perceel\s*1/i.test(perceelOriginal);
-                        const targetPath = isPerceel1 ?
-                            `${adresSelect.value}/${filename}` :
-                            `/${adresSelect.value}/${filename}`;
-
-                        const result = await uploadToDropbox(
-                            file,
-                            access_token,
-                            session_id,
-                            targetPath,
-                            team_member_id,
-                            namespaceId,
-                            isPerceel1
-                        );
-
-                        const storedPath = isPerceel1 ?
-                            `/PERCEEL 1${result.path_display}` :
-                            `/PERCEEL 2${result.path_display}`;
-
-                        await fetch(`/tasks/${taskId}/upload-photo`, {
-                            method: "POST",
-                            headers: {
-                                "X-CSRF-TOKEN": document.querySelector(
-                                        'meta[name="csrf-token"]')
-                                    .content,
-                                "Content-Type": "application/json"
-                            },
-                            body: JSON.stringify({
-                                namespace_id: namespaceId,
-                                path: adresSelect.value,
-                                photos: [storedPath]
-                            })
-                        });
-                    } catch (err) {
-                        console.warn("Upload mislukt, opnieuw proberen…", err);
-                        await new Promise(r => setTimeout(r, 2000)); // korte retry-wait
-                    } finally {
-                        completed++;
-                    }
-                }
-            });
-
-            await Promise.allSettled(workers);
-        }
 
         // ===============================================
         // 🔹 Compressie & Upload helpers
@@ -798,93 +738,6 @@ document.getElementById("photoUpload").addEventListener("change", (e) => {
             }
             return compressed;
         }
-
-        /* ——— 4. Dropbox sessie starten ——— */
-        async function startDropboxSession() {
-            const res = await fetch("/dropbox/start-session", {
-                method: "POST",
-                headers: {
-                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                    "Accept": "application/json"
-                }
-            });
-            return await res.json();
-        }
-
-        /* ——— 5. Upload bestand in chunks met progress bar ——— */
-        // ✅ Supersnelle versie met kleinere chunks + progress
-        // ⚡ Geoptimaliseerde uploadfunctie (kleinere chunks + progress)
-       // ⚡ Supersnelle en stabiele Dropbox uploader (8MB chunks)
-async function uploadToDropbox(file, accessToken, sessionId, targetPath, teamMemberId, namespaceId) {
-    const CHUNK_SIZE = 8 * 1024 * 1024; // grotere chunks → minder overhead
-    let offset = 0;
-
-    const makeHeaders = (extra = {}) => ({
-        "Authorization": `Bearer ${accessToken}`,
-        "Dropbox-API-Select-User": teamMemberId,
-        "Dropbox-API-Path-Root": JSON.stringify({
-            ".tag": "namespace_id",
-            "namespace_id": namespaceId
-        }),
-        "Content-Type": "application/octet-stream",
-        ...extra
-    });
-
-    const wait = (ms) => new Promise(r => setTimeout(r, ms));
-
-    while (offset < file.size) {
-        const chunk = file.slice(offset, offset + CHUNK_SIZE);
-        const res = await fetch("https://content.dropboxapi.com/2/files/upload_session/append_v2", {
-            method: "POST",
-            headers: makeHeaders({
-                "Dropbox-API-Arg": JSON.stringify({
-                    cursor: { session_id: sessionId, offset },
-                    close: false
-                })
-            }),
-            body: chunk
-        });
-
-        if (res.status === 429) {
-            const retryAfter = parseInt(res.headers.get("Retry-After")) || 1500;
-            await wait(retryAfter);
-            continue;
-        }
-
-        if (!res.ok) throw new Error(await res.text());
-        offset += chunk.size;
-    }
-
-    // ✅ Finish upload
-    for (let attempt = 0; attempt < 3; attempt++) {
-        const finish = await fetch("https://content.dropboxapi.com/2/files/upload_session/finish", {
-            method: "POST",
-            headers: makeHeaders({
-                "Dropbox-API-Arg": JSON.stringify({
-                    cursor: { session_id: sessionId, offset },
-                    commit: {
-                        path: targetPath,
-                        mode: "add",
-                        autorename: true,
-                        mute: false
-                    }
-                })
-            }),
-            body: ""
-        });
-
-        if (finish.status === 429) {
-            const retryAfter = parseInt(finish.headers.get("Retry-After")) || 1500;
-            await wait(retryAfter);
-            continue;
-        }
-
-        if (!finish.ok) throw new Error(await finish.text());
-        return await finish.json();
-    }
-
-    throw new Error("Dropbox finish faalde na 3 pogingen");
-}
 
 
 
@@ -933,11 +786,6 @@ async function compressInBatches(files, options, batchSize = 2) {
     return compressed;
 }
 
-
-
-
-        // 🔹 Submit handler met compressie + upload + progress
-        // 🔹 Submit handler met compressie + upload + progress
         // 🔹 Submit handler met compressie + upload + progress
         document.getElementById("finishForm").addEventListener("submit", async (e) => {
             e.preventDefault();
@@ -987,66 +835,60 @@ const compressedFiles = await compressInBatches(files, compressOptions, 2);
 
 
                     // ✅ Upload direct naar Dropbox in batches (3 tegelijk)
-                    const batchSize = 3;
-                    const uploadStart = performance.now();
+                    // ✅ Upload direct naar Cloudflare R2 (i.p.v. Dropbox)
+const uploadStart = performance.now();
 
-                    for (let i = 0; i < compressedFiles.length; i += batchSize) {
-                        const batch = compressedFiles.slice(i, i + batchSize);
-                        await Promise.all(batch.map(async (file) => {
-                            try {
-                                const {
-                                    session_id,
-                                    access_token,
-                                    team_member_id
-                                } = await startDropboxSession();
-                                if (!session_id || !access_token) throw new Error(
-                                    "Geen geldige sessie ontvangen");
+try {
+    // 1️⃣ Vraag tijdelijke upload-URLs aan bij Laravel
+    const urlsRes = await fetch("/r2/upload-urls", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+        },
+        body: JSON.stringify({
+            files: compressedFiles.map(f => f.name)
+        })
+    });
 
-                                const filename = `${Date.now()}_${file.name}`;
-                                const targetPath = `${adresPath}/${filename}`;
+    const { urls } = await urlsRes.json(); // [{ name, url, path }]
 
-                                const result = await uploadToDropbox(
-                                    file,
-                                    access_token,
-                                    session_id,
-                                    targetPath,
-                                    team_member_id,
-                                    namespaceId,
-                                    true
-                                );
+    // 2️⃣ Upload elke foto rechtstreeks naar Cloudflare R2
+    await Promise.all(urls.map(async (u, i) => {
+        await fetch(u.url, {
+            method: "PUT",
+            headers: { "Content-Type": compressedFiles[i].type },
+            body: compressedFiles[i]
+        });
+        console.log(`☁️ ${compressedFiles[i].name} geüpload naar R2`);
+    }));
 
-                                // 🔹 voeg elk pad toe aan lijst
-                                uploadedPaths.push(result.path_display);
+    // 3️⃣ Meld aan Laravel welke bestanden klaarstaan voor Dropbox
+    await fetch(`/tasks/${taskId}/upload-photo`, {
+        method: "POST",
+        headers: {
+            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            storage: "r2",
+            photos: urls.map(u => u.path), // alle R2-paden
+            path: adresPath, // bijv. "PERCEEL 1/Webapp uploads/Adresnaam"
+            namespace_id: namespaceId
+        })
+    });
 
-                                console.log(`✅ ${file.name} geüpload naar Dropbox`);
-                            } catch (err) {
-                                console.error("❌ Fout bij upload naar Dropbox:", err);
-                            }
-                        }));
-                    }
+    console.log(`✅ ${compressedFiles.length} foto's geüpload naar R2 en gemeld aan Laravel`);
+    showToast(`✅ ${compressedFiles.length} foto's succesvol geüpload!`);
 
-                    // 🔹 Alle uploads voltooid → alles in één keer opslaan
-                    if (uploadedPaths.length > 0) {
-                        await fetch(`/tasks/${taskId}/upload-photo`, {
-                            method: "POST",
-                            headers: {
-                                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')
-                                    .content,
-                                "Content-Type": "application/json"
-                            },
-                            body: JSON.stringify({
-                                namespace_id: namespaceId,
-                                path: adresPath,
-                                photos: uploadedPaths
-                            })
-                        });
-                    }
+} catch (err) {
+    console.error("❌ Fout bij upload naar R2:", err);
+    showToast("⚠️ Upload mislukt, probeer opnieuw.");
+}
 
-                    const uploadEnd = performance.now();
-                    console.log(
-                        `📸 Uploadtijd (frontend direct naar Dropbox): ${((uploadEnd - uploadStart) / 1000).toFixed(2)}s`
-                        );
-                    showToast(`✅ ${files.length} foto's rechtstreeks naar Dropbox geüpload!`);
+const uploadEnd = performance.now();
+console.log(`🚀 Uploadtijd (frontend → R2): ${((uploadEnd - uploadStart) / 1000).toFixed(2)}s`);
+
                 }
 
                 // ✅ Status bijwerken, maar met sendBeacon fallback
@@ -1097,25 +939,7 @@ if (navigator.sendBeacon) {
     }
 }
 
-                if (resFinish.ok) {
-                    const json = await resFinish.json();
-                    updateTaskStatusRow(taskId, json.status);
-                    showToast("🎉 Taak succesvol afgerond!");
-                    closeTaskForm();
-
-                    // ✅ Loader netjes afsluiten met korte "Klaar!" fade-out
-                    const loaderText = document.getElementById("loaderText");
-                    loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
-                    setTimeout(() => {
-                        loader.classList.add("opacity-0", "transition-opacity", "duration-700");
-                        setTimeout(() => loader.remove(), 700);
-                    }, 600);
-                } else {
-                    showToast("⚠️ Fout bij afronden van taak.");
-                    const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
-                    if (loaderEl) loaderEl.remove();
-                }
-
+            
             } catch (err) {
                 console.error("Upload fout:", err);
                 const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
@@ -1125,11 +949,6 @@ if (navigator.sendBeacon) {
                 finishButton.textContent = "Voltooien";
             }
         });
-
-
-
-
-
 
         // 🔹 Toast helper
         function showToast(message, duration = 4000) {

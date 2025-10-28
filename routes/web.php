@@ -9,7 +9,100 @@ use App\Http\Controllers\TaskController;
 use App\Http\Controllers\LeaveRequestController;
 use Illuminate\Support\Facades\Auth;
 use App\Events\TestEvent;
+use Aws\S3\S3Client;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+
+
+
+Route::middleware(['auth'])->group(function () {
+    Route::post('/r2/presigned-url', function (Request $request) {
+        $request->validate([
+            'filename' => 'required|string|max:255',
+            'folder'   => 'nullable|string|max:255',
+        ]);
+
+        // Optioneel: voeg een folder toe zoals "uploads/team_1"
+        $folder = $request->input('folder', 'uploads');
+        $path = trim($folder, '/') . '/' . uniqid() . '_' . $request->filename;
+
+        // Maak een tijdelijke upload URL (5 minuten geldig)
+        try {
+            $url = Storage::disk('r2')->temporaryUploadUrl(
+                $path,
+                now()->addMinutes(5)
+            );
+
+            return response()->json([
+                'success' => true,
+                'upload_url' => $url,
+                'path' => $path,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    })->name('r2.presigned');
+
+ Route::post('/r2/upload-urls', function (Request $request) {
+    $files = $request->input('files', []);
+
+    $urls = collect($files)->map(function ($name) {
+        $path = 'uploads/' . uniqid() . '_' . $name;
+
+        try {
+            $s3 = new S3Client([
+                'region' => 'auto',
+                'version' => 'latest',
+                'endpoint' => env('R2_ENDPOINT'),
+                'credentials' => [
+                    'key' => env('R2_ACCESS_KEY_ID'),
+                    'secret' => env('R2_SECRET_ACCESS_KEY'),
+                ],
+            ]);
+
+            $cmd = $s3->getCommand('PutObject', [
+                'Bucket' => env('R2_BUCKET'),
+                'Key'    => $path,
+                // ✅ Belangrijk: verwijder deze regel of vervang met 'public-read'
+                //'ACL'    => 'public-read',
+            ]);
+
+            $request = $s3->createPresignedRequest($cmd, '+5 minutes');
+            $tempUrl = (string) $request->getUri();
+
+            Log::info("✅ Presigned R2 upload URL gegenereerd", [
+                'file' => $name,
+                'url'  => $tempUrl,
+            ]);
+
+            return [
+                'name' => $name,
+                'url'  => $tempUrl,
+                'path' => $path,
+            ];
+        } catch (\Throwable $e) {
+            Log::error("❌ R2 upload URL fout: " . $e->getMessage(), ['file' => $name]);
+            return [
+                'name'  => $name,
+                'error' => $e->getMessage(),
+            ];
+        }
+    });
+
+    return response()->json(['urls' => $urls]);
+})->name('r2.upload_urls');
+
+});
+
+Route::get('/r2/test', function () {
+    $files = Storage::disk('r2')->files('uploads');
+    return response()->json($files);
+});
 
 Route::middleware('auth')->get('/fire-test', function () {
     broadcast(new TestEvent('Hallo vanuit Laravel Reverb!'));
@@ -49,7 +142,7 @@ Route::delete('/notifications/{id}', function ($id) {
     }
 
     return back()->with('error', 'Notificatie niet gevonden of niet van jou.');
-})->name('notifications.destroy'); 
+})->name('notifications.destroy');
 
 Route::get('/', function () {
     // Als de gebruiker al ingelogd is, stuur hem naar de juiste dashboard
@@ -70,8 +163,7 @@ Route::middleware('guest')->group(function () {
 });
 Route::middleware(['auth'])->group(function () {
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
-
-    });
+});
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/teams', [TeamController::class, 'index'])->name('teams.index');
@@ -116,13 +208,13 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/dropbox/members', [TaskController::class, 'listTeamMembers']);
     Route::get('/dropbox/preview', [TaskController::class, 'previewPhoto']);
 
-Route::get('/dropbox/create-adres', fn() => abort(404));
+    Route::get('/dropbox/create-adres', fn() => abort(404));
     Route::post('/dropbox/create-adres', [TaskController::class, 'createAdresFolder'])->name('dropbox.create_adres');
     Route::post('/dropbox/upload-adres-photos', [TaskController::class, 'uploadAdresPhotos']);
     Route::post('/tasks/{id}/upload-photo', [TaskController::class, 'uploadPhoto']);
     Route::post('/dropbox/start-session', [TaskController::class, 'startDropboxSession'])
-    ->name('dropbox.start_session');
-   Route::post('/tasks/{task}/upload-temp', [TaskController::class, 'uploadTemp'])->name('tasks.uploadTemp');
+        ->name('dropbox.start_session');
+    Route::post('/tasks/{task}/upload-temp', [TaskController::class, 'uploadTemp'])->name('tasks.uploadTemp');
 });
 
 Route::middleware(['auth'])->group(function () {
@@ -130,7 +222,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/leaves/create', [LeaveRequestController::class, 'create'])->name('leaves.create');
     Route::post('/leaves', [LeaveRequestController::class, 'store'])->name('leaves.store');
     Route::post('/leaves/{id}/status', [LeaveRequestController::class, 'updateStatus'])->name('leaves.status');
-     Route::get('/leaves/{id}/edit', [LeaveRequestController::class, 'edit'])->name('leaves.edit');
-     Route::put('/leaves/{id}', [LeaveRequestController::class, 'update'])->name('leaves.update');
+    Route::get('/leaves/{id}/edit', [LeaveRequestController::class, 'edit'])->name('leaves.edit');
+    Route::put('/leaves/{id}', [LeaveRequestController::class, 'update'])->name('leaves.update');
     Route::delete('/leaves/{id}', [LeaveRequestController::class, 'destroy'])->name('leaves.destroy');
 });

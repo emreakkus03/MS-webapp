@@ -1,4 +1,4 @@
-<?php 
+<?php
 
 namespace App\Http\Controllers;
 
@@ -8,14 +8,15 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use App\Services\DropboxService;
 use App\Notifications\TaskCompletedNotification;
-use App\Models\Team; 
+use App\Models\Team;
 use App\Jobs\UploadToDropboxJob;
+use App\Jobs\MoveToDropboxJob;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Bus;
 
 class TaskController extends Controller
 {
-   public function finish(Request $request, Task $task)
+    public function finish(Request $request, Task $task)
     {
         $request->validate([
             'damage' => 'required|in:none,damage',
@@ -44,9 +45,9 @@ class TaskController extends Controller
             ->where('id', '!=', $task->id)
             ->update(['status' => $task->status]);
 
-        $team = Auth::user(); 
-        $address = $task->address 
-            ? "{$task->address->street} {$task->address->number}, {$task->address->zipcode} {$task->address->city}" 
+        $team = Auth::user();
+        $address = $task->address
+            ? "{$task->address->street} {$task->address->number}, {$task->address->zipcode} {$task->address->city}"
             : "Onbekend adres";
 
         if ($request->damage === 'damage' && !empty($task->note)) {
@@ -111,34 +112,34 @@ class TaskController extends Controller
         return redirect()->route('tasks.index')->with('success', 'Taak is heropend.');
     }
 
-  public function filter(Request $request)
-{
-    $status = $request->query('status');
-    $q      = $request->query('q');
+    public function filter(Request $request)
+    {
+        $status = $request->query('status');
+        $q      = $request->query('q');
 
-    $tasks = Task::with(['address', 'team'])
-        ->when($status, fn($query) => $query->where('status', $status))
-        ->when($q, function ($query) use ($q) {
-            $query->whereHas('address', function ($sub) use ($q) {
-                $sub->where('street', 'like', "%{$q}%")
-                    ->orWhere('number', 'like', "%{$q}%")
-                    ->orWhere('zipcode', 'like', "%{$q}%")
-                    ->orWhere('city', 'like', "%{$q}%");
-            });
-        })
-        ->orderBy('time', 'desc')
-        ->paginate(10);
+        $tasks = Task::with(['address', 'team'])
+            ->when($status, fn($query) => $query->where('status', $status))
+            ->when($q, function ($query) use ($q) {
+                $query->whereHas('address', function ($sub) use ($q) {
+                    $sub->where('street', 'like', "%{$q}%")
+                        ->orWhere('number', 'like', "%{$q}%")
+                        ->orWhere('zipcode', 'like', "%{$q}%")
+                        ->orWhere('city', 'like', "%{$q}%");
+                });
+            })
+            ->orderBy('time', 'desc')
+            ->paginate(10);
 
-    if ($request->ajax()) {
-        return response()->json([
-            'rows_table' => view('tasks._rows_table', compact('tasks'))->render(),
-            'rows_cards' => view('tasks._rows_cards', compact('tasks'))->render(),
-            'pagination' => view('tasks._pagination', compact('tasks'))->render(),
-        ]);
+        if ($request->ajax()) {
+            return response()->json([
+                'rows_table' => view('tasks._rows_table', compact('tasks'))->render(),
+                'rows_cards' => view('tasks._rows_cards', compact('tasks'))->render(),
+                'pagination' => view('tasks._pagination', compact('tasks'))->render(),
+            ]);
+        }
+
+        return view('tasks.index', compact('tasks'));
     }
-
-    return view('tasks.index', compact('tasks'));
-}
 
     /**
      * ========================
@@ -163,9 +164,10 @@ class TaskController extends Controller
         $folders = $dropbox->listFoldersInNamespace($fluviusNamespaceId, "");
 
         $percelenFromFolders = collect($folders['entries'] ?? [])
-            ->filter(fn($entry) =>
+            ->filter(
+                fn($entry) =>
                 $entry['.tag'] === 'folder' &&
-                stripos($entry['name'], 'perceel') !== false
+                    stripos($entry['name'], 'perceel') !== false
             )
             ->map(fn($entry) => [
                 'name' => $entry['name'],
@@ -177,66 +179,66 @@ class TaskController extends Controller
             $percelenFromNamespaces->merge($percelenFromFolders)->values()
         );
     }
-public function listRegios(DropboxService $dropbox, Request $request)
-{
-    $id   = $request->query('id');   // namespace_id of pad
-    $type = $request->query('type'); // 'namespace' of 'folder'
+    public function listRegios(DropboxService $dropbox, Request $request)
+    {
+        $id   = $request->query('id');   // namespace_id of pad
+        $type = $request->query('type'); // 'namespace' of 'folder'
 
-    if (!$id || !$type) {
-        return response()->json(['error' => 'id + type verplicht']);
+        if (!$id || !$type) {
+            return response()->json(['error' => 'id + type verplicht']);
+        }
+
+        // 🔹 Perceel 1 (namespace)
+        if ($type === 'namespace') {
+            $namespaceUsed = $id;
+            $folderPath = "/Webapp uploads"; // altijd relatief binnen namespace
+
+            $adresResult = $dropbox->listFoldersInNamespace($namespaceUsed, $folderPath);
+
+            $count = collect($adresResult['entries'] ?? [])
+                ->filter(fn($e) => ($e['.tag'] ?? null) === 'folder')
+                ->count();
+
+            return response()->json([[
+                'name'      => "Webapp uploads ({$count})",
+                'path'      => $folderPath,   // relatieve path voor Perceel 1
+                'id'        => null,
+                'namespace' => $namespaceUsed,
+                'count'     => $count,
+            ]]);
+        }
+
+        // 🔹 Perceel 2 (Fluvius)
+        $namespaceUsed = $dropbox->getFluviusNamespaceId();
+        $basePath = $id;
+
+        $list = $dropbox->listFoldersInNamespace($namespaceUsed, $basePath);
+
+        $webappFolders = collect($list['entries'] ?? [])->filter(function ($entry) {
+            return ($entry['.tag'] ?? null) === 'folder'
+                && strcasecmp(trim($entry['name']), 'Webapp uploads') === 0;
+        });
+
+        $regios = $webappFolders->take(1)->map(function ($folder) use ($dropbox, $namespaceUsed) {
+            $folderPath = $folder['path_display'] ?? "";
+
+            $adresResult = $dropbox->listFoldersInNamespace($namespaceUsed, $folderPath);
+
+            $count = collect($adresResult['entries'] ?? [])
+                ->filter(fn($e) => ($e['.tag'] ?? null) === 'folder')
+                ->count();
+
+            return [
+                'name'      => $folder['name'] . " ({$count})",
+                'path'      => $folderPath,
+                'id'        => $folder['id'] ?? null,
+                'namespace' => $namespaceUsed,
+                'count'     => $count,
+            ];
+        })->values();
+
+        return response()->json($regios);
     }
-
-    // 🔹 Perceel 1 (namespace)
-    if ($type === 'namespace') {
-        $namespaceUsed = $id;
-        $folderPath = "/Webapp uploads"; // altijd relatief binnen namespace
-
-        $adresResult = $dropbox->listFoldersInNamespace($namespaceUsed, $folderPath);
-
-        $count = collect($adresResult['entries'] ?? [])
-            ->filter(fn($e) => ($e['.tag'] ?? null) === 'folder')
-            ->count();
-
-        return response()->json([[
-            'name'      => "Webapp uploads ({$count})",
-            'path'      => $folderPath,   // relatieve path voor Perceel 1
-            'id'        => null,
-            'namespace' => $namespaceUsed,
-            'count'     => $count,
-        ]]);
-    }
-
-    // 🔹 Perceel 2 (Fluvius)
-    $namespaceUsed = $dropbox->getFluviusNamespaceId();
-    $basePath = $id;
-
-    $list = $dropbox->listFoldersInNamespace($namespaceUsed, $basePath);
-
-    $webappFolders = collect($list['entries'] ?? [])->filter(function ($entry) {
-        return ($entry['.tag'] ?? null) === 'folder'
-            && strcasecmp(trim($entry['name']), 'Webapp uploads') === 0;
-    });
-
-    $regios = $webappFolders->take(1)->map(function ($folder) use ($dropbox, $namespaceUsed) {
-        $folderPath = $folder['path_display'] ?? "";
-
-        $adresResult = $dropbox->listFoldersInNamespace($namespaceUsed, $folderPath);
-
-        $count = collect($adresResult['entries'] ?? [])
-            ->filter(fn($e) => ($e['.tag'] ?? null) === 'folder')
-            ->count();
-
-        return [
-            'name'      => $folder['name'] . " ({$count})",
-            'path'      => $folderPath,
-            'id'        => $folder['id'] ?? null,
-            'namespace' => $namespaceUsed,
-            'count'     => $count,
-        ];
-    })->values();
-
-    return response()->json($regios);
-}
 
 
 
@@ -248,7 +250,7 @@ public function listRegios(DropboxService $dropbox, Request $request)
         $namespaceId = $request->query('namespace_id');
         $path        = $request->query('path');
         $cursor      = $request->query('cursor');
-        $search      = $request->query('search'); 
+        $search      = $request->query('search');
 
         if (!$namespaceId || (!$path && !$cursor)) {
             return response()->json(['error' => 'namespace_id + path of cursor verplicht'], 400);
@@ -286,47 +288,46 @@ public function listRegios(DropboxService $dropbox, Request $request)
     }
 
     // 🔹 Nieuwe adresmap altijd in Webapp uploads
-   public function createAdresFolder(Request $request, DropboxService $dropbox)
-{
-     Log::info('createAdresFolder aangeroepen', $request->all());
-    $data = $request->validate([
-        'namespace_id' => 'required|string',
-        'path'         => 'required|string',  
-        'adres'        => 'required|string|min:1|max:200'
-    ]);
+    public function createAdresFolder(Request $request, DropboxService $dropbox)
+    {
+        Log::info('createAdresFolder aangeroepen', $request->all());
+        $data = $request->validate([
+            'namespace_id' => 'required|string',
+            'path'         => 'required|string',
+            'adres'        => 'required|string|min:1|max:200'
+        ]);
 
-    try {
-        $namespaceId = $data['namespace_id'];
-        $parentPath  = $data['path'];
+        try {
+            $namespaceId = $data['namespace_id'];
+            $parentPath  = $data['path'];
 
-        // 🔹 Bij Perceel 1 → pad relativeren
-        if ($namespaceId !== $dropbox->getFluviusNamespaceId()) {
-            $parentPath = ltrim(preg_replace('/^\/?Perceel 1/i', '', $parentPath), '/');
+            // 🔹 Bij Perceel 1 → pad relativeren
+            if ($namespaceId !== $dropbox->getFluviusNamespaceId()) {
+                $parentPath = ltrim(preg_replace('/^\/?Perceel 1/i', '', $parentPath), '/');
+            }
+
+            $meta = $dropbox->createChildFolder($namespaceId, $parentPath, $data['adres']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Map succesvol aangemaakt!',
+                'folder'  => [
+                    'name'      => $meta['name'] ?? $data['adres'],
+                    'path'      => $meta['path_display'] ?? (rtrim($parentPath, '/') . '/' . $data['adres']),
+                    'namespace' => $namespaceId,
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Dropbox fout bij map maken.',
+                'error'   => $e->getMessage(),
+            ], 500);
         }
-
-        $meta = $dropbox->createChildFolder($namespaceId, $parentPath, $data['adres']);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Map succesvol aangemaakt!',
-            'folder'  => [
-                'name'      => $meta['name'] ?? $data['adres'],
-                'path'      => $meta['path_display'] ?? (rtrim($parentPath, '/') . '/' . $data['adres']),
-                'namespace' => $namespaceId,
-            ],
-        ], 201);
-
-    } catch (\Throwable $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Dropbox fout bij map maken.',
-            'error'   => $e->getMessage(),
-        ], 500);
     }
-}
 
 
-public function uploadPhoto(Request $request, DropboxService $dropbox, $taskId)
+    public function uploadPhoto(Request $request, DropboxService $dropbox, $taskId)
 {
     $request->validate([
         'namespace_id' => 'required|string',
@@ -334,63 +335,63 @@ public function uploadPhoto(Request $request, DropboxService $dropbox, $taskId)
         'photos'       => 'required',
     ]);
 
-    $task   = Task::findOrFail($taskId);
-    $photos = $task->photo ? explode(',', $task->photo) : [];
+    $namespaceId = $request->input('namespace_id');
+    $adresPath   = trim($request->input('path'), '/');
+    $task        = Task::findOrFail($taskId);
 
-    // 👉 Controleer of het JSON-paths zijn of echte uploads
-    if (is_array($request->photos) && !is_a($request->photos[0] ?? null, \Illuminate\Http\UploadedFile::class)) {
-        // 🔹 JSON-variant → directe Dropbox-paden
-        foreach ($request->photos as $photoPath) {
-            $safePath = str_replace(',', '%2C', $photoPath);
+    // 🔍 Detecteer perceeltype via namespace_id
+    $isPerceel1 = $namespaceId !== $dropbox->getFluviusNamespaceId();
 
-            // 🧠 Voeg automatisch de juiste perceel-prefix toe
-            if ($request->namespace_id !== $dropbox->getFluviusNamespaceId()) {
-                // Perceel 1 (Aansluitingen)
-                if (!str_starts_with($safePath, '/PERCEEL 1')) {
-                    $safePath = '/PERCEEL 1' . $safePath;
-                }
-            } else {
-                // Perceel 2 (Fluvius / Graafwerk)
-                if (!str_starts_with($safePath, '/PERCEEL 2')) {
-                    $safePath = '/PERCEEL 2' . $safePath;
-                }
-            }
-
-            $photos[] = $safePath;
-        }
+    // 📁 Bouw basis Dropbox-pad
+    if ($isPerceel1) {
+        $fullDropboxPath = "Fluvius Aansluitingen/PERCEEL 1/Webapp uploads/{$adresPath}";
     } else {
-        // 🔹 Multipart-variant → echte bestanden
-        foreach ($request->file('photos', []) as $file) {
-            if (count($photos) >= 20) break;
-
-            $filename = uniqid() . '.' . $file->getClientOriginalExtension();
-            $basePath = rtrim($request->path, '/');
-
-            if ($request->namespace_id !== $dropbox->getFluviusNamespaceId()) {
-                // Perceel 1
-                $uploadPath = '/' . ltrim(preg_replace('/^\/?Perceel 1/i', '', $basePath . '/' . $filename), '/');
-                $dbPath     = '/PERCEEL 1' . $basePath . '/' . $filename;
-            } else {
-                // Perceel 2
-                $uploadPath = $basePath . '/' . $filename;
-                $dbPath     = '/PERCEEL 2' . $basePath . '/' . $filename;
-            }
-
-            $dropbox->uploadStreamFast($request->namespace_id, $uploadPath, $file);
-
-            $photos[] = str_replace(',', '%2C', $dbPath);
-        }
+        $fullDropboxPath = "Fluvius Aansluitingen/PERCEEL 2/Webapp uploads/{$adresPath}";
     }
 
-    $task->photo = implode(',', $photos);
-    $task->save();
+    // 💾 Sla tijdelijk R2-paden op zodat frontend ziet dat upload ok is
+    $photos = $task->photo ? explode(',', $task->photo) : [];
+    foreach ((array)$request->input('photos') as $photoPath) {
+        $photos[] = $photoPath;
+    }
+
+   // 📸 Tijdelijke opslag enkel voor logging (niet in DB)
+Log::info("📸 Tijdelijke R2 upload ontvangen", [
+    'task_id' => $taskId,
+    'photos'  => $request->input('photos'),
+    'adresPath' => $adresPath,
+    'namespace_id' => $namespaceId,
+]);
+
+// ⚙️ Laat de job de Dropbox-paden opslaan
+dispatch(new MoveToDropboxJob(
+    $request->input('photos'),
+    $adresPath,
+    $namespaceId,
+    $taskId
+));
+
+return response()->json([
+    'success' => true,
+    'queued'  => true,
+    'message' => '📦 Foto’s via R2 geüpload en worden op achtergrond verplaatst naar Dropbox.',
+]);
+
+    // 🚀 Queue job → R2 → Dropbox
+    dispatch(new MoveToDropboxJob(
+        $request->input('photos'),
+        $fullDropboxPath,
+        $namespaceId,
+        $taskId
+    ));
 
     return response()->json([
-        'message' => 'Foto(s) succesvol toegevoegd',
-        'files'   => $photos
+        'success' => true,
+        'queued'  => true,
+        'message' => '📦 Foto’s via R2 geüpload en worden op achtergrond verplaatst naar Dropbox.',
+        'files'   => $request->input('photos'),
     ]);
 }
-
 
     public function listTeamMembers(DropboxService $dropbox)
     {
@@ -415,7 +416,7 @@ public function uploadPhoto(Request $request, DropboxService $dropbox, $taskId)
     {
         $request->validate([
             'path'        => 'required|string',
-            'namespace_id'=> 'nullable|string', 
+            'namespace_id' => 'nullable|string',
         ]);
 
         try {
@@ -431,57 +432,56 @@ public function uploadPhoto(Request $request, DropboxService $dropbox, $taskId)
         }
     }
 
- public function startDropboxSession(DropboxService $dropbox)
-{
-    try {
-        $session = $dropbox->startUploadSession();
+    public function startDropboxSession(DropboxService $dropbox)
+    {
+        try {
+            $session = $dropbox->startUploadSession();
+
+            return response()->json([
+                'success'        => true,
+                'session_id'     => $session['session_id'] ?? null,
+                'access_token'   => $dropbox->getAccessToken(),
+                // 🔹 Voeg deze toe:
+                'team_member_id' => config('services.dropbox.team_member_id'),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Dropbox upload session start failed', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Kon geen upload-sessie starten bij Dropbox.',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
+    }
+    public function uploadTemp(Request $request, $taskId)
+    {
+        $task = Task::findOrFail($taskId);
+        $files = $request->file('photos', []);
+        $adresPath = $request->input('path');
+        $namespaceId = $request->input('namespace_id');
+
+        // ✅ Beperk tot max 30 foto’s
+        $files = array_slice($files, 0, 30);
+
+        // ✅ Parallel dispatchen (batch-queue)
+        $batch = [];
+        foreach ($files as $file) {
+            $path = $file->store('temp/uploads', 'local');
+            $batch[] = new UploadToDropboxJob($taskId, $path, $adresPath, $namespaceId);
+        }
+
+        // Laravel’s bus batch → meerdere jobs tegelijk dispatchen
+        if (count($batch)) {
+            Bus::batch($batch)
+                ->name("UploadToDropboxBatch-task-{$taskId}")
+                ->onQueue('uploads')
+                ->dispatch();
+        }
 
         return response()->json([
-            'success'        => true,
-            'session_id'     => $session['session_id'] ?? null,
-            'access_token'   => $dropbox->getAccessToken(),
-            // 🔹 Voeg deze toe:
-            'team_member_id' => config('services.dropbox.team_member_id'),
+            'status' => 'queued',
+            'count'  => count($files),
+            'message' => 'Bestanden in wachtrij geplaatst voor Dropbox-upload'
         ]);
-    } catch (\Throwable $e) {
-        Log::error('Dropbox upload session start failed', ['error' => $e->getMessage()]);
-        return response()->json([
-            'success' => false,
-            'message' => 'Kon geen upload-sessie starten bij Dropbox.',
-            'error'   => $e->getMessage(),
-        ], 500);
     }
-}
-public function uploadTemp(Request $request, $taskId)
-{
-    $task = Task::findOrFail($taskId);
-    $files = $request->file('photos', []);
-    $adresPath = $request->input('path');
-    $namespaceId = $request->input('namespace_id');
-
-    // ✅ Beperk tot max 20 foto’s
-    $files = array_slice($files, 0, 20);
-
-    // ✅ Parallel dispatchen (batch-queue)
-    $batch = [];
-    foreach ($files as $file) {
-        $path = $file->store('temp/uploads', 'local');
-        $batch[] = new UploadToDropboxJob($taskId, $path, $adresPath, $namespaceId);
-    }
-
-    // Laravel’s bus batch → meerdere jobs tegelijk dispatchen
-    if (count($batch)) {
-        Bus::batch($batch)
-            ->name("UploadToDropboxBatch-task-{$taskId}")
-            ->onQueue('uploads')
-            ->dispatch();
-    }
-
-    return response()->json([
-        'status' => 'queued',
-        'count'  => count($files),
-        'message'=> 'Bestanden in wachtrij geplaatst voor Dropbox-upload'
-    ]);
-}
-
 }
