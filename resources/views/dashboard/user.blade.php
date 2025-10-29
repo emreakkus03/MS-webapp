@@ -910,6 +910,24 @@ if (navigator.sendBeacon) {
     beaconData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
     navigator.sendBeacon(finishUrl, beaconData);
     console.log("📡 Task finish verzonden via sendBeacon");
+    // ✅ Bepaal nieuwe status op basis van huidige status en damage-keuze
+const currentStatus = document.querySelector(`tr[data-task-id="${taskId}"]`)?.dataset.status;
+const damage = form.querySelector('input[name="damage"]:checked')?.value;
+let newStatus = currentStatus;
+
+if (currentStatus === "open") {
+    newStatus = "in behandeling";
+} else if (["in behandeling", "reopened"].includes(currentStatus)) {
+    if (damage === "none") {
+        newStatus = "finished";
+    } else if (damage === "damage") {
+        newStatus = "in behandeling";
+    }
+}
+
+// ✅ Visueel updaten in tabel
+updateTaskStatusRow(taskId, newStatus);
+console.log(`🔄 Status lokaal bijgewerkt naar: ${newStatus}`);
 
     // ⚡ Direct visueel afronden voor de gebruiker
     showToast("🎉 Taak succesvol afgerond!");
