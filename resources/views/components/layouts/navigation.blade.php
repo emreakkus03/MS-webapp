@@ -33,127 +33,86 @@
                     <!-- Flex-grow duwt bel helemaal rechts -->
                     <div class="flex-grow"></div>
 
-                  <!-- Notificatie Bell -->
-@if (auth()->user()->role === 'admin')
-    <div x-data="{ openNotif: false, activeTab: 'task' }" class="relative right-8 md:right-0">
-        <!-- Bel icoon -->
-        <button @click="openNotif = !openNotif" class="relative">
-            <img src="{{ asset('images/icon/notification.svg') }}" alt="Notificaties" class="w-6 h-6 text-gray-500">
-            @if (auth()->user()->unreadNotifications->count() > 0)
-                <span
-                    class="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-1.5 py-0.5">
-                    {{ auth()->user()->unreadNotifications->count() }}
-                </span>
-            @endif
-        </button>
-
-        <!-- Dropdown -->
-        <div x-show="openNotif" @click.away="openNotif = false"
-             class="absolute -left-40 md:left-0 mt-2 w-80 bg-white border rounded-lg shadow-lg z-50" x-cloak>
-
-            <!-- Tabs -->
-            <div class="flex border-b text-sm font-medium text-gray-600">
-                <button @click="activeTab = 'task'"
-                    :class="activeTab === 'task' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'"
-                    class="flex-1 py-2">🧱 Taken</button>
-                <button @click="activeTab = 'leave'"
-                    :class="activeTab === 'leave' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'"
-                    class="flex-1 py-2">🏖️ Verlofaanvragen</button>
-            </div>
-
-            @php
-                $taskNotifs = auth()->user()->notifications->filter(fn($n) => $n->data['type'] === 'task');
-                $leaveNotifs = auth()->user()->notifications->filter(fn($n) => $n->data['type'] === 'leave');
-            @endphp
-
-            <!-- Taken -->
-            <ul x-show="activeTab === 'task'" class="max-h-60 overflow-y-auto divide-y divide-gray-200">
-                @forelse ($taskNotifs as $notification)
-                    <li class="flex justify-between items-start gap-2 p-3 text-sm 
-                        {{ is_null($notification->read_at) ? 'font-bold text-gray-900 bg-gray-50' : 'text-gray-700' }}">
-                        <div class="flex-1">
-                            <div>{{ $notification->data['message'] }}</div>
-                            <div class="text-xs text-gray-500 mt-1">
-                                {{ $notification->created_at->locale('nl')->diffForHumans() }}
-                                ({{ $notification->created_at->format('d-m-Y H:i') }})
-                            </div>
-                        </div>
-
-                        <form action="{{ route('notifications.destroy', $notification->id) }}" method="POST"
-                              onsubmit="return confirm('Weet je zeker dat je deze notificatie wilt verwijderen?')">
-                            @csrf
-                            @method('DELETE')
-                            <button class="text-gray-400 hover:text-red-600" title="Verwijderen">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
-                                    viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 
-                                             4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 
-                                             1v3m-4 0h14" />
-                                </svg>
+                    <!-- Notificatie Bell -->
+                    @if (auth()->user()->role === 'admin')
+                        <div x-data="{ openNotif: false }" class="relative right-8 md:right-0">
+                            <!-- 🔹 extra margin rechts -->
+                            <button @click="openNotif = !openNotif" class="relative ">
+                                <img src="{{ asset('images/icon/notification.svg') }}" alt="Notificaties"
+                                    class="w-6 h-6 text-gray-500"> <!-- 🔹 iets groter nu -->
+                                <!-- Badge -->
+                                @if (auth()->user()->unreadNotifications->count() > 0)
+                                    <span
+                                        class="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-1.5 py-0.5">
+                                        {{ auth()->user()->unreadNotifications->count() }}
+                                    </span>
+                                @endif
                             </button>
-                        </form>
-                    </li>
-                @empty
-                    <li class="p-3 text-sm text-gray-400">Geen taakmeldingen</li>
-                @endforelse
-            </ul>
 
-            <!-- Verlofaanvragen -->
-            <ul x-show="activeTab === 'leave'" class="max-h-60 overflow-y-auto divide-y divide-gray-200">
-                @forelse ($leaveNotifs as $notification)
-                    <li class="flex justify-between items-start gap-2 p-3 text-sm 
-                        {{ is_null($notification->read_at) ? 'font-bold text-gray-900 bg-gray-50' : 'text-gray-700' }}">
-                        <div class="flex-1">
-                            <div>{{ $notification->data['message'] }}</div>
-                            <div class="text-xs text-gray-500 mt-1">
-                                {{ $notification->created_at->locale('nl')->diffForHumans() }}
-                                ({{ $notification->created_at->format('d-m-Y H:i') }})
+                            <!-- Dropdown met notificaties -->
+                            <div x-show="openNotif" @click.away="openNotif = false"
+                                class="absolute -left-40 md:left-0 mt-2 w-72 bg-white border rounded-lg shadow-lg z-50">
+                                <ul id="notifications" class="max-h-60 overflow-y-auto divide-y divide-gray-200">
+                                    @forelse(auth()->user()->notifications as $notification)
+                                        <li
+                                            class="flex justify-between items-start gap-2 p-3 text-sm 
+            {{ is_null($notification->read_at) ? 'font-bold text-gray-900 bg-gray-50' : 'text-gray-700' }}">
+
+                                            <div class="flex-1">
+                                                <div>{{ $notification->data['message'] }}</div>
+                                                <div class="text-xs text-gray-500 mt-1">
+                                                    {{ $notification->created_at->locale('nl')->diffForHumans() }}
+                                                    ({{ $notification->created_at->format('d-m-Y H:i') }})
+                                                </div>
+                                            </div>
+
+                                            @if (Auth::user()->role === 'admin')
+                                                <form action="{{ route('notifications.destroy', $notification->id) }}"
+                                                    method="POST"
+                                                    onsubmit="return confirm('Weet je zeker dat je deze notificatie wilt verwijderen?')">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <button class="text-gray-400 hover:text-red-600"
+                                                        title="Verwijderen">
+                                                        <!-- 🗑️ Trash icoon -->
+                                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+                                                            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4
+                                  a1 1 0 00-1-1h-4a1 1 0 00-1 1v3m-4 0h14" />
+                                                        </svg>
+                                                    </button>
+                                                </form>
+                                            @endif
+                                        </li>
+                                    @empty
+                                        <li class="p-3 text-sm text-gray-400">Geen meldingen</li>
+                                    @endforelse
+                                </ul>
+
+                                <div class="p-2 text-center space-y-2">
+                                    <form method="POST" action="{{ route('notifications.clear') }}">
+                                        @csrf
+                                        <button class="text-blue-600 text-sm hover:underline">
+                                            Markeer alles als gelezen
+                                        </button>
+                                    </form>
+
+                                    @if (Auth::user()->role === 'admin')
+                                        <form method="POST" action="{{ route('notifications.delete') }}">
+                                            @csrf
+                                            <button class="text-red-600 text-sm hover:underline"
+                                                onclick="return confirm('Weet je zeker dat je ALLE notificaties wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')">
+                                                Verwijder alle notificaties
+                                            </button>
+                                        </form>
+                                    @endif
+                                </div>
+
                             </div>
+
                         </div>
-
-                        <form action="{{ route('notifications.destroy', $notification->id) }}" method="POST"
-                              onsubmit="return confirm('Weet je zeker dat je deze notificatie wilt verwijderen?')">
-                            @csrf
-                            @method('DELETE')
-                            <button class="text-gray-400 hover:text-red-600" title="Verwijderen">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
-                                    viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 
-                                             0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 
-                                             1 0 00-1-1h-4a1 1 0 00-1 1v3m-4 
-                                             0h14" />
-                                </svg>
-                            </button>
-                        </form>
-                    </li>
-                @empty
-                    <li class="p-3 text-sm text-gray-400">Geen verlofaanvragen</li>
-                @endforelse
-            </ul>
-
-            <!-- Onderste knoppen -->
-            <div class="p-2 text-center space-y-2 border-t">
-                <form method="POST" action="{{ route('notifications.clear') }}">
-                    @csrf
-                    <button class="text-blue-600 text-sm hover:underline">
-                        Markeer alles als gelezen
-                    </button>
-                </form>
-
-                <form method="POST" action="{{ route('notifications.delete') }}">
-                    @csrf
-                    <button class="text-red-600 text-sm hover:underline"
-                        onclick="return confirm('Weet je zeker dat je ALLE notificaties wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')">
-                        Verwijder alle notificaties
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-@endif
-
+                    @endif
 
                     <!-- Close icon voor mobiel -->
                     <button @click="open = false" class="absolute top-8 right-4 md:hidden">

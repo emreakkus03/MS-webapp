@@ -39,7 +39,6 @@ class TaskNoteAddedNotification extends Notification
             : "Onbekend adres";
 
         return [
-            'type' => 'task',
             'message' => "{$this->team} heeft een notitie gezet bij {$adresString}.",
         ];
     }
@@ -51,7 +50,6 @@ class TaskNoteAddedNotification extends Notification
             : "Onbekend adres";
 
         return new BroadcastMessage([
-            'type' => 'task',
             'message' => "{$this->team} heeft een notitie gezet bij {$adresString}.",
         ]);
     }

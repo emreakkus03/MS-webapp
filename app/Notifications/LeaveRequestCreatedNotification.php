@@ -36,7 +36,6 @@ class LeaveRequestCreatedNotification extends Notification
     public function toDatabase(object $notifiable): array
     {
         return [
-            'type' => 'leave',
             'message' => "Nieuwe verlofaanvraag van {$this->memberName} ({$this->teamName}) voor {$this->leaveType}.",
         ];
     }
@@ -44,7 +43,6 @@ class LeaveRequestCreatedNotification extends Notification
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
         return new BroadcastMessage([
-            'type' => 'leave',
             'message' => "Nieuwe verlofaanvraag van {$this->memberName} ({$this->teamName}) voor {$this->leaveType}.",
         ]);
     }
