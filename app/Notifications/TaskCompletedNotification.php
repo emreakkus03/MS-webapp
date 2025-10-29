@@ -34,6 +34,7 @@ class TaskCompletedNotification extends Notification
     public function toDatabase(object $notifiable): array
     {
         return [
+            'type' => 'task',
             'message' => "{$this->team} heeft adres '{$this->task}' voltooid.",
         ];
     }
@@ -41,6 +42,7 @@ class TaskCompletedNotification extends Notification
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
         return new BroadcastMessage([
+            'type' => 'task',
             'message' => "{$this->team} heeft adres '{$this->task}' voltooid.",
         ]);
     }
