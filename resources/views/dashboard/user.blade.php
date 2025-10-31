@@ -2,18 +2,18 @@
 
     <head>
         <meta name="csrf-token" content="{{ csrf_token() }}">
-    <script>
-        // Voeg globale CSRF headers toe aan alle fetch requests
-        window.defaultFetch = window.fetch;
-        window.fetch = async (url, options = {}) => {
-            options.headers = {
-                ...(options.headers || {}),
-                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+        <script>
+            // Voeg globale CSRF headers toe aan alle fetch requests
+            window.defaultFetch = window.fetch;
+            window.fetch = async (url, options = {}) => {
+                options.headers = {
+                    ...(options.headers || {}),
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                };
+                options.credentials = "same-origin"; // ✅ cookies (sessie) meesturen
+                return window.defaultFetch(url, options);
             };
-            options.credentials = "same-origin"; // ✅ cookies (sessie) meesturen
-            return window.defaultFetch(url, options);
-        };
-    </script>
+        </script>
     </head>
 
     <!-- Datum -->
@@ -263,31 +263,31 @@
         import imageCompression from "https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/+esm";
 
         // 💤 Voorkom dat uploads pauzeren als scherm uitgaat (Android wake lock)
-if ("wakeLock" in navigator) {
-    let wakeLock = null;
+        if ("wakeLock" in navigator) {
+            let wakeLock = null;
 
-    async function requestWakeLock() {
-        try {
-            wakeLock = await navigator.wakeLock.request("screen");
-            console.log("🔋 Wake Lock actief — scherm blijft aan tijdens upload");
-            wakeLock.addEventListener("release", () => {
-                console.log("💤 Wake Lock vrijgegeven");
+            async function requestWakeLock() {
+                try {
+                    wakeLock = await navigator.wakeLock.request("screen");
+                    console.log("🔋 Wake Lock actief — scherm blijft aan tijdens upload");
+                    wakeLock.addEventListener("release", () => {
+                        console.log("💤 Wake Lock vrijgegeven");
+                    });
+                } catch (err) {
+                    console.warn("⚠️ Wake Lock niet toegestaan:", err);
+                }
+            }
+
+            // Automatisch activeren bij uploadstart of focus
+            document.addEventListener("visibilitychange", () => {
+                if (document.visibilityState === "visible" && !wakeLock) {
+                    requestWakeLock();
+                }
             });
-        } catch (err) {
-            console.warn("⚠️ Wake Lock niet toegestaan:", err);
-        }
-    }
 
-    // Automatisch activeren bij uploadstart of focus
-    document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible" && !wakeLock) {
+            // Initieel aanvragen
             requestWakeLock();
         }
-    });
-
-    // Initieel aanvragen
-    requestWakeLock();
-}
 
 
         // ===============================================
@@ -494,15 +494,15 @@ if ("wakeLock" in navigator) {
             if (!name) return;
 
             let safeName = name
-    .replace(/,/g, '')                // verwijder komma’s
-    .replace(/[^a-zA-Z0-9 _-]/g, '')  // verwijder rare tekens
-    .replace(/\s+/g, ' ')             // dubbele spaties → 1 spatie
-    .trim();                          // spaties begin/eind weg
+                .replace(/,/g, '') // verwijder komma’s
+                .replace(/[^a-zA-Z0-9 _-]/g, '') // verwijder rare tekens
+                .replace(/\s+/g, ' ') // dubbele spaties → 1 spatie
+                .trim(); // spaties begin/eind weg
 
-if (!safeName) {
-    alert("Ongeldige mapnaam. Gebruik enkel letters en cijfers.");
-    return;
-}
+            if (!safeName) {
+                alert("Ongeldige mapnaam. Gebruik enkel letters en cijfers.");
+                return;
+            }
             try {
                 const res = await fetch("{{ route('dropbox.create_adres') }}", {
                     method: "POST",
@@ -557,104 +557,104 @@ if (!safeName) {
 
 
         // ✅ Progressbar element toevoegen
-const progressWrapper = document.createElement("div");
-progressWrapper.className = "w-full bg-gray-200 rounded h-3 mt-2 hidden";
-const progressBar = document.createElement("div");
-progressBar.className = "bg-green-500 h-3 rounded w-0";
-progressWrapper.appendChild(progressBar);
-document.getElementById("photoPreview").after(progressWrapper);
+        const progressWrapper = document.createElement("div");
+        progressWrapper.className = "w-full bg-gray-200 rounded h-3 mt-2 hidden";
+        const progressBar = document.createElement("div");
+        progressBar.className = "bg-green-500 h-3 rounded w-0";
+        progressWrapper.appendChild(progressBar);
+        document.getElementById("photoPreview").after(progressWrapper);
 
-document.getElementById("photoUpload").addEventListener("change", (e) => {
-    // === Lightbox met navigatie ===
-    const lightbox = document.getElementById("photoLightbox");
-    const lightboxImg = document.getElementById("lightboxImage");
-    const closeLightbox = document.getElementById("closeLightbox");
-    const prevPhoto = document.getElementById("prevPhoto");
-    const nextPhoto = document.getElementById("nextPhoto");
+        document.getElementById("photoUpload").addEventListener("change", (e) => {
+            // === Lightbox met navigatie ===
+            const lightbox = document.getElementById("photoLightbox");
+            const lightboxImg = document.getElementById("lightboxImage");
+            const closeLightbox = document.getElementById("closeLightbox");
+            const prevPhoto = document.getElementById("prevPhoto");
+            const nextPhoto = document.getElementById("nextPhoto");
 
-    let previewImages = [];
-    let currentIndex = 0;
+            let previewImages = [];
+            let currentIndex = 0;
 
-    // Open lightbox bij klik
-    document.getElementById("photoPreview").addEventListener("click", (e) => {
-        if (e.target.tagName === "IMG") {
-            previewImages = [...document.querySelectorAll("#photoPreview img")];
-            currentIndex = previewImages.indexOf(e.target);
-            showImage(currentIndex);
-        }
-    });
+            // Open lightbox bij klik
+            document.getElementById("photoPreview").addEventListener("click", (e) => {
+                if (e.target.tagName === "IMG") {
+                    previewImages = [...document.querySelectorAll("#photoPreview img")];
+                    currentIndex = previewImages.indexOf(e.target);
+                    showImage(currentIndex);
+                }
+            });
 
-    function showImage(index) {
-        if (index < 0) index = previewImages.length - 1;
-        if (index >= previewImages.length) index = 0;
-        currentIndex = index;
-        lightboxImg.src = previewImages[currentIndex].src;
-        lightbox.classList.remove("hidden");
-        lightbox.classList.add("flex");
-    }
+            function showImage(index) {
+                if (index < 0) index = previewImages.length - 1;
+                if (index >= previewImages.length) index = 0;
+                currentIndex = index;
+                lightboxImg.src = previewImages[currentIndex].src;
+                lightbox.classList.remove("hidden");
+                lightbox.classList.add("flex");
+            }
 
-    prevPhoto.addEventListener("click", (e) => {
-        e.stopPropagation();
-        showImage(currentIndex - 1);
-    });
+            prevPhoto.addEventListener("click", (e) => {
+                e.stopPropagation();
+                showImage(currentIndex - 1);
+            });
 
-    nextPhoto.addEventListener("click", (e) => {
-        e.stopPropagation();
-        showImage(currentIndex + 1);
-    });
+            nextPhoto.addEventListener("click", (e) => {
+                e.stopPropagation();
+                showImage(currentIndex + 1);
+            });
 
-    closeLightbox.addEventListener("click", () => {
-        lightbox.classList.add("hidden");
-        lightbox.classList.remove("flex");
-    });
+            closeLightbox.addEventListener("click", () => {
+                lightbox.classList.add("hidden");
+                lightbox.classList.remove("flex");
+            });
 
-    lightbox.addEventListener("click", (e) => {
-        if (e.target === lightbox) {
-            lightbox.classList.add("hidden");
-            lightbox.classList.remove("flex");
-        }
-    });
+            lightbox.addEventListener("click", (e) => {
+                if (e.target === lightbox) {
+                    lightbox.classList.add("hidden");
+                    lightbox.classList.remove("flex");
+                }
+            });
 
-    document.addEventListener("keydown", (e) => {
-        if (lightbox.classList.contains("hidden")) return;
-        if (e.key === "ArrowLeft") showImage(currentIndex - 1);
-        if (e.key === "ArrowRight") showImage(currentIndex + 1);
-        if (e.key === "Escape") {
-            lightbox.classList.add("hidden");
-            lightbox.classList.remove("flex");
-        }
-    });
+            document.addEventListener("keydown", (e) => {
+                if (lightbox.classList.contains("hidden")) return;
+                if (e.key === "ArrowLeft") showImage(currentIndex - 1);
+                if (e.key === "ArrowRight") showImage(currentIndex + 1);
+                if (e.key === "Escape") {
+                    lightbox.classList.add("hidden");
+                    lightbox.classList.remove("flex");
+                }
+            });
 
-    // === Previews ===
-    let files = [...e.target.files];
-    let preview = document.getElementById("photoPreview");
-    preview.innerHTML = "";
+            // === Previews ===
+            let files = [...e.target.files];
+            let preview = document.getElementById("photoPreview");
+            preview.innerHTML = "";
 
-    if (files.length > 30) {
-        alert("Je mag maximaal 30 foto's uploaden.");
-        files = files.slice(0, 30);
-    }
+            if (files.length > 30) {
+                alert("Je mag maximaal 30 foto's uploaden.");
+                files = files.slice(0, 30);
+            }
 
-    files.forEach(file => {
-        if (file.size > 30 * 1024 * 1024) {
-            alert(`Bestand ${file.name} is groter dan 30MB en wordt overgeslagen.`);
-            return;
-        }
+            files.forEach(file => {
+                if (file.size > 30 * 1024 * 1024) {
+                    alert(`Bestand ${file.name} is groter dan 30MB en wordt overgeslagen.`);
+                    return;
+                }
 
-        // 🔥 NIEUWE METHODE: gebruik blob URL i.p.v. FileReader
-        const objectUrl = URL.createObjectURL(file);
+                // 🔥 NIEUWE METHODE: gebruik blob URL i.p.v. FileReader
+                const objectUrl = URL.createObjectURL(file);
 
-        let img = document.createElement("img");
-        img.src = objectUrl;
-        img.classList.add("h-16", "w-16", "object-cover", "rounded", "cursor-pointer");
-        preview.appendChild(img);
+                let img = document.createElement("img");
+                img.src = objectUrl;
+                img.classList.add("h-16", "w-16", "object-cover", "rounded", "cursor-pointer");
+                preview.appendChild(img);
 
-        // Ruim blob URL op wanneer de afbeelding verdwijnt
-        img.onload = () => URL.revokeObjectURL(objectUrl);
-    });
+                // Ruim blob URL op wanneer de afbeelding verdwijnt
+                img.onload = () => URL.revokeObjectURL(objectUrl);
+            });
 
-    progressWrapper.classList.add("hidden"); // reset progress
-});
+            progressWrapper.classList.add("hidden"); // reset progress
+        });
 
         function showError(id, message) {
             let el = document.getElementById(id);
@@ -776,25 +776,25 @@ document.getElementById("photoUpload").addEventListener("change", (e) => {
 
 
 
-// 🔹 Geoptimaliseerde compressie voor Android Chrome (stabieler)
-async function compressInBatches(files, options, batchSize = 2) {
-    const compressed = [];
-    for (let i = 0; i < files.length; i += batchSize) {
-        const batch = files.slice(i, i + batchSize);
-        const results = await Promise.all(
-            batch.map(async (file) => {
-                try {
-                    return await imageCompression(file, options);
-                } catch {
-                    return file;
-                }
-            })
-        );
-        compressed.push(...results);
-        await new Promise((r) => setTimeout(r, 25)); // ademruimte voor Chrome
-    }
-    return compressed;
-}
+        // 🔹 Geoptimaliseerde compressie voor Android Chrome (stabieler)
+        async function compressInBatches(files, options, batchSize = 2) {
+            const compressed = [];
+            for (let i = 0; i < files.length; i += batchSize) {
+                const batch = files.slice(i, i + batchSize);
+                const results = await Promise.all(
+                    batch.map(async (file) => {
+                        try {
+                            return await imageCompression(file, options);
+                        } catch {
+                            return file;
+                        }
+                    })
+                );
+                compressed.push(...results);
+                await new Promise((r) => setTimeout(r, 25)); // ademruimte voor Chrome
+            }
+            return compressed;
+        }
 
         // 🔹 Submit handler met compressie + upload + progress
         document.getElementById("finishForm").addEventListener("submit", async (e) => {
@@ -828,133 +828,126 @@ async function compressInBatches(files, options, batchSize = 2) {
     `;
             document.body.appendChild(loader);
 
-            try {
-                const uploadedPaths = []; // 🔹 verzamel alle paden hier
+           try {
+    const uploadedPaths = []; // 🔹 verzamel alle paden hier
 
-                if (files.length > 0) {
-                    // ✅ Parallel compressie
-                  const compressOptions = {
-    maxSizeMB: 0.45, // kleiner = sneller
-    maxWidthOrHeight: 1280, // goed voor mobiel
-    useWebWorker: true,
-    initialQuality: 0.65
-};
+    if (files.length > 0) {
+        // ✅ Parallel compressie
+        const compressOptions = {
+            maxSizeMB: 0.45, // kleiner = sneller
+            maxWidthOrHeight: 1280, // goed voor mobiel
+            useWebWorker: true,
+            initialQuality: 0.65
+        };
 
-// Android Chrome → minder RAM = kleinere batch
-const compressedFiles = await compressInBatches(files, compressOptions, 2);
+        // Android Chrome → minder RAM = kleinere batch
+        const compressedFiles = await compressInBatches(files, compressOptions, 2);
 
+        const uploadStart = performance.now();
 
-                    // ✅ Upload direct naar Dropbox in batches (3 tegelijk)
-                    // ✅ Upload direct naar Cloudflare R2 (i.p.v. Dropbox)
-const uploadStart = performance.now();
+        try {
+            // 1️⃣ Vraag tijdelijke upload-URLs aan bij Laravel
+            const urlsRes = await fetch("/r2/upload-urls", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({
+                    files: compressedFiles.map(f => f.name)
+                })
+            });
 
-try {
-    // 1️⃣ Vraag tijdelijke upload-URLs aan bij Laravel
-    const urlsRes = await fetch("/r2/upload-urls", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-        },
-        body: JSON.stringify({
-            files: compressedFiles.map(f => f.name)
-        })
-    });
+            const { urls } = await urlsRes.json(); // [{ name, url, path }]
 
-    const { urls } = await urlsRes.json(); // [{ name, url, path }]
-
-    // 2️⃣ Upload elke foto rechtstreeks naar Cloudflare R2
-    await Promise.all(urls.map(async (u, i) => {
-        await fetch(u.url, {
-            method: "PUT",
-            headers: { "Content-Type": compressedFiles[i].type },
-            body: compressedFiles[i]
-        });
-        console.log(`☁️ ${compressedFiles[i].name} geüpload naar R2`);
-    }));
-
-    // 3️⃣ Meld aan Laravel welke bestanden klaarstaan voor Dropbox
-    await fetch(`/tasks/${taskId}/upload-photo`, {
-        method: "POST",
-        headers: {
-            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            storage: "r2",
-            photos: urls.map(u => u.path), // alle R2-paden
-            path: adresPath, // bijv. "PERCEEL 1/Webapp uploads/Adresnaam"
-            namespace_id: namespaceId
-        })
-    });
-
-    console.log(`✅ ${compressedFiles.length} foto's geüpload naar R2 en gemeld aan Laravel`);
-    showToast(`✅ ${compressedFiles.length} foto's succesvol geüpload!`);
-
-} catch (err) {
-    console.error("❌ Fout bij upload naar R2:", err);
-    showToast("⚠️ Upload mislukt, probeer opnieuw.");
-}
-
-const uploadEnd = performance.now();
-console.log(`🚀 Uploadtijd (frontend → R2): ${((uploadEnd - uploadStart) / 1000).toFixed(2)}s`);
-
+            // 2️⃣ Upload elke foto rechtstreeks naar Cloudflare R2 met retry bij netwerkverlies
+            const failedUploads = [];
+            for (let i = 0; i < urls.length; i++) {
+                const u = urls[i];
+                try {
+                    const res = await fetch(u.url, {
+                        method: "PUT",
+                        headers: { "Content-Type": compressedFiles[i].type },
+                        body: compressedFiles[i]
+                    });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    console.log(`☁️ ${compressedFiles[i].name} geüpload naar R2`);
+                } catch (err) {
+                    console.warn(`⚠️ Upload mislukt (${compressedFiles[i].name}), lokaal opslaan voor retry`);
+                    failedUploads.push({
+                        name: compressedFiles[i].name,
+                        type: compressedFiles[i].type,
+                        file: await compressedFiles[i].arrayBuffer(),
+                        path: u.path,
+                        url: u.url
+                    });
                 }
+            }
 
-                // ✅ Status bijwerken, maar met sendBeacon fallback
-const finishUrl = `/tasks/${taskId}/finish`;
+            // 3️⃣ Retry-buffer opslaan in localStorage als er iets faalde
+            if (failedUploads.length > 0) {
+                const retryData = failedUploads.map(f => ({
+                    name: f.name,
+                    type: f.type,
+                    path: f.path,
+                    url: f.url,
+                    base64: btoa(String.fromCharCode(...new Uint8Array(f.file)))
+                }));
+                localStorage.setItem("pendingUploads", JSON.stringify(retryData));
+                console.log(`💾 ${failedUploads.length} uploads opgeslagen voor retry bij reconnect`);
+            }
 
-if (navigator.sendBeacon) {
-    // Stuur achtergrondrequest (zelfs als gebruiker Chrome sluit)
-    const beaconData = new FormData(form);
-    beaconData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
-    navigator.sendBeacon(finishUrl, beaconData);
-    console.log("📡 Task finish verzonden via sendBeacon");
-    // ✅ Bepaal nieuwe status op basis van huidige status en damage-keuze
-const currentStatus = document.querySelector(`tr[data-task-id="${taskId}"]`)?.dataset.status;
-const damage = form.querySelector('input[name="damage"]:checked')?.value;
-let newStatus = currentStatus;
+            // 4️⃣ Meld aan Laravel welke bestanden klaarstaan voor Dropbox
+            await fetch(`/tasks/${taskId}/upload-photo`, {
+                method: "POST",
+                headers: {
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    storage: "r2",
+                    photos: urls.map(u => u.path),
+                    path: adresPath,
+                    namespace_id: namespaceId
+                })
+            });
 
-if (currentStatus === "open") {
-    newStatus = "in behandeling";
-} else if (["in behandeling", "reopened"].includes(currentStatus)) {
-    if (damage === "none") {
-        newStatus = "finished";
-    } else if (damage === "damage") {
-        newStatus = "in behandeling";
+            console.log(`✅ ${compressedFiles.length} foto's verwerkt (inclusief retries)`);
+            showToast(`✅ ${compressedFiles.length} foto's succesvol geüpload!`);
+        } catch (err) {
+            console.error("❌ Fout bij upload naar R2:", err);
+            showToast("⚠️ Upload mislukt, probeer opnieuw.");
+        }
+
+        const uploadEnd = performance.now();
+        console.log(`🚀 Uploadtijd (frontend → R2): ${((uploadEnd - uploadStart) / 1000).toFixed(2)}s`);
     }
-}
 
-// ✅ Visueel updaten in tabel
-updateTaskStatusRow(taskId, newStatus);
-console.log(`🔄 Status lokaal bijgewerkt naar: ${newStatus}`);
+    // ✅ Status bijwerken, maar met sendBeacon fallback
+    const finishUrl = `/tasks/${taskId}/finish`;
 
-    // ⚡ Direct visueel afronden voor de gebruiker
-    showToast("🎉 Taak succesvol afgerond!");
-    closeTaskForm();
-    const loaderText = document.getElementById("loaderText");
-    loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
-    setTimeout(() => {
-        loader.classList.add("opacity-0", "transition-opacity", "duration-700");
-        setTimeout(() => loader.remove(), 700);
-    }, 600);
+    if (navigator.sendBeacon) {
+        const beaconData = new FormData();
+        beaconData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
+        beaconData.append("damage", form.querySelector('input[name="damage"]:checked')?.value || "");
+        beaconData.append("note", form.querySelector('textarea[name="note"]').value || "");
 
-} else {
-    // Fallback: normale fetch (voor oude browsers)
-    const resFinish = await fetch(finishUrl, {
-        method: "POST",
-        headers: {
-            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-            "Accept": "application/json"
-        },
-        body: formData
-    });
+        navigator.sendBeacon(finishUrl, beaconData);
+        console.log("📡 Task finish verzonden via sendBeacon (zonder foto's)");
 
-    if (resFinish.ok) {
-        const json = await resFinish.json();
-        updateTaskStatusRow(taskId, json.status);
+        const currentStatus = document.querySelector(`tr[data-task-id="${taskId}"]`)?.dataset.status;
+        const damage = form.querySelector('input[name="damage"]:checked')?.value;
+        let newStatus = currentStatus;
+
+        if (currentStatus === "open") newStatus = "in behandeling";
+        else if (["in behandeling", "reopened"].includes(currentStatus)) {
+            newStatus = (damage === "none") ? "finished" : "in behandeling";
+        }
+
+        updateTaskStatusRow(taskId, newStatus);
         showToast("🎉 Taak succesvol afgerond!");
         closeTaskForm();
+
         const loaderText = document.getElementById("loaderText");
         loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
         setTimeout(() => {
@@ -962,20 +955,40 @@ console.log(`🔄 Status lokaal bijgewerkt naar: ${newStatus}`);
             setTimeout(() => loader.remove(), 700);
         }, 600);
     } else {
-        const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
-        if (loaderEl) loaderEl.remove();
+        const resFinish = await fetch(finishUrl, {
+            method: "POST",
+            headers: {
+                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                "Accept": "application/json"
+            },
+            body: formData
+        });
+
+        if (resFinish.ok) {
+            const json = await resFinish.json();
+            updateTaskStatusRow(taskId, json.status);
+            showToast("🎉 Taak succesvol afgerond!");
+            closeTaskForm();
+            const loaderText = document.getElementById("loaderText");
+            loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
+            setTimeout(() => {
+                loader.classList.add("opacity-0", "transition-opacity", "duration-700");
+                setTimeout(() => loader.remove(), 700);
+            }, 600);
+        } else {
+            const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
+            if (loaderEl) loaderEl.remove();
+        }
     }
+} catch (err) {
+    console.error("Upload fout:", err);
+    const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
+    if (loaderEl) loaderEl.remove();
+} finally {
+    finishButton.disabled = false;
+    finishButton.textContent = "Voltooien";
 }
 
-            
-            } catch (err) {
-                console.error("Upload fout:", err);
-                const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
-                if (loaderEl) loaderEl.remove();
-            } finally {
-                finishButton.disabled = false;
-                finishButton.textContent = "Voltooien";
-            }
         });
 
         // 🔹 Toast helper
@@ -1098,6 +1111,35 @@ console.log(`🔄 Status lokaal bijgewerkt naar: ${newStatus}`);
                 );
             });
         });
+
+        // 🔁 Herstel uploads als gebruiker weer online komt
+window.addEventListener("online", async () => {
+    const data = localStorage.getItem("pendingUploads");
+    if (!data) return;
+
+    const pending = JSON.parse(data);
+    if (pending.length === 0) return;
+
+    showToast(`📡 ${pending.length} niet-verstuurde foto's worden opnieuw geüpload...`);
+
+    for (const f of pending) {
+        const binary = Uint8Array.from(atob(f.base64), c => c.charCodeAt(0));
+        try {
+            const res = await fetch(f.url, {
+                method: "PUT",
+                headers: { "Content-Type": f.type },
+                body: binary
+            });
+            if (res.ok) console.log(`✅ Retry succesvol: ${f.name}`);
+        } catch (err) {
+            console.warn(`⚠️ Retry mislukt: ${f.name}`);
+        }
+    }
+
+    localStorage.removeItem("pendingUploads");
+    showToast("✅ Alle gemiste uploads zijn opnieuw verstuurd!");
+});
+
     </script>
 
 </x-layouts.dashboard>
