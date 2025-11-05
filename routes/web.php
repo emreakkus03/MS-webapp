@@ -16,8 +16,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\RepairTasksMail;
+use Illuminate\Support\Facades\Response;
 
-
+Route::get('/3f73e6bc076b1cb056e072cc30dc485b.txt', function () {
+    return Response::make('', 200, ['Content-Type' => 'text/plain']);
+});
 Route::get('/ping', function () {
     return response('pong', 200);
 });
