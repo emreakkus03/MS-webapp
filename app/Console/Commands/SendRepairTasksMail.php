@@ -16,7 +16,7 @@ class SendRepairTasksMail extends Command
     public function handle()
     {
         $now = Carbon::now('Europe/Brussels');
-        $yesterdayAtSix = $now->copy()->subDay()->setTime(18, 0, 0);
+        $yesterdayAtSix = $now->copy()->subDay()->setTime(17, 0, 0);
 
         $this->info('📅 Collecting repair tasks since ' . $yesterdayAtSix->toDateTimeString());
 

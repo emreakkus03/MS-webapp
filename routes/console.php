@@ -20,5 +20,5 @@ Schedule::call(function () {
 
 
 Schedule::command('mail:repair-tasks')
-    ->dailyAt('18:00')
+    ->dailyAt('17:00')
     ->timezone('Europe/Brussels');
