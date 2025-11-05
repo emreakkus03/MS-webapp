@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\RepairTasksMail;
 
 
 Route::get('/ping', function () {
@@ -228,4 +230,25 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/leaves/{id}/edit', [LeaveRequestController::class, 'edit'])->name('leaves.edit');
     Route::put('/leaves/{id}', [LeaveRequestController::class, 'update'])->name('leaves.update');
     Route::delete('/leaves/{id}', [LeaveRequestController::class, 'destroy'])->name('leaves.destroy');
+});
+
+Route::get('/test-mail', function () {
+    Mail::raw('Dit is een testmail vanuit Laravel via Outlook SMTP.', function ($message) {
+        $message->to('jouwadres@outlook.com')
+                ->subject('Testmail via Outlook SMTP');
+    });
+
+    return '✅ Testmail verzonden! Check je inbox.';
+});
+
+Route::get('/test-repair-mail', function () {
+    $fakeTasks = collect([
+        (object)['name' => 'Check fuse box at site 12', 'status' => 'needs_repair', 'deadline' => now()->addDays(2)],
+        (object)['name' => 'Replace broken cable', 'status' => 'needs_repair', 'deadline' => now()->addDays(5)],
+    ]);
+
+    Mail::to('emreakkus003@gmail.com')
+        ->send(new RepairTasksMail($fakeTasks));
+
+    return '✅ RepairTasksMail sent successfully. Check your inbox.';
 });

@@ -10,6 +10,7 @@ use App\Models\Team;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use App\Notifications\LeaveRequestStatusUpdatedNotification;
 
 class LeaveRequestController extends Controller
 {
@@ -123,22 +124,38 @@ class LeaveRequestController extends Controller
         ->with('success', 'Verlofaanvraag succesvol ingediend.');
 }
 
-    public function updateStatus(Request $request, $id)
-    {
-        $user = Auth::user();
+   public function updateStatus(Request $request, $id)
+{
+    $user = Auth::user();
 
-        if ($user->role !== 'admin') {
-            abort(403, 'Only admins can update request status.');
-        }
-
-        $validated = $request->validate([
-            'status' => 'required|in:approved,rejected',
-        ]);
-
-        LeaveRequest::where('id', $id)->update(['status' => $validated['status']]);
-
-        return back()->with('success', 'Leave request status updated.');
+    if ($user->role !== 'admin') {
+        abort(403, 'Only admins can update request status.');
     }
+
+    $validated = $request->validate([
+        'status' => 'required|in:approved,rejected',
+    ]);
+
+    $leave = LeaveRequest::findOrFail($id);
+    $leave->update(['status' => $validated['status']]);
+
+    // ✅ Stuur notificatie naar het team/lid dat deze aanvraag deed
+    $team = Team::find($leave->team_id);
+    $leaveType = $leave->leaveType->name ?? 'verlof';
+    $status = $validated['status'] === 'approved' ? 'goedgekeurd' : 'afgewezen';
+
+    if ($team) {
+       $team->notify(new LeaveRequestStatusUpdatedNotification(
+    $leave->member_name,
+    $leaveType,
+    $status,
+    $team->id // ✅ meegeven aan de notification
+));
+
+    }
+
+    return back()->with('success', 'Leave request status updated.');
+}
 
  public function update(Request $request, $id)
 {

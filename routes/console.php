@@ -17,3 +17,8 @@ Schedule::call(function () {
         Log::warning('⚠️ Keep-alive ping mislukt: ' . $e->getMessage());
     }
 })->everyFiveMinutes();
+
+
+Schedule::command('mail:repair-tasks')
+    ->dailyAt('18:00')
+    ->timezone('Europe/Brussels');

@@ -14,7 +14,15 @@
             {{ session('success') }}
         </div>
     @endif
-
+ <!-- Nieuwe aanvraagknop voor normale user -->
+    @if($user->role !== 'admin')
+        <div class="mt-6 text-right">
+            <a href="{{ route('leaves.create') }}" 
+               class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
+                + Nieuwe Verlofaanvraag
+            </a>
+        </div>
+    @endif
     <!-- ✅ Geen aanvragen -->
     @if($requests->isEmpty())
         <div class="bg-gray-100 border text-gray-600 px-4 py-4 rounded text-center">
@@ -108,16 +116,6 @@
                     @endforeach
                 </tbody>
             </table>
-        </div>
-    @endif
-
-    <!-- Nieuwe aanvraagknop voor normale user -->
-    @if($user->role !== 'admin')
-        <div class="mt-6 text-right">
-            <a href="{{ route('leaves.create') }}" 
-               class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
-                + Nieuwe Verlofaanvraag
-            </a>
         </div>
     @endif
 </section>

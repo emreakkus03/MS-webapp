@@ -34,7 +34,7 @@
                     <div class="flex-grow"></div>
 
                     <!-- Notificatie Bell -->
-                    @if (auth()->user()->role === 'admin')
+                  
                         <div x-data="{ openNotif: false }" class="relative right-8 md:right-0">
                             <!-- 🔹 extra margin rechts -->
                             <button @click="openNotif = !openNotif" class="relative ">
@@ -112,7 +112,7 @@
                             </div>
 
                         </div>
-                    @endif
+                   
 
                     <!-- Close icon voor mobiel -->
                     <button @click="open = false" class="absolute top-8 right-4 md:hidden">
