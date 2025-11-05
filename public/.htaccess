@@ -2,6 +2,9 @@
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes
     </IfModule>
+# Allow Mailjet domain verification file to be accessed without HTTPS redirect
+RewriteCond %{REQUEST_URI} 3f73e6bc076b1cb056e072cc30dc485b\.txt$
+RewriteRule ^ - [L]
 
     RewriteEngine On
 
