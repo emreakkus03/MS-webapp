@@ -288,16 +288,16 @@ public function getTasksByTeam($teamId)
             ->withInput();
     }
 
-    $address = Address::firstOrCreate(
-        [
-            'street' => strip_tags(ucfirst(strtolower(trim($request->address_name)))),
-            'number' => strip_tags(trim($request->address_number)),
-        ],
-        [
-            'zipcode' => strip_tags(trim($request->address_zipcode)),
-            'city'    => strip_tags(ucfirst(strtolower(trim($request->address_city)))),
-        ]
-    );
+    $address = Address::updateOrCreate(
+    [
+        'street' => strip_tags(ucfirst(strtolower(trim($request->address_name)))),
+        'number' => strip_tags(trim($request->address_number)),
+    ],
+    [
+        'zipcode' => strip_tags(trim($request->address_zipcode)),
+        'city'    => strip_tags(ucfirst(strtolower(trim($request->address_city)))),
+    ]
+);
 
     $task->update([
         'team_id'    => $user->role === 'admin' && $request->filled('team_id')
