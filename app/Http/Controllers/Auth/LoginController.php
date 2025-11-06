@@ -18,7 +18,23 @@ class LoginController extends Controller
     $request->session()->regenerate(true);
     $request->session()->regenerateToken();
 
-    $teams = Team::all();
+    $teams = Team::all()->sortBy(function ($team) {
+    $name = strtolower($team->name);
+
+    // Admin(s) altijd eerst
+    if (str_contains($name, 'admin')) {
+        return 0;
+    }
+
+    // Ploeg gevolgd door nummer
+    if (preg_match('/ploeg\s*(\d+)/i', $name, $matches)) {
+        return (int) $matches[1];
+    }
+
+    // Overige teams komen daarna
+    return 999;
+})->values();
+
     return response()
         ->view('signin.signin', compact('teams'))
         ->header('Cache-Control', 'no-cache, no-store, must-revalidate')

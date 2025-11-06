@@ -28,4 +28,14 @@ class LeaveRequest extends Model
     {
         return $this->belongsTo(LeaveType::class);
     }
+
+       public function getStatusLabelAttribute()
+    {
+        return match ($this->status) {
+            'approved' => 'Goedgekeurd',
+            'rejected' => 'Afgewezen',
+            'pending'  => 'In behandeling',
+            default    => ucfirst($this->status),
+        };
+    }
 }

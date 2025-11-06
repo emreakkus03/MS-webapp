@@ -14,7 +14,8 @@
             {{ session('success') }}
         </div>
     @endif
- <!-- Nieuwe aanvraagknop voor normale user -->
+
+    <!-- Nieuwe aanvraagknop voor normale user -->
     @if($user->role !== 'admin')
         <div class="mt-6 text-right">
             <a href="{{ route('leaves.create') }}" 
@@ -23,6 +24,7 @@
             </a>
         </div>
     @endif
+
     <!-- ✅ Geen aanvragen -->
     @if($requests->isEmpty())
         <div class="bg-gray-100 border text-gray-600 px-4 py-4 rounded text-center">
@@ -54,13 +56,13 @@
                             <td class="px-4 py-3 border-b">
                                 @php
                                     $statusColors = [
-                                        'pending' => 'bg-yellow-100 text-yellow-800',
+                                        'pending'  => 'bg-yellow-100 text-yellow-800',
                                         'approved' => 'bg-green-100 text-green-800',
                                         'rejected' => 'bg-red-100 text-red-800',
                                     ];
                                 @endphp
                                 <span class="px-3 py-1 text-sm font-medium rounded-full {{ $statusColors[$req->status] ?? 'bg-gray-200 text-gray-700' }}">
-                                    {{ ucfirst($req->status) }}
+                                    {{ $req->status_label }}
                                 </span>
                             </td>
 
