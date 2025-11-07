@@ -328,70 +328,56 @@ class TaskController extends Controller
 
 
     public function uploadPhoto(Request $request, DropboxService $dropbox, $taskId)
-{
-    $request->validate([
-        'namespace_id' => 'required|string',
-        'path'         => 'required|string',
-        'photos'       => 'required',
-    ]);
+    {
+        $request->validate([
+            'namespace_id' => 'required|string',
+            'path'         => 'required|string',
+            'photos'       => 'required',
+        ]);
 
-    $namespaceId = $request->input('namespace_id');
-    $adresPath   = trim($request->input('path'), '/');
-    $task        = Task::findOrFail($taskId);
+        $namespaceId = $request->input('namespace_id');
+        $adresPath   = trim($request->input('path'), '/');
+        $task        = Task::findOrFail($taskId);
 
-    // 🔍 Detecteer perceeltype via namespace_id
-    $isPerceel1 = $namespaceId !== $dropbox->getFluviusNamespaceId();
+        // 🔍 Detecteer perceeltype via namespace_id
+        $isPerceel1 = $namespaceId !== $dropbox->getFluviusNamespaceId();
 
-    // 📁 Bouw basis Dropbox-pad
-    if ($isPerceel1) {
-        $fullDropboxPath = "Fluvius Aansluitingen/PERCEEL 1/Webapp uploads/{$adresPath}";
-    } else {
-        $fullDropboxPath = "Fluvius Aansluitingen/PERCEEL 2/Webapp uploads/{$adresPath}";
-    }
+        // 📁 Bouw basis Dropbox-pad
+        if ($isPerceel1) {
+            $fullDropboxPath = "Fluvius Aansluitingen/PERCEEL 1/Webapp uploads/{$adresPath}";
+        } else {
+            $fullDropboxPath = "Fluvius Aansluitingen/PERCEEL 2/Webapp uploads/{$adresPath}";
+        }
 
-    // 💾 Sla tijdelijk R2-paden op zodat frontend ziet dat upload ok is
-    $photos = $task->photo ? explode(',', $task->photo) : [];
-    foreach ((array)$request->input('photos') as $photoPath) {
-        $photos[] = $photoPath;
-    }
+        // 💾 Sla tijdelijk R2-paden op zodat frontend ziet dat upload ok is
+        $photos = $task->photo ? explode(',', $task->photo) : [];
+        foreach ((array)$request->input('photos') as $photoPath) {
+            $photos[] = $photoPath;
+        }
 
-   // 📸 Tijdelijke opslag enkel voor logging (niet in DB)
-Log::info("📸 Tijdelijke R2 upload ontvangen", [
-    'task_id' => $taskId,
-    'photos'  => $request->input('photos'),
-    'adresPath' => $adresPath,
-    'namespace_id' => $namespaceId,
-]);
+        // 📸 Tijdelijke opslag enkel voor logging (niet in DB)
+        Log::info("📸 Tijdelijke R2 upload ontvangen", [
+            'task_id' => $taskId,
+            'photos'  => $request->input('photos'),
+            'adresPath' => $adresPath,
+            'namespace_id' => $namespaceId,
+        ]);
 
-// ⚙️ Laat de job de Dropbox-paden opslaan
-dispatch(new MoveToDropboxJob(
+        dispatch(new MoveToDropboxJob(
     $request->input('photos'),
     $adresPath,
     $namespaceId,
     $taskId
-));
+))->onQueue('uploads');
 
-return response()->json([
-    'success' => true,
-    'queued'  => true,
-    'message' => '📦 Foto’s via R2 geüpload en worden op achtergrond verplaatst naar Dropbox.',
-]);
 
-    // 🚀 Queue job → R2 → Dropbox
-    dispatch(new MoveToDropboxJob(
-        $request->input('photos'),
-        $fullDropboxPath,
-        $namespaceId,
-        $taskId
-    ));
+        return response()->json([
+            'success' => true,
+            'queued'  => true,
+            'message' => '📦 Foto’s via R2 geüpload en worden op achtergrond verplaatst naar Dropbox.',
+        ]);
 
-    return response()->json([
-        'success' => true,
-        'queued'  => true,
-        'message' => '📦 Foto’s via R2 geüpload en worden op achtergrond verplaatst naar Dropbox.',
-        'files'   => $request->input('photos'),
-    ]);
-}
+    }
 
     public function listTeamMembers(DropboxService $dropbox)
     {

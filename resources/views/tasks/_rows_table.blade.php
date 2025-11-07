@@ -13,13 +13,13 @@
     <tr class="hover:bg-gray-50 transition">
         <!-- Datum & Tijd -->
         <td class="border px-3 py-2 text-sm whitespace-nowrap">
-            {{ \Carbon\Carbon::parse($task->time)->format('d-m-Y H:i') }}
+            {{ \Carbon\Carbon::parse($task->time)->format('d/m/Y H:i') }}
         </td>
 
         <!-- Adres -->
         <td class="border px-3 py-2 text-sm">
             <div class="max-w-[160px] md:max-w-[220px] lg:max-w-[300px] truncate">
-                {{ $task->address->street }} {{ $task->address->number }},
+                {{ $task->address->street }} {{ $task->address->number }},<br>
                 {{ $task->address->zipcode }} {{ $task->address->city }}
             </div>
         </td>

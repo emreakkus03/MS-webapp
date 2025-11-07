@@ -10,55 +10,103 @@
 
 ## 📖 About this application  
 This web application is built for **MS Infra BV**.  
-It allows users and administrators to manage schedules, tasks, and teams in an efficient and structured way.
+It allows users and administrators to manage schedules, tasks, leave requests, and notifications in an efficient and structured way.
 
 ---
 
 ## ✨ Features  
 
 ### 🔑 Authentication & Accounts
-- Users can log in to access their personal schedules.  
-- The admin can create new teams (accounts with username and password).  
-- The admin can edit or delete teams.  
+- Secure login system for both **admin** and **team users**.  
+- Admin can create, edit, and delete teams (each team has its own login credentials).  
 - Teams can be sorted or searched by name and role.  
+- Teams are listed with **Admin first**, followed by **Ploeg 1, Ploeg 2**, etc.  
+
+---
 
 ### 📅 Scheduling & Tasks
-- **Admin**:
+- **Admin:**
   - Create, edit, delete, and reopen tasks.  
-  - Assign tasks to different teams.  
-  - View the full calendar for all teams (e.g., see tasks for today).  
-  - Filter tasks by status.  
-  - Search tasks by address.  
-  - Manage notes and photos uploaded by users.  
+  - Assign tasks to specific teams.  
+  - Filter and search tasks by address or status.  
+  - View all team schedules via the calendar.  
+  - Manage and review uploaded photos and notes.  
 
-- **User**:
-  - View their own team’s schedule/calendar.  
-  - Complete a task by adding a note (e.g., damage details).  
+- **User (Team):**
+  - View their own assigned schedule and upcoming tasks.  
+  - Mark tasks as completed and add notes.  
   - Upload photos as proof of completion.  
-  - Uploaded photos are stored in **Dropbox** and linked to the task.  
+  - Photo uploads are now optimized:
+    - First uploaded to **Cloudflare R2** for speed and reduced hosting costs.  
+    - Then asynchronously transferred to **Dropbox** via **Laravel queue workers**.  
+
+---
+
+### 🌴 Leave Management (New 6/11/2025)
+- Each **team user** can log into their account and submit a **leave request (verlofaanvraag)**.  
+- Leave requests include:
+  - Team member name  
+  - Type of leave (e.g., vacation, medical, etc.)  
+  - Start and end dates  
+  - Optional note  
+
+- **Admin** can:
+  - View all leave requests on the new **Leave Management Page**.  
+  - Approve or reject requests.  
+  - Receive instant notifications when a new leave request is submitted.  
+
+- **Notifications:**
+  - **Normal users** receive a notification when their own leave request is approved or rejected.  
+  - **Admins** receive notifications when:
+    - A task is completed.  
+    - A note is added to a task.  
+    - A leave request is submitted.  
+
+---
+
+### 📨 Daily Email Summary (New 6/11/2025)
+- Every day at **17:00**, a summary email is automatically sent to selected **admins**.  
+- Emails are delivered through **Brevo (Sendinblue)**.  
+- The summary includes key daily updates such as completed tasks and team activity.  
+
+---
 
 ### 📊 Dashboard
-- Admin dashboard displays:
-  - General statistics (total teams, total tasks today, completed vs open tasks).  
+- Admin dashboard provides:
+  - Real-time overview of all active teams and tasks.  
+  - Statistics for today’s planned, ongoing, and completed tasks.  
   - Quick navigation links.  
-  - Real-time notifications when:
-    - A new note is added.  
-    - A task is completed.  
+  - Live notification feed for all updates.  
+
+---
 
 ### 🔔 Notifications
-- Admins receive live notifications via **Laravel Reverb** and **Echo** when tasks or notes are updated.  
-- Includes browser notifications and badge counters.  
+- Powered by **Laravel Reverb** and **Echo** for live updates.  
+- Real-time browser notifications when:
+  - Tasks are completed.  
+  - Notes are added.  
+  - Leave requests are submitted or updated.  
+- Visual badge counters and color indicators for quick admin overview.  
 
 ---
 
 ## 🛠 Tech Stack
-- **Backend**: Laravel (Blade templates)  
-- **Frontend**: Tailwind CSS, JavaScript (Alpine.js for interactivity)  
-- **Database**: MySQL  
-- **Realtime**: Laravel Reverb + Laravel Echo  
-- **File Storage**: Dropbox integration for photo uploads  
-- **Environment**: Docker & DDEV for local development  
-- **Package Managers**: Composer, NPM  
+- **Backend**: Laravel 11 (Blade templates)  
+- **Frontend**: Tailwind CSS + Vanilla JS (Alpine.js for interactivity)  
+- **Database**: MySQL 8.2  
+- **Realtime**: Laravel Reverb + Echo  
+- **File Storage**: Cloudflare R2 + Dropbox (via Laravel Queues)  
+- **Email Delivery**: Brevo (Sendinblue)  
+- **Environment**: Docker & DDEV for containerized local development  
+- **Package Managers**: Composer & NPM  
+
+---
+
+## 🔒 Security & Performance
+- CSRF, XSS, and session fixation protections enabled.  
+- Secure session regeneration on login/logout.  
+- Optimized background processing with Laravel Queues for uploads.  
+- Caching disabled on login page for safety.  
 
 ---
 
