@@ -4,21 +4,28 @@ namespace App\Events;
 
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 class TestEvent implements ShouldBroadcast
 {
-    use SerializesModels;
+    use Dispatchable, SerializesModels;
 
-    public $message;
+    public string $message;
 
-    public function __construct($message)
+    public function __construct(string $message)
     {
         $this->message = $message;
     }
 
-    public function broadcastOn()
+    public function broadcastOn(): Channel
     {
         return new Channel('test-channel');
+    }
+
+    // 👇 optioneel maar helpt debuggen
+    public function broadcastAs(): string
+    {
+        return 'TestEvent';
     }
 }
