@@ -18,7 +18,7 @@
 
         <!-- Adres -->
         <td class="border px-3 py-2 text-sm">
-            <div class="max-w-[160px] md:max-w-[220px] lg:max-w-[300px] truncate">
+            <div class="max-w-[160px] md:max-w-[220px] lg:max-w-[300px] break-words whitespace-normal">
                 {{ $task->address->street }} {{ $task->address->number }},<br>
                 {{ $task->address->zipcode }} {{ $task->address->city }}
             </div>
@@ -38,7 +38,7 @@
 
         <!-- Notitie (zichtbaar vanaf md) -->
         <td class="border px-3 py-2 text-sm hidden md:table-cell">
-            <div class="max-w-[180px] lg:max-w-[250px] truncate">
+            <div class="max-w-[180px] lg:max-w-[250px]  break-words whitespace-normal">
                 {{ $task->note ?? '-' }}
             </div>
         </td>

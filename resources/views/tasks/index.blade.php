@@ -33,6 +33,29 @@
                        class="border px-3 py-2 rounded w-64">
             </div>
         </form>
+<!-- Kolomfilter -->
+<div class="mb-3 relative inline-block">
+    <button id="toggleColumnsBtn" 
+        class="flex items-center gap-1 px-3 py-2 bg-gray-100 border rounded hover:bg-gray-200">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-700" fill="none" viewBox="0 0 24 24"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L14 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 018 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+        </svg>
+        <span class="text-sm text-gray-700">Kolommen</span>
+    </button>
+
+    <div id="columnsMenu"
+        class="hidden absolute mt-2 left-0 bg-white border rounded shadow p-3 z-50 w-52 text-sm">
+        <label class="flex items-center gap-2 mb-1"><input type="checkbox" data-col="1" checked> Datum & Tijd</label>
+        <label class="flex items-center gap-2 mb-1"><input type="checkbox" data-col="2" checked> Adres</label>
+        <label class="flex items-center gap-2 mb-1"><input type="checkbox" data-col="3" checked> Team</label>
+        <label class="flex items-center gap-2 mb-1"><input type="checkbox" data-col="4" checked> Status</label>
+        <label class="flex items-center gap-2 mb-1"><input type="checkbox" data-col="5" checked> Notitie</label>
+        <label class="flex items-center gap-2 mb-1"><input type="checkbox" data-col="6" checked> Foto’s</label>
+        <label class="flex items-center gap-2 mb-1"><input type="checkbox" data-col="7" checked> Acties</label>
+    </div>
+</div>
 
        <!-- Desktop/tablet tabel -->
 <div class="overflow-x-auto hidden md:block">
@@ -255,6 +278,60 @@ document.addEventListener("DOMContentLoaded", () => {
         if (e.key === "Escape") {
             lightbox.classList.add("hidden");
             lightbox.classList.remove("flex");
+        }
+    });
+});
+// ==================== Kolomfilter ====================
+document.addEventListener("DOMContentLoaded", () => {
+    const toggleBtn = document.getElementById("toggleColumnsBtn");
+    const menu = document.getElementById("columnsMenu");
+    const checkboxes = menu.querySelectorAll("input[type='checkbox']");
+    const table = document.querySelector("table");
+
+    // Toon/verberg menu
+    toggleBtn.addEventListener("click", () => {
+        menu.classList.toggle("hidden");
+    });
+
+    // Klik buiten menu = sluiten
+    document.addEventListener("click", (e) => {
+        if (!menu.contains(e.target) && !toggleBtn.contains(e.target)) {
+            menu.classList.add("hidden");
+        }
+    });
+
+    // Toon/verberg kolommen
+    checkboxes.forEach(cb => {
+        cb.addEventListener("change", () => {
+            const colIndex = parseInt(cb.dataset.col);
+            const cells = table.querySelectorAll(`th:nth-child(${colIndex}), td:nth-child(${colIndex})`);
+
+            cells.forEach(cell => {
+                cell.style.display = cb.checked ? "" : "none";
+            });
+
+            // Onthoud voorkeur
+            saveColumnPrefs();
+        });
+    });
+
+    // Onthoud keuze in localStorage
+    function saveColumnPrefs() {
+        const prefs = {};
+        checkboxes.forEach(cb => prefs[cb.dataset.col] = cb.checked);
+        localStorage.setItem("columnPrefs", JSON.stringify(prefs));
+    }
+
+    // Herstel vorige voorkeur
+    const saved = JSON.parse(localStorage.getItem("columnPrefs") || "{}");
+    Object.keys(saved).forEach(key => {
+        const cb = menu.querySelector(`input[data-col='${key}']`);
+        if (cb) {
+            cb.checked = saved[key];
+            const cells = table.querySelectorAll(`th:nth-child(${key}), td:nth-child(${key})`);
+            cells.forEach(cell => {
+                cell.style.display = cb.checked ? "" : "none";
+            });
         }
     });
 });

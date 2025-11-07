@@ -43,7 +43,7 @@
     </button>
   </div>
 </div>
-
+<script src="//unpkg.com/alpinejs" defer></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const popupKey = 'mswebapp_feature_popup_seen_v1'; // wijzig "v1" bij volgende updates
