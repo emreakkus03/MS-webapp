@@ -73,6 +73,7 @@
             </div>
 
             <!-- ✅ Status dropdown -->
+            @if($user->role === 'admin')
             <div>
                 <label class="block text-gray-600 mb-1">Status</label>
                 <select name="status" id="status" class="w-full border-gray-300 rounded-lg py-2">
@@ -81,16 +82,17 @@
                     <option value="rejected" {{ $leave->status === 'rejected' ? 'selected' : '' }}>❌ Afgewezen</option>
                 </select>
             </div>
+            @endif
 
             <!-- Knoppen -->
-            <div class="flex justify-between">
+            <div class="flex justify-end gap-3">
                 <a href="{{ route('leaves.index') }}" 
                    class="bg-gray-300 text-gray-800 px-6 py-2 rounded-lg hover:bg-gray-400 transition">
                     Annuleren
                 </a>
 
                 <button type="submit" 
-                        class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
+                        class="bg-[#283142] text-white px-6 py-2 rounded-lg hover:bg-[#B51D2D] transition">
                     Opslaan
                 </button>
             </div>

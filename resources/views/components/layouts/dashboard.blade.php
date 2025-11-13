@@ -4,12 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="icon" href="{{ asset('favicon.ico') }}" type="image/x-icon">
     <title>{{ $title ?? 'MS-Webapp' }}</title>
     <link rel="stylesheet" href="{{ asset('css/reset.css') }}">
 
-    @if(auth()->check())
+    @if (auth()->check())
         <!-- Globale Laravel helper -->
         <script>
             window.Laravel = {
@@ -28,25 +28,33 @@
         {{ $slot }}
     </main>
 
-    @if (Auth::check())
+   @if (Auth::check())
 <div id="featurePopup" class="fixed inset-0 bg-black/50 flex items-center justify-center hidden z-50">
   <div class="bg-white rounded-xl shadow-lg p-6 max-w-md w-full mx-4 text-center">
     <h2 class="text-2xl font-bold mb-3">🎉 Nieuwe update!</h2>
-    <p class="text-gray-700 text-sm mb-4">
-      - Je kunt nu <b>tot 30 foto's</b> tegelijk uploaden 📸<br>
-      - Uploads zijn <b>sneller</b> ⚡<br>
-      - Foto’s verschijnen binnen <b>~1 minuut</b> in Dropbox ☁️
+
+    <p class="text-gray-700 text-sm mb-4 leading-relaxed">
+      We hebben het verlofbeheer volledig vernieuwd!<br><br>
+
+      • Je kan nu eenvoudig <b>verlof aanvragen</b> via de verlofbeheerpagina 📝<br>
+      • Je ontvangt een <b>melding</b> wanneer jouw verlof wordt <b>goedgekeurd</b> of <b>afgekeurd</b> 🔔<br>
+      • Meldingen zijn nu zichtbaar via het <b>notificatie-icoon</b> in de navigatie 📬<br><br>
+
+      <b class="text-red-600">⚠️ Dringend verlof?</b><br>
+      Neem altijd <b>telefonisch contact</b> op met je leidinggevende.
     </p>
+
     <button id="closePopupBtn"
       class="bg-[#283142] hover:bg-[#B51D2D] text-white px-4 py-2 rounded-lg font-semibold">
       Ik snap het!
     </button>
   </div>
 </div>
-<script src="//unpkg.com/alpinejs" defer></script>
+
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  const popupKey = 'mswebapp_feature_popup_seen_v1'; // wijzig "v1" bij volgende updates
+  // Verhoog de versie bij een nieuwe update (v2 → nieuwe popup)
+  const popupKey = 'mswebapp_feature_popup_seen_v2';
   const popup = document.getElementById('featurePopup');
   const closeBtn = document.getElementById('closePopupBtn');
 
@@ -62,7 +70,9 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 @endif
 
+
 </body>
 
 <script src="//unpkg.com/alpinejs" defer></script>
+
 </html>

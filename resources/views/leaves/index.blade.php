@@ -22,9 +22,9 @@
 
     <!-- Nieuwe aanvraagknop voor normale user -->
     @if($user->role !== 'admin')
-        <div class="mt-6 text-right">
+        <div class="mt-6 mb-6 text-right">
             <a href="{{ route('leaves.create') }}" 
-               class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
+               class=" bg-[#283142]  text-white px-6 py-2 rounded-lg hover:bg-[#B51D2D] transition">
                 + Nieuwe Verlofaanvraag
             </a>
         </div>
@@ -101,7 +101,7 @@
                                     <!-- Bewerken -->
                                     @if($req->status === 'pending' || $user->role === 'admin')
                                         <a href="{{ route('leaves.edit', $req->id) }}" 
-                                           class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm">
+                                           class="bg-[#2ea5d7] text-white px-3 py-1 rounded hover:bg-[#2eb5d7] text-sm">
                                             Bewerken
                                         </a>
                                     @endif
@@ -112,7 +112,7 @@
                                               onsubmit="return confirm('Weet je zeker dat je deze aanvraag wilt verwijderen?')">
                                             @csrf
                                             @method('DELETE')
-                                            <button type="submit" class="bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600 text-sm">
+                                            <button type="submit" class="bg-[#B51D2D] text-white px-3 py-1 rounded hover:bg-[#B53D2D] text-sm">
                                                 Verwijderen
                                             </button>
                                         </form>

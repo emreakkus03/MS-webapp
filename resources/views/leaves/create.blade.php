@@ -75,14 +75,15 @@
             </div>
 
             <!-- Knoppen -->
-            <div class="flex justify-end gap-3">
+            <div class="flex justify-end gap-2 pt-6">
                 <a href="{{ route('leaves.index') }}" 
                    class="bg-gray-300 text-gray-800 px-6 py-2 rounded-lg hover:bg-gray-400 transition">
                     Annuleren
                 </a>
 
                 <button type="submit" 
-                        class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
+                        class="bg-[#283142]  text-white px-6 py-2 rounded-lg hover:bg-[#B51D2D]  transition">
+                        
                     Verzoek Indienen
                 </button>
             </div>

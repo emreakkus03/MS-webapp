@@ -175,14 +175,16 @@ class LeaveRequestController extends Controller
             },
         ],
         'end_date' => 'required|date|after_or_equal:start_date',
-        'status' => 'required|in:pending,approved,rejected',
+        'status' => $user->role === 'admin'
+    ? 'required|in:pending,approved,rejected'
+    : 'nullable',
     ]);
 
     // ✅ Alleen admin mag status wijzigen
-    if ($user->role !== 'admin') {
-        unset($validated['status']);
-    }
-
+   if ($user->role !== 'admin') {
+    // User ziet geen status veld → vul automatisch bestaande status in
+    $validated['status'] = $leave->status;
+}
     $leave->update($validated);
 
     return redirect()->route('leaves.index')
@@ -194,7 +196,8 @@ class LeaveRequestController extends Controller
 {
     $leave = LeaveRequest::findOrFail($id);
     $leaveTypes = LeaveType::all();
-    return view('leaves.edit', compact('leave', 'leaveTypes'));
+     $user = Auth::user();
+    return view('leaves.edit', compact('leave', 'leaveTypes', 'user'));
 }
 
 public function destroy($id)
