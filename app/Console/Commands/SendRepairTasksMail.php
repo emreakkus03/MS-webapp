@@ -47,7 +47,6 @@ class SendRepairTasksMail extends Command
         // 🔹 CC (kopie)
         $ccRecipients = [
             'Marco.pieters@msinfra.be',
-            'emreakkus003@gmail.com',
             'selcuk.yilmaz@msinfra.be'
         ];
 
