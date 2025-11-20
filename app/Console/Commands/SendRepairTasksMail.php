@@ -20,7 +20,7 @@ class SendRepairTasksMail extends Command
 
         $this->info('📅 Collecting repair tasks since ' . $yesterdayAtSix->toDateTimeString());
 
-        $tasks = Task::with('address')
+        $tasks = Task::with('address', 'team')
             ->whereNotNull('note')
             ->where(function ($query) use ($now, $yesterdayAtSix) {
                 $query

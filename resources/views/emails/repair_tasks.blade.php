@@ -21,7 +21,8 @@
                     {{ optional($task->address)->street ?? 'Onbekend adres' }}
                     {{ optional($task->address)->number ?? 'Onbekend nummer' }},
                     {{ optional($task->address)->zipcode ?? 'Onbekend postcode' }}
-                    {{ optional($task->address)->city ?? 'Onbekend stad' }}
+                    {{ optional($task->address)->city ?? 'Onbekend stad' }} --
+                    {{ optional($task->team)->name ?? 'Team ' }}
                 </strong><br>
                 📝 <em>{{ $task->note ?? 'Geen notitie' }}</em>
             </li>
