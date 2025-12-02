@@ -4,42 +4,68 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
+use App\Models\Task;
 use App\Jobs\MoveToDropboxJob;
+use Illuminate\Support\Facades\Log;
 
 class RetryR2Uploads extends Command
 {
-    protected $signature = 'r2:retry-missing 
-                            {--task= : Forceer upload onder een bepaald taskId}';
+    protected $signature = 'r2:retry-missing';
 
-    protected $description = 'Scan R2 bucket en herstart alle overgebleven foto-upload jobs';
+    protected $description = 'Scan R2 bucket en herstel alle vastgelopen foto’s met correcte task, adresPath en namespace.';
 
     public function handle()
     {
-        $this->info("🔍 Scannen van R2...");
+        $this->info("🔍 R2 scannen…");
 
         $files = Storage::disk('r2')->allFiles();
 
-        if (empty($files)) {
-            $this->warn("❌ Geen bestanden gevonden in R2 — bucket is leeg.");
+        if (!$files) {
+            $this->warn("R2 is leeg — niets om te herstellen.");
             return 0;
         }
 
-        $this->info("📦 Gevonden: " . count($files) . " bestanden in R2");
-
-        $taskId = $this->option('task') ?: null;
+        $this->info("📦 Gevonden bestanden: " . count($files));
 
         foreach ($files as $file) {
-            $this->info("➡️ Nieuwe upload job: {$file}");
+
+            // ⛑️ TaskId ophalen uit bestandsnaam (bijv: uploads/12345/xxx.jpg)
+            preg_match('/(\d+)/', $file, $matches);
+            $taskId = $matches[1] ?? null;
+
+            if (!$taskId || !($task = Task::find($taskId))) {
+                $this->error("❌ Kan taskId niet vinden voor: {$file}");
+                continue;
+            }
+
+            // 💡 TaskController doet hetzelfde:
+            $adresPath = trim(optional($task->address)->folder ?? '', '/');
+            if (!$adresPath) {
+                $this->warn("⚠️ Geen adresPad voor task {$taskId}, foto: {$file}");
+                continue;
+            }
+
+            // Perceel bepalen (exact dezelfde logic als TaskController)
+            $dropbox = app(\App\Services\DropboxService::class);
+            $fluviusNamespace = $dropbox->getFluviusNamespaceId();
+
+            $namespaceId = $task->namespace_id ?? $fluviusNamespace;
+
+            $this->info("➡️ Herstart upload:");
+            $this->line("📌 Task: {$taskId}");
+            $this->line("📁 AdresPath: {$adresPath}");
+            $this->line("🗂 Namespace: {$namespaceId}");
+            $this->line("🖼 File: {$file}");
 
             dispatch(new MoveToDropboxJob(
-                [$file],                  // array → MoveToDropboxJob verwacht array
-                "UNKNOWN-PATH",           // we pushen later die path zelf in Dropbox
-                config('services.dropbox.team_member_id'), 
+                [$file],
+                $adresPath,
+                $namespaceId,
                 $taskId
             ))->onQueue('uploads');
         }
 
-        $this->info("🎉 Klaar! Alle foto’s zijn opnieuw in de wachtrij gezet.");
+        $this->info("🎉 Alles opnieuw in queue gezet zoals originele upload!");
         return 0;
     }
 }
