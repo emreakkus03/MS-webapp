@@ -255,3 +255,13 @@ Route::get('/test-repair-mail', function () {
 
     return '✅ RepairTasksMail sent successfully. Check your inbox.';
 });
+
+Route::get('/download-r2-backup', function () {
+    $path = storage_path('app/r2_backup.zip');
+
+    if (!file_exists($path)) {
+        abort(404, "ZIP file not found");
+    }
+
+    return response()->download($path, 'r2_backup.zip');
+});
