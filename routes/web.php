@@ -255,7 +255,7 @@ Route::get('/test-repair-mail', function () {
     return '✅ RepairTasksMail sent successfully. Check your inbox.';
 });
 
-Route::get('/download-r2-backup', function () {
+/*Route::get('/download-r2-backup', function () {
     $path = storage_path('app/r2_backup.zip');
 
     if (!file_exists($path)) {
@@ -263,4 +263,4 @@ Route::get('/download-r2-backup', function () {
     }
 
     return response()->download($path, 'r2_backup.zip');
-});
+}); */

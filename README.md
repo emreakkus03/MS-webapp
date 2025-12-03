@@ -120,3 +120,11 @@ It may **not** be copied, reused, or redistributed without explicit permission f
 
 ## 👨‍💻 Author
 - **Emre Akkus**  
+
+
+php artisan r2:retry-all => als de foto's in r2 blijven hangen terwijl de adres in behandeling of voltooid is en de foto's niet in dropbox komen gebruik deze command
+
+php artisan r2:download-all => gebruik deze command om alle foto's die in r2 bucket blijven hangen te downloaden in een zip
+php artisan r2:publish-zip => gebruik deze command direct na de stap hierboven om de zip in de publieke folder te zetten om te kunnen downloaden en surf dan naar deze url: https://ms-webapp-main-yfswth.laravel.cloud/download-r2-backup
+
+php artisan r2:clear => gebruik deze command om de bucket te clearen dus de hangende foto's te verwijderen na het downloaden van de zip
