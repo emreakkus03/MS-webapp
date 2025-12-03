@@ -10,7 +10,9 @@ use App\Services\DropboxService;
 use App\Notifications\TaskCompletedNotification;
 use App\Models\Team;
 use App\Jobs\UploadToDropboxJob;
+
 use App\Jobs\MoveToDropboxJob;
+use App\Models\R2PendingUpload;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Bus;
 
@@ -363,12 +365,27 @@ class TaskController extends Controller
             'namespace_id' => $namespaceId,
         ]);
 
+        foreach ($request->input('photos') as $path) {
+
+    $fullTargetPath = "{$fullDropboxPath}/" . basename($path);
+
+    R2PendingUpload::create([
+        'task_id' => $taskId,
+        'r2_path' => $path,
+        'namespace_id' => $namespaceId,
+        'perceel' => $isPerceel1 ? '1' : '2',
+        'regio_path' => $request->input('path'),
+        'adres_path' => $adresPath,
+        'target_dropbox_path' => $fullTargetPath,
+    ]);
+}
+
         dispatch(new MoveToDropboxJob(
-    $request->input('photos'),
-    $adresPath,
-    $namespaceId,
-    $taskId
-))->onQueue('uploads');
+            $request->input('photos'),
+            $adresPath,
+            $namespaceId,
+            $taskId
+        ))->onQueue('uploads');
 
 
         return response()->json([
@@ -376,7 +393,6 @@ class TaskController extends Controller
             'queued'  => true,
             'message' => '📦 Foto’s via R2 geüpload en worden op achtergrond verplaatst naar Dropbox.',
         ]);
-
     }
 
     public function listTeamMembers(DropboxService $dropbox)

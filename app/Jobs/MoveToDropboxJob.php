@@ -111,6 +111,7 @@ class MoveToDropboxJob implements ShouldQueue
                             'namespace' => $usedNamespace,
                         ]);
                         Storage::disk('r2')->delete($photo);
+                         \App\Models\R2PendingUpload::where('r2_path', $photo)->delete();
 
                         // 📋 DB-pad aanpassen
                         $dbPath = preg_replace('#^/MS INFRA/Fluvius Aansluitingen#i', '', $uploadPath);
@@ -133,6 +134,9 @@ class MoveToDropboxJob implements ShouldQueue
 
                 } catch (\Throwable $e) {
                     Log::error("❌ Fout bij verplaatsen naar Dropbox: {$photo} → " . $e->getMessage());
+                     // 🔴 Mislukt: zet status failed
+    \App\Models\R2PendingUpload::where('r2_path', $photo)
+        ->update(['status' => 'failed']);
                 }
             }
 

@@ -56,55 +56,54 @@ Route::middleware(['auth'])->group(function () {
         }
     })->name('r2.presigned');
 
- Route::post('/r2/upload-urls', function (Request $request) {
-    $files = $request->input('files', []);
+    Route::post('/r2/upload-urls', function (Request $request) {
+        $files = $request->input('files', []);
 
-    $urls = collect($files)->map(function ($name) {
-        $path = 'uploads/' . uniqid() . '_' . $name;
+        $urls = collect($files)->map(function ($name) {
+            $path = 'uploads/' . uniqid() . '_' . $name;
 
-        try {
-            $s3 = new S3Client([
-                'region' => 'auto',
-                'version' => 'latest',
-                'endpoint' => env('R2_ENDPOINT'),
-                'credentials' => [
-                    'key' => env('R2_ACCESS_KEY_ID'),
-                    'secret' => env('R2_SECRET_ACCESS_KEY'),
-                ],
-            ]);
+            try {
+                $s3 = new S3Client([
+                    'region' => 'auto',
+                    'version' => 'latest',
+                    'endpoint' => env('R2_ENDPOINT'),
+                    'credentials' => [
+                        'key' => env('R2_ACCESS_KEY_ID'),
+                        'secret' => env('R2_SECRET_ACCESS_KEY'),
+                    ],
+                ]);
 
-            $cmd = $s3->getCommand('PutObject', [
-                'Bucket' => env('R2_BUCKET'),
-                'Key'    => $path,
-                // ✅ Belangrijk: verwijder deze regel of vervang met 'public-read'
-                //'ACL'    => 'public-read',
-            ]);
+                $cmd = $s3->getCommand('PutObject', [
+                    'Bucket' => env('R2_BUCKET'),
+                    'Key'    => $path,
+                    // ✅ Belangrijk: verwijder deze regel of vervang met 'public-read'
+                    //'ACL'    => 'public-read',
+                ]);
 
-            $request = $s3->createPresignedRequest($cmd, '+5 minutes');
-            $tempUrl = (string) $request->getUri();
+                $request = $s3->createPresignedRequest($cmd, '+5 minutes');
+                $tempUrl = (string) $request->getUri();
 
-            Log::info("✅ Presigned R2 upload URL gegenereerd", [
-                'file' => $name,
-                'url'  => $tempUrl,
-            ]);
+                Log::info("✅ Presigned R2 upload URL gegenereerd", [
+                    'file' => $name,
+                    'url'  => $tempUrl,
+                ]);
 
-            return [
-                'name' => $name,
-                'url'  => $tempUrl,
-                'path' => $path,
-            ];
-        } catch (\Throwable $e) {
-            Log::error("❌ R2 upload URL fout: " . $e->getMessage(), ['file' => $name]);
-            return [
-                'name'  => $name,
-                'error' => $e->getMessage(),
-            ];
-        }
-    });
+                return [
+                    'name' => $name,
+                    'url'  => $tempUrl,
+                    'path' => $path,
+                ];
+            } catch (\Throwable $e) {
+                Log::error("❌ R2 upload URL fout: " . $e->getMessage(), ['file' => $name]);
+                return [
+                    'name'  => $name,
+                    'error' => $e->getMessage(),
+                ];
+            }
+        });
 
-    return response()->json(['urls' => $urls]);
-})->name('r2.upload_urls');
-
+        return response()->json(['urls' => $urls]);
+    })->name('r2.upload_urls');
 });
 
 Route::get('/r2/test', function () {
@@ -238,7 +237,7 @@ Route::middleware(['auth'])->group(function () {
 Route::get('/test-mail', function () {
     Mail::raw('Dit is een testmail vanuit Laravel via Outlook SMTP.', function ($message) {
         $message->to('jouwadres@outlook.com')
-                ->subject('Testmail via Outlook SMTP');
+            ->subject('Testmail via Outlook SMTP');
     });
 
     return '✅ Testmail verzonden! Check je inbox.';
@@ -264,4 +263,4 @@ Route::get('/download-r2-backup', function () {
     }
 
     return response()->download($path, 'r2_backup.zip');
-}); 
+});
