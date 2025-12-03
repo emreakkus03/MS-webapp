@@ -7,6 +7,7 @@ use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\LeaveRequestController;
+use App\Http\Controllers\R2Controller;
 use Illuminate\Support\Facades\Auth;
 use App\Events\TestEvent;
 use Aws\S3\S3Client;
@@ -222,6 +223,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/dropbox/start-session', [TaskController::class, 'startDropboxSession'])
         ->name('dropbox.start_session');
     Route::post('/tasks/{task}/upload-temp', [TaskController::class, 'uploadTemp'])->name('tasks.uploadTemp');
+
+    Route::post('/r2/register-upload', [R2Controller::class, 'registerUpload'])->name('r2.register');
 });
 
 Route::middleware(['auth'])->group(function () {

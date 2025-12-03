@@ -872,6 +872,20 @@
                     });
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     console.log(`☁️ ${compressedFiles[i].name} geüpload naar R2`);
+                    await fetch("/r2/register-upload", {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+    },
+    body: JSON.stringify({
+        task_id: taskId,
+        r2_path: u.path,
+        namespace_id: namespaceId,
+        adres_path: adresPath
+    })
+});
+
                 } catch (err) {
                     console.warn(`⚠️ Upload mislukt (${compressedFiles[i].name}), lokaal opslaan voor retry`);
                     failedUploads.push({
