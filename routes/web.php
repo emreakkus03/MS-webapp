@@ -225,6 +225,20 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/tasks/{task}/upload-temp', [TaskController::class, 'uploadTemp'])->name('tasks.uploadTemp');
 
     Route::post('/r2/register-upload', [R2Controller::class, 'registerUpload'])->name('r2.register');
+    Route::get('/r2/check-file', function (Request $request) {
+    $path = $request->query('path');
+
+    if (!$path) {
+        return response()->json(['exists' => false, 'error' => 'Missing path'], 400);
+    }
+
+    $exists = Storage::disk('r2')->exists($path);
+
+    return response()->json([
+        'exists' => $exists
+    ]);
+});
+
 });
 
 Route::middleware(['auth'])->group(function () {

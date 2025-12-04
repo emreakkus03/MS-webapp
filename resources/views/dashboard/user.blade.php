@@ -828,51 +828,65 @@
     `;
             document.body.appendChild(loader);
 
-           try {
-    const uploadedPaths = []; // 🔹 verzamel alle paden hier
+            try {
+                const uploadedPaths = []; // 🔹 verzamel alle paden hier
 
-    if (files.length > 0) {
-        // ✅ Parallel compressie
-        const compressOptions = {
-            maxSizeMB: 0.45, // kleiner = sneller
-            maxWidthOrHeight: 1280, // goed voor mobiel
-            useWebWorker: true,
-            initialQuality: 0.65
-        };
+                if (files.length > 0) {
+                    // ✅ Parallel compressie
+                    const compressOptions = {
+                        maxSizeMB: 0.45, // kleiner = sneller
+                        maxWidthOrHeight: 1280, // goed voor mobiel
+                        useWebWorker: true,
+                        initialQuality: 0.65
+                    };
 
-        // Android Chrome → minder RAM = kleinere batch
-        const compressedFiles = await compressInBatches(files, compressOptions, 2);
+                    // Android Chrome → minder RAM = kleinere batch
+                    const compressedFiles = await compressInBatches(files, compressOptions, 2);
 
-        const uploadStart = performance.now();
+                    const uploadStart = performance.now();
 
-        try {
-            // 1️⃣ Vraag tijdelijke upload-URLs aan bij Laravel
-            const urlsRes = await fetch("/r2/upload-urls", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: JSON.stringify({
-                    files: compressedFiles.map(f => f.name)
-                })
-            });
+                    try {
+                        // 1️⃣ Vraag tijdelijke upload-URLs aan bij Laravel
+                        const urlsRes = await fetch("/r2/upload-urls", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')
+                                    .content
+                            },
+                            body: JSON.stringify({
+                                files: compressedFiles.map(f => f.name)
+                            })
+                        });
 
-            const { urls } = await urlsRes.json(); // [{ name, url, path }]
+                        const {
+                            urls
+                        } = await urlsRes.json(); // [{ name, url, path }]
 
-            // 2️⃣ Upload elke foto rechtstreeks naar Cloudflare R2 met retry bij netwerkverlies
-            const failedUploads = [];
-            for (let i = 0; i < urls.length; i++) {
-                const u = urls[i];
-                try {
-                    const res = await fetch(u.url, {
-                        method: "PUT",
-                        headers: { "Content-Type": compressedFiles[i].type },
-                        body: compressedFiles[i]
-                    });
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    console.log(`☁️ ${compressedFiles[i].name} geüpload naar R2`);
-                    await fetch("/r2/register-upload", {
+                        // 2️⃣ Upload elke foto rechtstreeks naar Cloudflare R2 met retry bij netwerkverlies
+                        const failedUploads = [];
+                        for (let i = 0; i < urls.length; i++) {
+                            const u = urls[i];
+                            try {
+                               const res = await fetch(u.url, {
+    method: "PUT",
+    headers: { "Content-Type": compressedFiles[i].type },
+    body: compressedFiles[i]
+});
+
+if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+// 1️⃣ Server-side check — BESTAND MOET ÉCHT BESTAAN
+const check = await fetch(`/r2/check-file?path=${encodeURIComponent(u.path)}`);
+const exists = await check.json();
+
+if (!exists.exists) {
+    console.warn("❌ Bestand staat NIET in R2:", u.path);
+    throw new Error("Upload bestaat niet in R2");
+}
+
+// 2️⃣ Nu pas mogen we registreren
+await fetch("/r2/register-upload", {
     method: "POST",
     headers: {
         "Content-Type": "application/json",
@@ -886,122 +900,132 @@
     })
 });
 
-                } catch (err) {
-                    console.warn(`⚠️ Upload mislukt (${compressedFiles[i].name}), lokaal opslaan voor retry`);
-                    failedUploads.push({
-                        name: compressedFiles[i].name,
-                        type: compressedFiles[i].type,
-                        file: await compressedFiles[i].arrayBuffer(),
-                        path: u.path,
-                        url: u.url
-                    });
+console.log("✔ Upload bevestigd:", u.path);
+
+
+                            } catch (err) {
+                                console.warn(
+                                    `⚠️ Upload mislukt (${compressedFiles[i].name}), lokaal opslaan voor retry`
+                                    );
+                                failedUploads.push({
+                                    name: compressedFiles[i].name,
+                                    type: compressedFiles[i].type,
+                                    file: await compressedFiles[i].arrayBuffer(),
+                                    path: u.path,
+                                    url: u.url
+                                });
+                            }
+                        }
+
+                        // 3️⃣ Retry-buffer opslaan in localStorage als er iets faalde
+                        if (failedUploads.length > 0) {
+                            const retryData = failedUploads.map(f => ({
+                                name: f.name,
+                                type: f.type,
+                                path: f.path,
+                                url: f.url,
+                                base64: btoa(String.fromCharCode(...new Uint8Array(f.file)))
+                            }));
+                            localStorage.setItem("pendingUploads", JSON.stringify(retryData));
+                            console.log(
+                                `💾 ${failedUploads.length} uploads opgeslagen voor retry bij reconnect`);
+                        }
+
+                        // 4️⃣ Meld aan Laravel welke bestanden klaarstaan voor Dropbox
+                        await fetch(`/tasks/${taskId}/upload-photo`, {
+                            method: "POST",
+                            headers: {
+                                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')
+                                    .content,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({
+                                storage: "r2",
+                                photos: urls.map(u => u.path),
+                                path: adresPath,
+                                namespace_id: namespaceId
+                            })
+                        });
+
+                        console.log(`✅ ${compressedFiles.length} foto's verwerkt (inclusief retries)`);
+                        showToast(`✅ ${compressedFiles.length} foto's succesvol geüpload!`);
+                    } catch (err) {
+                        console.error("❌ Fout bij upload naar R2:", err);
+                        showToast("⚠️ Upload mislukt, probeer opnieuw.");
+                    }
+
+                    const uploadEnd = performance.now();
+                    console.log(
+                        `🚀 Uploadtijd (frontend → R2): ${((uploadEnd - uploadStart) / 1000).toFixed(2)}s`);
                 }
+
+                // ✅ Status bijwerken, maar met sendBeacon fallback
+                const finishUrl = `/tasks/${taskId}/finish`;
+
+                if (navigator.sendBeacon) {
+                    const beaconData = new FormData();
+                    beaconData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
+                    beaconData.append("damage", form.querySelector('input[name="damage"]:checked')?.value ||
+                    "");
+                    beaconData.append("note", form.querySelector('textarea[name="note"]').value || "");
+
+                    navigator.sendBeacon(finishUrl, beaconData);
+                    console.log("📡 Task finish verzonden via sendBeacon (zonder foto's)");
+
+                    const currentStatus = document.querySelector(`tr[data-task-id="${taskId}"]`)?.dataset
+                    .status;
+                    const damage = form.querySelector('input[name="damage"]:checked')?.value;
+                    let newStatus = currentStatus;
+
+                    if (currentStatus === "open") newStatus = "in behandeling";
+                    else if (["in behandeling", "reopened"].includes(currentStatus)) {
+                        newStatus = (damage === "none") ? "finished" : "in behandeling";
+                    }
+
+                    updateTaskStatusRow(taskId, newStatus);
+                    showToast("🎉 Taak succesvol afgerond!");
+                    closeTaskForm();
+
+                    const loaderText = document.getElementById("loaderText");
+                    loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
+                    setTimeout(() => {
+                        loader.classList.add("opacity-0", "transition-opacity", "duration-700");
+                        setTimeout(() => loader.remove(), 700);
+                    }, 600);
+                } else {
+                    const resFinish = await fetch(finishUrl, {
+                        method: "POST",
+                        headers: {
+                            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
+                            "Accept": "application/json"
+                        },
+                        body: formData
+                    });
+
+                    if (resFinish.ok) {
+                        const json = await resFinish.json();
+                        updateTaskStatusRow(taskId, json.status);
+                        showToast("🎉 Taak succesvol afgerond!");
+                        closeTaskForm();
+                        const loaderText = document.getElementById("loaderText");
+                        loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
+                        setTimeout(() => {
+                            loader.classList.add("opacity-0", "transition-opacity", "duration-700");
+                            setTimeout(() => loader.remove(), 700);
+                        }, 600);
+                    } else {
+                        const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
+                        if (loaderEl) loaderEl.remove();
+                    }
+                }
+            } catch (err) {
+                console.error("Upload fout:", err);
+                const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
+                if (loaderEl) loaderEl.remove();
+            } finally {
+                finishButton.disabled = false;
+                finishButton.textContent = "Voltooien";
             }
-
-            // 3️⃣ Retry-buffer opslaan in localStorage als er iets faalde
-            if (failedUploads.length > 0) {
-                const retryData = failedUploads.map(f => ({
-                    name: f.name,
-                    type: f.type,
-                    path: f.path,
-                    url: f.url,
-                    base64: btoa(String.fromCharCode(...new Uint8Array(f.file)))
-                }));
-                localStorage.setItem("pendingUploads", JSON.stringify(retryData));
-                console.log(`💾 ${failedUploads.length} uploads opgeslagen voor retry bij reconnect`);
-            }
-
-            // 4️⃣ Meld aan Laravel welke bestanden klaarstaan voor Dropbox
-            await fetch(`/tasks/${taskId}/upload-photo`, {
-                method: "POST",
-                headers: {
-                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    storage: "r2",
-                    photos: urls.map(u => u.path),
-                    path: adresPath,
-                    namespace_id: namespaceId
-                })
-            });
-
-            console.log(`✅ ${compressedFiles.length} foto's verwerkt (inclusief retries)`);
-            showToast(`✅ ${compressedFiles.length} foto's succesvol geüpload!`);
-        } catch (err) {
-            console.error("❌ Fout bij upload naar R2:", err);
-            showToast("⚠️ Upload mislukt, probeer opnieuw.");
-        }
-
-        const uploadEnd = performance.now();
-        console.log(`🚀 Uploadtijd (frontend → R2): ${((uploadEnd - uploadStart) / 1000).toFixed(2)}s`);
-    }
-
-    // ✅ Status bijwerken, maar met sendBeacon fallback
-    const finishUrl = `/tasks/${taskId}/finish`;
-
-    if (navigator.sendBeacon) {
-        const beaconData = new FormData();
-        beaconData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
-        beaconData.append("damage", form.querySelector('input[name="damage"]:checked')?.value || "");
-        beaconData.append("note", form.querySelector('textarea[name="note"]').value || "");
-
-        navigator.sendBeacon(finishUrl, beaconData);
-        console.log("📡 Task finish verzonden via sendBeacon (zonder foto's)");
-
-        const currentStatus = document.querySelector(`tr[data-task-id="${taskId}"]`)?.dataset.status;
-        const damage = form.querySelector('input[name="damage"]:checked')?.value;
-        let newStatus = currentStatus;
-
-        if (currentStatus === "open") newStatus = "in behandeling";
-        else if (["in behandeling", "reopened"].includes(currentStatus)) {
-            newStatus = (damage === "none") ? "finished" : "in behandeling";
-        }
-
-        updateTaskStatusRow(taskId, newStatus);
-        showToast("🎉 Taak succesvol afgerond!");
-        closeTaskForm();
-
-        const loaderText = document.getElementById("loaderText");
-        loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
-        setTimeout(() => {
-            loader.classList.add("opacity-0", "transition-opacity", "duration-700");
-            setTimeout(() => loader.remove(), 700);
-        }, 600);
-    } else {
-        const resFinish = await fetch(finishUrl, {
-            method: "POST",
-            headers: {
-                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                "Accept": "application/json"
-            },
-            body: formData
-        });
-
-        if (resFinish.ok) {
-            const json = await resFinish.json();
-            updateTaskStatusRow(taskId, json.status);
-            showToast("🎉 Taak succesvol afgerond!");
-            closeTaskForm();
-            const loaderText = document.getElementById("loaderText");
-            loaderText.textContent = "✅ Upload afgerond! Taak voltooid.";
-            setTimeout(() => {
-                loader.classList.add("opacity-0", "transition-opacity", "duration-700");
-                setTimeout(() => loader.remove(), 700);
-            }, 600);
-        } else {
-            const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
-            if (loaderEl) loaderEl.remove();
-        }
-    }
-} catch (err) {
-    console.error("Upload fout:", err);
-    const loaderEl = document.querySelector(".fixed.inset-0.bg-black");
-    if (loaderEl) loaderEl.remove();
-} finally {
-    finishButton.disabled = false;
-    finishButton.textContent = "Voltooien";
-}
 
         });
 
@@ -1127,33 +1151,34 @@
         });
 
         // 🔁 Herstel uploads als gebruiker weer online komt
-window.addEventListener("online", async () => {
-    const data = localStorage.getItem("pendingUploads");
-    if (!data) return;
+        window.addEventListener("online", async () => {
+            const data = localStorage.getItem("pendingUploads");
+            if (!data) return;
 
-    const pending = JSON.parse(data);
-    if (pending.length === 0) return;
+            const pending = JSON.parse(data);
+            if (pending.length === 0) return;
 
-    showToast(`📡 ${pending.length} niet-verstuurde foto's worden opnieuw geüpload...`);
+            showToast(`📡 ${pending.length} niet-verstuurde foto's worden opnieuw geüpload...`);
 
-    for (const f of pending) {
-        const binary = Uint8Array.from(atob(f.base64), c => c.charCodeAt(0));
-        try {
-            const res = await fetch(f.url, {
-                method: "PUT",
-                headers: { "Content-Type": f.type },
-                body: binary
-            });
-            if (res.ok) console.log(`✅ Retry succesvol: ${f.name}`);
-        } catch (err) {
-            console.warn(`⚠️ Retry mislukt: ${f.name}`);
-        }
-    }
+            for (const f of pending) {
+                const binary = Uint8Array.from(atob(f.base64), c => c.charCodeAt(0));
+                try {
+                    const res = await fetch(f.url, {
+                        method: "PUT",
+                        headers: {
+                            "Content-Type": f.type
+                        },
+                        body: binary
+                    });
+                    if (res.ok) console.log(`✅ Retry succesvol: ${f.name}`);
+                } catch (err) {
+                    console.warn(`⚠️ Retry mislukt: ${f.name}`);
+                }
+            }
 
-    localStorage.removeItem("pendingUploads");
-    showToast("✅ Alle gemiste uploads zijn opnieuw verstuurd!");
-});
-
+            localStorage.removeItem("pendingUploads");
+            showToast("✅ Alle gemiste uploads zijn opnieuw verstuurd!");
+        });
     </script>
 
 </x-layouts.dashboard>
