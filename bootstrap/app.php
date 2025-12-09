@@ -16,6 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'login', // POST /login uitsluiten
             'logout',  
+            'r2/upload',            // De fysieke upload
+            'r2/register-upload',
         ]);
 
          // ✅ Voeg hier je custom sessie-check toe

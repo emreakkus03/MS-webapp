@@ -1,0 +1,6 @@
+version: '3.6'
+services:
+  web:
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1

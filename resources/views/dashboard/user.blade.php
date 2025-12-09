@@ -2,19 +2,11 @@
 
     <head>
         <meta name="csrf-token" content="{{ csrf_token() }}">
-        <script>
-            // Voeg globale CSRF headers toe aan alle fetch requests
-            window.defaultFetch = window.fetch;
-            window.fetch = async (url, options = {}) => {
-                options.headers = {
-                    ...(options.headers || {}),
-                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content,
-                };
-                options.credentials = "same-origin"; // ✅ cookies (sessie) meesturen
-                return window.defaultFetch(url, options);
-            };
-        </script>
+
+
+
     </head>
+
 
     <!-- Datum -->
     <h2 class="text-sm text-center md:text-left md:text-base lg:text-lg font-semibold text-gray-700 mb-4">
@@ -258,8 +250,156 @@
             class="max-h-[90%] max-w-[90%] rounded shadow-lg border-4 border-white transition-transform duration-300" />
     </div>
 
+    @push('scripts')
+        <script>
+            let overlay = null;
+
+            function showGlobalUploadProgress(current, total, filename) {
+                if (!overlay) {
+                    overlay = document.createElement("div");
+                    overlay.className = "fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center";
+                    overlay.innerHTML = `
+            <div class="bg-white p-5 rounded-xl shadow-xl text-center">
+                <h3 class="text-lg font-bold mb-2">Foto's worden geüpload...</h3>
+                <p id="uploadStatus" class="text-sm text-gray-600 mb-2"></p>
+                <div class="w-64 bg-gray-300 rounded h-3">
+                    <div id="uploadBar" class="h-3 bg-green-500 rounded" style="width: 0%"></div>
+                </div>
+            </div>`;
+                    document.body.appendChild(overlay);
+                }
+
+                const percent = Math.floor((current / total) * 100);
+                document.getElementById("uploadStatus").textContent =
+                    `${current}/${total} • ${filename}`;
+                document.getElementById("uploadBar").style.width = percent + "%";
+            }
+
+            function hideGlobalUploadProgress() {
+                if (overlay) {
+                    overlay.remove();
+                    overlay = null;
+                }
+            }
+
+            if (navigator.serviceWorker) {
+                navigator.serviceWorker.addEventListener("message", (event) => {
+                    const msg = event.data;
+                    if (!msg) return;
+
+                    if (msg.type === "QUEUED") {
+                        console.log(`📥 In wachtrij geplaatst: ${msg.file}`);
+                    }
+
+                    if (msg.type === "PROGRESS") {
+                        showGlobalUploadProgress(msg.current, msg.total, msg.name);
+                    }
+
+                    if (msg.type === "UPLOADED") {
+                        console.log(`☁️ Geüpload naar R2: ${msg.name}`);
+                    }
+
+                    if (msg.type === "COMPLETE") {
+                        hideGlobalUploadProgress();
+                        showToast("🎉 Alle foto's zijn succesvol geüpload (via SW)!");
+                    }
+                });
+            }
+
+
+
+
+            if ('serviceWorker' in navigator) {
+               navigator.serviceWorker.register('/sw.js')
+    .then(reg => {
+        console.log("SW geregistreerd:", reg.scope);
+
+        // 👇 DIT IS DE TOEVOEGING
+        // Check direct bij het openen van de app of er nog iets in de wachtrij staat
+        if (reg.sync) {
+             // We registreren de sync opnieuw. Als er niets in de queue zit, doet dit niks (veilig).
+             // Als er wél iets zit, wordt het nu direct geüpload.
+            reg.sync.register("sync-r2-uploads")
+                .catch(err => console.warn("Kon sync niet triggeren bij start:", err));
+        }
+        // 👆 EINDE TOEVOEGING
+
+        // ... hier staat je updatefound code ...
+
+                        // Als een nieuwe SW klaar is om te activeren
+                        reg.addEventListener('updatefound', () => {
+                            const newSW = reg.installing;
+
+                            newSW.addEventListener('statechange', () => {
+                                if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log("Nieuwe service worker beschikbaar — herladen...");
+                                    window.location.reload();
+                                }
+                            });
+                        });
+
+                        // Als de service worker actief wordt en control krijgt
+                        navigator.serviceWorker.addEventListener('controllerchange', () => {
+                            console.log("🔥 SW heeft nu control over de pagina");
+                            window.location.reload();
+                        });
+                    });
+            }
+
+
+            window.addEventListener("online", () => {
+                navigator.serviceWorker.ready.then(reg => {
+                    reg.sync.register("sync-r2-uploads");
+                    console.log("🔁 Online → retry uploads gestart");
+                });
+            });
+        </script>
+    @endpush
+
 
     <script type="module">
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+            console.log("🔥 SW heeft nu control → opnieuw laden");
+            window.location.reload();
+        });
+
+
+        window.showToast = function(message, duration = 4000) {
+            const toast = document.createElement("div");
+            toast.textContent = message;
+            toast.className =
+                "fixed bottom-5 right-5 bg-gray-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm";
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), duration);
+        };
+        /**
+ * 🛠️ Stuurt een bericht naar de Service Worker (SW).
+ * Wacht netjes als de SW nog aan het opstarten is.
+ */
+async function sendToSW(msg) {
+    if (!navigator.serviceWorker) {
+        console.error("❌ Service Workers worden niet ondersteund in deze browser.");
+        return;
+    }
+
+    // 1. Wacht tot de SW 'ready' is (geïnstalleerd & actief)
+    const reg = await navigator.serviceWorker.ready;
+
+    // 2. Check of er een controller is
+    if (reg.active) {
+        // Gebruik reg.active.postMessage in plaats van navigator.serviceWorker.controller
+        // Dit is veiliger omdat reg.active altijd de actieve worker van deze scope is.
+        reg.active.postMessage(msg);
+    } else if (navigator.serviceWorker.controller) {
+        // Fallback
+        navigator.serviceWorker.controller.postMessage(msg);
+    } else {
+        // 3. Noodgeval: forceer reload als er echt geen controller is na 'ready'
+        console.warn("⚠️ Wel SW ready, maar geen controller. Pagina wordt herladen...");
+        window.location.reload(); 
+    }
+}
+
         import imageCompression from "https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/+esm";
 
         // 💤 Voorkom dat uploads pauzeren als scherm uitgaat (Android wake lock)
@@ -846,109 +986,33 @@
                     const uploadStart = performance.now();
 
                     try {
-                        // 1️⃣ Vraag tijdelijke upload-URLs aan bij Laravel
-                        const urlsRes = await fetch("/r2/upload-urls", {
-                            method: "POST",
-                            headers: {
-                                "Content-Type": "application/json",
-                                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')
-                                    .content
-                            },
-                            body: JSON.stringify({
-                                files: compressedFiles.map(f => f.name)
-                            })
-                        });
 
-                        const {
-                            urls
-                        } = await urlsRes.json(); // [{ name, url, path }]
 
-                        // 2️⃣ Upload elke foto rechtstreeks naar Cloudflare R2 met retry bij netwerkverlies
-                        const failedUploads = [];
-                        for (let i = 0; i < urls.length; i++) {
-                            const u = urls[i];
-                            try {
-                               const res = await fetch(u.url, {
-    method: "PUT",
-    headers: { "Content-Type": compressedFiles[i].type },
-    body: compressedFiles[i]
-});
 
-if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-// 1️⃣ Server-side check — BESTAND MOET ÉCHT BESTAAN
-const check = await fetch(`/r2/check-file?path=${encodeURIComponent(u.path)}`);
-const exists = await check.json();
 
-if (!exists.exists) {
-    console.warn("❌ Bestand staat NIET in R2:", u.path);
-    throw new Error("Upload bestaat niet in R2");
+                        // ❗ CSRF ophalen
+const csrf = document.querySelector('meta[name="csrf-token"]').content;
+
+// ✅ Stuur elke foto naar de Service Worker via de veilige helper
+for (let i = 0; i < compressedFiles.length; i++) {
+    await sendToSW({
+        type: "ADD_UPLOAD",
+        name: compressedFiles[i].name,
+        blob: compressedFiles[i],
+        fileType: compressedFiles[i].type,
+        task_id: taskId,
+        namespace_id: namespaceId,
+        adres_path: adresPath,
+        csrf: csrf
+    });
+
+    console.log("📡 SW bericht verzonden voor:", compressedFiles[i].name);
 }
 
-// 2️⃣ Nu pas mogen we registreren
-await fetch("/r2/register-upload", {
-    method: "POST",
-    headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-    },
-    body: JSON.stringify({
-        task_id: taskId,
-        r2_path: u.path,
-        namespace_id: namespaceId,
-        adres_path: adresPath
-    })
-});
-
-console.log("✔ Upload bevestigd:", u.path);
-
-
-                            } catch (err) {
-                                console.warn(
-                                    `⚠️ Upload mislukt (${compressedFiles[i].name}), lokaal opslaan voor retry`
-                                    );
-                                failedUploads.push({
-                                    name: compressedFiles[i].name,
-                                    type: compressedFiles[i].type,
-                                    file: await compressedFiles[i].arrayBuffer(),
-                                    path: u.path,
-                                    url: u.url
-                                });
-                            }
-                        }
-
-                        // 3️⃣ Retry-buffer opslaan in localStorage als er iets faalde
-                        if (failedUploads.length > 0) {
-                            const retryData = failedUploads.map(f => ({
-                                name: f.name,
-                                type: f.type,
-                                path: f.path,
-                                url: f.url,
-                                base64: btoa(String.fromCharCode(...new Uint8Array(f.file)))
-                            }));
-                            localStorage.setItem("pendingUploads", JSON.stringify(retryData));
-                            console.log(
-                                `💾 ${failedUploads.length} uploads opgeslagen voor retry bij reconnect`);
-                        }
-
-                        // 4️⃣ Meld aan Laravel welke bestanden klaarstaan voor Dropbox
-                        await fetch(`/tasks/${taskId}/upload-photo`, {
-                            method: "POST",
-                            headers: {
-                                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')
-                                    .content,
-                                "Content-Type": "application/json"
-                            },
-                            body: JSON.stringify({
-                                storage: "r2",
-                                photos: urls.map(u => u.path),
-                                path: adresPath,
-                                namespace_id: namespaceId
-                            })
-                        });
-
-                        console.log(`✅ ${compressedFiles.length} foto's verwerkt (inclusief retries)`);
-                        showToast(`✅ ${compressedFiles.length} foto's succesvol geüpload!`);
+// Omdat we nu 'await sendToSW' gebruiken, weten we dat de berichten verstuurd zijn.
+console.log(`✅ ${compressedFiles.length} foto's in wachtrij geplaatst.`);
+showToast(`✅ ${compressedFiles.length} foto's worden op de achtergrond geüpload!`);
                     } catch (err) {
                         console.error("❌ Fout bij upload naar R2:", err);
                         showToast("⚠️ Upload mislukt, probeer opnieuw.");
@@ -966,14 +1030,14 @@ console.log("✔ Upload bevestigd:", u.path);
                     const beaconData = new FormData();
                     beaconData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
                     beaconData.append("damage", form.querySelector('input[name="damage"]:checked')?.value ||
-                    "");
+                        "");
                     beaconData.append("note", form.querySelector('textarea[name="note"]').value || "");
 
                     navigator.sendBeacon(finishUrl, beaconData);
                     console.log("📡 Task finish verzonden via sendBeacon (zonder foto's)");
 
                     const currentStatus = document.querySelector(`tr[data-task-id="${taskId}"]`)?.dataset
-                    .status;
+                        .status;
                     const damage = form.querySelector('input[name="damage"]:checked')?.value;
                     let newStatus = currentStatus;
 
@@ -1151,34 +1215,8 @@ console.log("✔ Upload bevestigd:", u.path);
         });
 
         // 🔁 Herstel uploads als gebruiker weer online komt
-        window.addEventListener("online", async () => {
-            const data = localStorage.getItem("pendingUploads");
-            if (!data) return;
 
-            const pending = JSON.parse(data);
-            if (pending.length === 0) return;
-
-            showToast(`📡 ${pending.length} niet-verstuurde foto's worden opnieuw geüpload...`);
-
-            for (const f of pending) {
-                const binary = Uint8Array.from(atob(f.base64), c => c.charCodeAt(0));
-                try {
-                    const res = await fetch(f.url, {
-                        method: "PUT",
-                        headers: {
-                            "Content-Type": f.type
-                        },
-                        body: binary
-                    });
-                    if (res.ok) console.log(`✅ Retry succesvol: ${f.name}`);
-                } catch (err) {
-                    console.warn(`⚠️ Retry mislukt: ${f.name}`);
-                }
-            }
-
-            localStorage.removeItem("pendingUploads");
-            showToast("✅ Alle gemiste uploads zijn opnieuw verstuurd!");
-        });
+        
     </script>
 
 </x-layouts.dashboard>

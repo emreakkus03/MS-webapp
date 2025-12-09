@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\RepairTasksMail;
 use Illuminate\Support\Facades\Response;
+use Aws\Credentials\Credentials;
 
 Route::get('/3f73e6bc076b1cb056e072cc30dc485b.txt', function () {
     return Response::make('', 200, ['Content-Type' => 'text/plain']);
@@ -33,9 +34,7 @@ Route::middleware(['auth'])->group(function () {
             'folder'   => 'nullable|string|max:255',
         ]);
 
-        // Optioneel: voeg een folder toe zoals "uploads/team_1"
-        $folder = $request->input('folder', 'uploads');
-        $path = trim($folder, '/') . '/' . uniqid() . '_' . $request->filename;
+        $path = uniqid() . '_' . $request->filename;
 
         // Maak een tijdelijke upload URL (5 minuten geldig)
         try {
@@ -57,54 +56,51 @@ Route::middleware(['auth'])->group(function () {
         }
     })->name('r2.presigned');
 
-    Route::post('/r2/upload-urls', function (Request $request) {
-        $files = $request->input('files', []);
+   Route::post('/r2/upload-urls', function (Request $request) {
 
-        $urls = collect($files)->map(function ($name) {
-            $path = 'uploads/' . uniqid() . '_' . $name;
+    $credentials = new Credentials(
+        env('R2_ACCESS_KEY_ID'),
+        env('R2_SECRET_ACCESS_KEY')
+    );
 
-            try {
-                $s3 = new S3Client([
-                    'region' => 'auto',
-                    'version' => 'latest',
-                    'endpoint' => env('R2_ENDPOINT'),
-                    'credentials' => [
-                        'key' => env('R2_ACCESS_KEY_ID'),
-                        'secret' => env('R2_SECRET_ACCESS_KEY'),
-                    ],
-                ]);
+  $s3 = new S3Client([
+    'region' => 'auto',
+    'version' => 'latest',
+    'endpoint' => env('R2_ENDPOINT'),
+    'use_path_style_endpoint' => true,
+    'bucket_endpoint' => true,
+    'signature_version' => 'v4',
+    'credentials' => new Credentials(
+        env('R2_ACCESS_KEY_ID'),
+        env('R2_SECRET_ACCESS_KEY')
+    ),
+]);
 
-                $cmd = $s3->getCommand('PutObject', [
-                    'Bucket' => env('R2_BUCKET'),
-                    'Key'    => $path,
-                    // ✅ Belangrijk: verwijder deze regel of vervang met 'public-read'
-                    //'ACL'    => 'public-read',
-                ]);
+    $files = $request->input('files', []);
+    $bucket = env('R2_BUCKET'); // uploads
 
-                $request = $s3->createPresignedRequest($cmd, '+5 minutes');
-                $tempUrl = (string) $request->getUri();
+    $urls = collect($files)->map(function ($name) use ($s3, $bucket) {
 
-                Log::info("✅ Presigned R2 upload URL gegenereerd", [
-                    'file' => $name,
-                    'url'  => $tempUrl,
-                ]);
+       $path = uniqid() . '_' . $name;
 
-                return [
-                    'name' => $name,
-                    'url'  => $tempUrl,
-                    'path' => $path,
-                ];
-            } catch (\Throwable $e) {
-                Log::error("❌ R2 upload URL fout: " . $e->getMessage(), ['file' => $name]);
-                return [
-                    'name'  => $name,
-                    'error' => $e->getMessage(),
-                ];
-            }
-        });
 
-        return response()->json(['urls' => $urls]);
-    })->name('r2.upload_urls');
+   $cmd = $s3->getCommand('PutObject', [
+    'Bucket' => env('R2_BUCKET'),
+    'Key'    => $path,
+]);
+
+$request = $s3->createPresignedRequest($cmd, '+5 minutes');
+
+return [
+    'url' => (string) $request->getUri(), // dit is nu laravel.cloud
+    'path' => $path,
+];
+    });
+
+    return response()->json(['urls' => $urls]);
+});
+
+
 });
 
 Route::get('/r2/test', function () {
@@ -225,19 +221,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/tasks/{task}/upload-temp', [TaskController::class, 'uploadTemp'])->name('tasks.uploadTemp');
 
     Route::post('/r2/register-upload', [R2Controller::class, 'registerUpload'])->name('r2.register');
-    Route::get('/r2/check-file', function (Request $request) {
-    $path = $request->query('path');
+    Route::get('/r2/check-file', [R2Controller::class, 'checkFile'])->name('r2.check');
 
-    if (!$path) {
-        return response()->json(['exists' => false, 'error' => 'Missing path'], 400);
-    }
 
-    $exists = Storage::disk('r2')->exists($path);
-
-    return response()->json([
-        'exists' => $exists
-    ]);
-});
 
 });
 
@@ -271,6 +257,8 @@ Route::get('/test-repair-mail', function () {
 
     return '✅ RepairTasksMail sent successfully. Check your inbox.';
 });
+
+Route::post('/r2/upload', [R2Controller::class, 'uploadFromSW'])->name('r2.upload');
 
 /*Route::get('/download-r2-backup', function () {
     $path = storage_path('app/r2_backup.zip');
