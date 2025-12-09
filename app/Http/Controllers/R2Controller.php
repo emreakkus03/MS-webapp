@@ -108,14 +108,36 @@ class R2Controller extends Controller
             // Argumenten: (Folder, File Object, Bestandsnaam)
             $uploadedPath = Storage::disk('r2')->putFileAs($cleanFolder, $file, $filename);
 
-            // 4. Controle
+            // 4. Controleer resultaat (De "Paranoïde Check")
             if ($uploadedPath) {
-                Log::info("✅ R2 upload GESLAAGD: " . $uploadedPath);
+                // Stap A: Bestaat het echt?
+                if (!Storage::disk('r2')->exists($fullPath)) {
+                    throw new Exception("Bestand geüpload maar niet gevonden in R2 (exists check failed).");
+                }
+
+                // Stap B: Is de grootte exact hetzelfde? (Cruciaal voor integriteit)
+                $localSize = $file->getSize(); // Grootte van de upload
+                $remoteSize = Storage::disk('r2')->size($fullPath); // Grootte in de cloud
+
+
+                if ($localSize !== $remoteSize) {
+                    // ALARM! R2 heeft een corrupt/half bestand.
+                    // We gooien een error, zodat de SW de lokale kopie NIET wist.
+                    Log::error("❌ R2 Data Corruptie! Lokaal: $localSize bytes, R2: $remoteSize bytes.");
+                    
+                    // Optioneel: verwijder het corrupte bestand uit R2 om verwarring te voorkomen
+                    Storage::disk('r2')->delete($fullPath);
+                    
+                    throw new Exception("Data corruptie: bestandsgrootte komt niet overeen.");
+                }
+
+                Log::info("✅ R2 upload GESLAAGD & GEVERIFIEERD ($localSize bytes): " . $fullPath);
                 
                 return response()->json([
                     'success' => true,
-                    'path' => $uploadedPath // Dit pad sturen we terug naar de SW
+                    'path' => $fullPath
                 ]);
+
             } else {
                 throw new Exception("Storage::putFileAs retourneerde false.");
             }
