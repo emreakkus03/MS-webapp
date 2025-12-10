@@ -51,13 +51,13 @@ It allows users and administrators to manage schedules, tasks, leave requests, a
   - Optional note  
 
 - **Admin** can:
-  - View all leave requests on the new **Leave Management Page**.  
+  - View all leave requests on the **Leave Management Page**.  
   - Approve or reject requests.  
   - Receive instant notifications when a new leave request is submitted.  
 
 - **Notifications:**
   - **Normal users** receive a notification when their own leave request is approved or rejected.  
-  - **Admins** receive notifications when:
+  - **Admins** receive notifications when:  
     - A task is completed.  
     - A note is added to a task.  
     - A leave request is submitted.  
@@ -99,14 +99,37 @@ It allows users and administrators to manage schedules, tasks, leave requests, a
 - **Email Delivery**: Brevo (Sendinblue)  
 - **Environment**: Docker & DDEV for containerized local development  
 - **Package Managers**: Composer & NPM  
+- **Additional Services**:
+  - **Brevo.com** – voor dagelijkse hersteloverzicht e-mails  
+  - **Pusher.com** – voor realtime meldingen  
+
+---
+
+## 🔧 Maintenance & Troubleshooting
+
+### Photo Recovery Commands (Cloudflare R2 → Dropbox)
+
+**php artisan r2:retry-all**  
+Gebruik deze command wanneer foto’s in R2 blijven hangen terwijl het adres in behandeling of voltooid is, maar de foto’s nog niet in Dropbox staan.
+
+**php artisan r2:download-all**  
+Gebruik deze command om alle foto’s die in de R2 bucket blijven hangen te downloaden in een ZIP-bestand.  
+
+**php artisan r2:publish-zip**  
+Gebruik deze command direct na `r2:download-all` om de ZIP in de publieke folder te plaatsen.  
+Daarna kun je de ZIP downloaden via:  
+https://ms-webapp-main-yfswth.laravel.cloud/download-r2-backup  
+
+**php artisan r2:clear**  
+Gebruik deze command om de R2 bucket leeg te maken (hangende foto’s te verwijderen), maar **alleen na het downloaden van de ZIP**.
 
 ---
 
 ## 🔒 Security & Performance
 - CSRF, XSS, and session fixation protections enabled.  
 - Secure session regeneration on login/logout.  
-- Optimized background processing with Laravel Queues for uploads.  
-- Caching disabled on login page for safety.  
+- Optimized background processing using Laravel Queues.  
+- Caching disabled on sensitive pages such as login.  
 
 ---
 
@@ -119,12 +142,4 @@ It may **not** be copied, reused, or redistributed without explicit permission f
 ---
 
 ## 👨‍💻 Author
-- **Emre Akkus**  
-
-
-php artisan r2:retry-all => als de foto's in r2 blijven hangen terwijl de adres in behandeling of voltooid is en de foto's niet in dropbox komen gebruik deze command
-
-php artisan r2:download-all => gebruik deze command om alle foto's die in r2 bucket blijven hangen te downloaden in een zip
-php artisan r2:publish-zip => gebruik deze command direct na de stap hierboven om de zip in de publieke folder te zetten om te kunnen downloaden en surf dan naar deze url: https://ms-webapp-main-yfswth.laravel.cloud/download-r2-backup
-
-php artisan r2:clear => gebruik deze command om de bucket te clearen dus de hangende foto's te verwijderen na het downloaden van de zip
+- **Emre Akkus**
