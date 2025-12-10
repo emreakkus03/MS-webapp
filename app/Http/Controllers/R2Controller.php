@@ -83,29 +83,48 @@ class R2Controller extends Controller
         
         Log::info("📥 R2 Upload gestart vanuit SW", $request->except(['file']));
 
-        try {
+       try {
             // 1. Validatie
             $request->validate([
                 'file' => 'required|file',
                 'task_id' => 'required',
                 'namespace_id' => 'required',
                 'adres_path' => 'required',
+                'unique_id' => 'nullable', // 👈 NIEUW: We accepteren nu de ID van de SW
             ]);
 
             $file = $request->file('file');
 
             // 2. Pad en Bestandsnaam voorbereiden
-            // Let op: putFileAs wil als eerste argument de MAP, niet het volledige pad.
             $cleanFolder = ltrim($request->adres_path, '/');
-            $filename = uniqid() . "_" . $file->getClientOriginalName();
-            
-            // Voor logging
-            $fullPath = $cleanFolder . "/" . $filename;
-            Log::info("🔄 Uploaden naar map: $cleanFolder met naam: $filename");
 
-            // 3. UPLOADEN MET putFileAs (De veilige Laravel manier)
-            // Dit regelt streaming automatisch en voorkomt het 'false' probleem vaak.
-            // Argumenten: (Folder, File Object, Bestandsnaam)
+            // 👇 DE FIX: Gebruik de ID van de tablet. Als die er niet is (oude versie), gebruik uniqid().
+            $uniqueId = $request->input('unique_id', uniqid());
+
+            // Gebruik die vaste ID in de bestandsnaam. 
+            // Hierdoor blijft de naam ALTIJD hetzelfde, ook bij retries.
+            $filename = $uniqueId . "_" . $file->getClientOriginalName();
+            
+            $fullPath = $cleanFolder . "/" . $filename;
+
+            Log::info("🔄 Upload poging voor: $fullPath");
+
+            // 👇 IDEMPOTENCY CHECK (De anti-dubbel maatregel)
+            // Als de Service Worker dit bestand al eens heeft gestuurd (maar geen antwoord kreeg),
+            // dan bestaat het bestand al in R2.
+            if (Storage::disk('r2')->exists($fullPath)) {
+                Log::info("♻️ Dubbele upload overgeslagen (bestand bestaat al): " . $fullPath);
+                
+                // We sturen direct 'succes' terug. 
+                // De Service Worker denkt: "Mooi, gelukt!" en verwijdert het uit IndexedDB.
+                return response()->json([
+                    'success' => true,
+                    'path' => $fullPath
+                ]);
+            }
+
+            // 3. UPLOADEN MET putFileAs (Alleen als hij nog niet bestond)
+            Log::info("🚀 Nieuwe upload starten naar: $fullPath");
             $uploadedPath = Storage::disk('r2')->putFileAs($cleanFolder, $file, $filename);
 
             // 4. Controleer resultaat (De "Paranoïde Check")
@@ -119,13 +138,11 @@ class R2Controller extends Controller
                 $localSize = $file->getSize(); // Grootte van de upload
                 $remoteSize = Storage::disk('r2')->size($fullPath); // Grootte in de cloud
 
-
                 if ($localSize !== $remoteSize) {
                     // ALARM! R2 heeft een corrupt/half bestand.
-                    // We gooien een error, zodat de SW de lokale kopie NIET wist.
                     Log::error("❌ R2 Data Corruptie! Lokaal: $localSize bytes, R2: $remoteSize bytes.");
                     
-                    // Optioneel: verwijder het corrupte bestand uit R2 om verwarring te voorkomen
+                    // Verwijder het corrupte bestand zodat we het de volgende keer vers kunnen proberen
                     Storage::disk('r2')->delete($fullPath);
                     
                     throw new Exception("Data corruptie: bestandsgrootte komt niet overeen.");
