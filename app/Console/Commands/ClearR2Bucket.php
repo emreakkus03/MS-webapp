@@ -4,22 +4,29 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
+use App\Models\R2PendingUpload; // <--- Toevoegen
 
 class ClearR2Bucket extends Command
 {
- protected $signature = 'r2:clear';
-    protected $description = 'Verwijdert ALLE bestanden uit de Cloudflare R2 bucket.';
+    protected $signature = 'r2:clear';
+    protected $description = 'Verwijdert ALLE bestanden uit R2 én schoont de database op.';
 
     public function handle()
     {
-        $this->warn("⚠️ LET OP: Je gaat de volledige R2 bucket leegmaken!");
+        $this->warn("⚠️  LET OP: Je gaat de volledige R2 bucket leegmaken!");
+        $this->warn("⚠️  Dit verwijdert ook alle 'pending' records uit de database.");
         
-        // Indien je een extra confirm wil:
-        if (!$this->confirm('Weet je zeker dat je ALLES wil verwijderen?', true)) {
+        if (!$this->confirm('Weet je zeker dat je ALLES wil verwijderen? (Dit kan niet ongedaan worden gemaakt)', true)) {
             $this->info("❌ Actie geannuleerd.");
             return 1;
         }
 
+        // 1. Database leegmaken (Truncate)
+        // Dit zorgt dat je command 'retry-all' niet meer probeert te uploaden
+        $this->info("🗄️  Database tabel opschonen...");
+        R2PendingUpload::truncate(); 
+
+        // 2. R2 Bestanden verwijderen
         $files = Storage::disk('r2')->allFiles();
 
         if (empty($files)) {
@@ -27,13 +34,13 @@ class ClearR2Bucket extends Command
             return 0;
         }
 
-        $this->info("🗑️ Verwijderen van " . count($files) . " bestanden...");
+        $this->info("🗑️  Verwijderen van " . count($files) . " bestanden uit R2...");
 
         foreach ($files as $file) {
             Storage::disk('r2')->delete($file);
         }
 
-        $this->info("🎉 R2 bucket is volledig opgeschoond!");
+        $this->info("🎉 Alles is schoon! Bucket leeg & Database leeg.");
         return 0;
     }
 }
