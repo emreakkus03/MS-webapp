@@ -7,19 +7,33 @@ use App\Models\R2PendingUpload;
 use Aws\S3\S3Client;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Cache; 
 use Exception;
 
 class R2Controller extends Controller
 {
+    // 👇 AANPASSING 1: Deduplicatie voor de Job Registratie
     public function registerUpload(Request $request)
     {
         $data = $request->validate([
             'task_id' => 'required|integer',
-            'r2_path' => 'required|string',
+            'r2_path' => 'required|string', // Mag niet 'undefined' zijn
             'namespace_id' => 'required|string',
             'adres_path' => 'required|string',
         ]);
 
+        // 🛑 CHECK: Is deze job al aangemaakt in de afgelopen 5 minuten?
+        $duplicate = R2PendingUpload::where('task_id', $data['task_id'])
+            ->where('r2_path', $data['r2_path'])
+            ->where('created_at', '>', now()->subMinutes(5)) // Alleen recente dubbels blokkeren
+            ->first();
+
+        if ($duplicate) {
+            Log::info("♻️ Dubbele Job registratie genegeerd voor: " . $data['r2_path']);
+            return response()->json(['success' => true, 'status' => 'already_queued']);
+        }
+
+        // Als hij niet bestaat, maak hem aan
         $row = R2PendingUpload::create([
             'task_id'        => $data['task_id'],
             'r2_path'        => $data['r2_path'],
@@ -40,12 +54,9 @@ class R2Controller extends Controller
 
     public function checkFile(Request $request)
     {
-        $request->validate([
-            'path' => 'required|string',
-        ]);
-
+        $request->validate(['path' => 'required|string']);
         $path = $request->query('path');
-
+        
         $client = new S3Client([
             'region' => 'auto',
             'version' => 'latest',
@@ -57,116 +68,88 @@ class R2Controller extends Controller
         ]);
 
         try {
-            $client->headObject([
-                'Bucket' => env('R2_BUCKET'),
-                'Key'    => $path,
-            ]);
-
+            $client->headObject(['Bucket' => env('R2_BUCKET'), 'Key' => $path]);
             return response()->json(['exists' => true]);
-
         } catch (\Aws\S3\Exception\S3Exception $e) {
-            if ($e->getStatusCode() === 404) {
-                Log::warning("R2 HEAD 404: $path");
-                return response()->json(['exists' => false]);
-            }
-
-            Log::error("R2 HEAD error:", ['err' => $e->getMessage()]);
-            return response()->json([
-                'exists' => false,
-                'error' => $e->getMessage(),
-            ], 500);
+            return response()->json(['exists' => false]);
         }
     }
 
-  public function uploadFromSW(Request $request)
+    public function uploadFromSW(Request $request)
     {
-        
-        Log::info("📥 R2 Upload gestart vanuit SW", $request->except(['file']));
+        $request->validate([
+            'file' => 'required|file',
+            'task_id' => 'required',
+            'namespace_id' => 'required',
+            'adres_path' => 'required',
+            'unique_id' => 'nullable',
+        ]);
 
-       try {
-            // 1. Validatie
-            $request->validate([
-                'file' => 'required|file',
-                'task_id' => 'required',
-                'namespace_id' => 'required',
-                'adres_path' => 'required',
-                'unique_id' => 'nullable', // 👈 NIEUW: We accepteren nu de ID van de SW
-            ]);
+        $file = $request->file('file');
+        $uniqueId = $request->input('unique_id', uniqid());
 
-            $file = $request->file('file');
+        // 1. Bereken ALTIJD eerst het pad, zodat we het terug kunnen geven bij een lock
+        $cleanFolder = ltrim($request->adres_path, '/');
+        $filename = $uniqueId . "_" . $file->getClientOriginalName();
+        $fullPath = $cleanFolder . "/" . $filename;
 
-            // 2. Pad en Bestandsnaam voorbereiden
-            $cleanFolder = ltrim($request->adres_path, '/');
+        // 2. Lock aanmaken op basis van originele bestandsnaam (zonder unique ID)
+        $filenameHash = md5($file->getClientOriginalName() . $request->adres_path);
+        $lockKey = 'upload_lock_file_' . $filenameHash;
 
-            // 👇 DE FIX: Gebruik de ID van de tablet. Als die er niet is (oude versie), gebruik uniqid().
-            $uniqueId = $request->input('unique_id', uniqid());
-
-            // Gebruik die vaste ID in de bestandsnaam. 
-            // Hierdoor blijft de naam ALTIJD hetzelfde, ook bij retries.
-            $filename = $uniqueId . "_" . $file->getClientOriginalName();
+        // 🛑 CHECK 1: Lock actief?
+        if (Cache::has($lockKey)) {
+            Log::info("✋ Upload geblokkeerd door Lock (al bezig): " . $file->getClientOriginalName());
             
-            $fullPath = $cleanFolder . "/" . $filename;
+            // 👇 ESSENTIEEL: We sturen het 'path' mee terug! Anders stuurt SW 'undefined' naar registerUpload.
+            return response()->json([
+                'success' => true, 
+                'status' => 'duplicate_ignored',
+                'path' => $fullPath 
+            ]);
+        }
 
-            Log::info("🔄 Upload poging voor: $fullPath");
+        Cache::put($lockKey, true, 60);
 
-            // 👇 IDEMPOTENCY CHECK (De anti-dubbel maatregel)
-            // Als de Service Worker dit bestand al eens heeft gestuurd (maar geen antwoord kreeg),
-            // dan bestaat het bestand al in R2.
+        try {
+            Log::info("🔄 Upload start: $fullPath");
+
+            // 🛑 CHECK 2: Bestaat bestand al in R2?
             if (Storage::disk('r2')->exists($fullPath)) {
-                Log::info("♻️ Dubbele upload overgeslagen (bestand bestaat al): " . $fullPath);
-                
-                // We sturen direct 'succes' terug. 
-                // De Service Worker denkt: "Mooi, gelukt!" en verwijdert het uit IndexedDB.
-                return response()->json([
-                    'success' => true,
-                    'path' => $fullPath
-                ]);
+                Cache::forget($lockKey);
+                return response()->json(['success' => true, 'path' => $fullPath]);
             }
 
-            // 3. UPLOADEN MET putFileAs (Alleen als hij nog niet bestond)
-            Log::info("🚀 Nieuwe upload starten naar: $fullPath");
+            // 3. Upload uitvoeren
             $uploadedPath = Storage::disk('r2')->putFileAs($cleanFolder, $file, $filename);
 
-            // 4. Controleer resultaat (De "Paranoïde Check")
             if ($uploadedPath) {
-                // Stap A: Bestaat het echt?
-                if (!Storage::disk('r2')->exists($fullPath)) {
-                    throw new Exception("Bestand geüpload maar niet gevonden in R2 (exists check failed).");
-                }
-
-                // Stap B: Is de grootte exact hetzelfde? (Cruciaal voor integriteit)
-                $localSize = $file->getSize(); // Grootte van de upload
-                $remoteSize = Storage::disk('r2')->size($fullPath); // Grootte in de cloud
+                // Size check
+                $localSize = $file->getSize();
+                $remoteSize = Storage::disk('r2')->size($fullPath);
 
                 if ($localSize !== $remoteSize) {
-                    // ALARM! R2 heeft een corrupt/half bestand.
-                    Log::error("❌ R2 Data Corruptie! Lokaal: $localSize bytes, R2: $remoteSize bytes.");
-                    
-                    // Verwijder het corrupte bestand zodat we het de volgende keer vers kunnen proberen
                     Storage::disk('r2')->delete($fullPath);
-                    
-                    throw new Exception("Data corruptie: bestandsgrootte komt niet overeen.");
+                    throw new Exception("Corruptie: sizes match niet.");
                 }
 
-                Log::info("✅ R2 upload GESLAAGD & GEVERIFIEERD ($localSize bytes): " . $fullPath);
+                Log::info("✅ Upload geslaagd: " . $fullPath);
+                Cache::forget($lockKey);
                 
-                return response()->json([
-                    'success' => true,
-                    'path' => $fullPath
-                ]);
-
+                return response()->json(['success' => true, 'path' => $fullPath]);
             } else {
-                throw new Exception("Storage::putFileAs retourneerde false.");
+                throw new Exception("PutFileAs false");
             }
 
         } catch (Exception $e) {
-            Log::error("🔥 CRITICAL R2 UPLOAD ERROR: " . $e->getMessage());
-            Log::error($e->getTraceAsString());
+            Cache::forget($lockKey);
+            Log::error("🔥 R2 Fout: " . $e->getMessage());
 
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage(),
-            ], 500);
+            if (str_contains($e->getMessage(), '429') || str_contains($e->getMessage(), 'ServiceUnavailable')) {
+                return response()->json(['error' => 'Rate Limit'], 429);
+            }
+
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
         }
     }
 }

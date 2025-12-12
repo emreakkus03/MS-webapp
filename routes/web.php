@@ -8,6 +8,8 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\LeaveRequestController;
 use App\Http\Controllers\R2Controller;
+use App\Http\Controllers\Admin\DropboxController;
+use App\Http\Controllers\DropboxViewerController;
 use Illuminate\Support\Facades\Auth;
 use App\Events\TestEvent;
 use Aws\S3\S3Client;
@@ -19,6 +21,7 @@ use Illuminate\Support\Facades\Mail;
 use App\Mail\RepairTasksMail;
 use Illuminate\Support\Facades\Response;
 use Aws\Credentials\Credentials;
+
 
 Route::get('/3f73e6bc076b1cb056e072cc30dc485b.txt', function () {
     return Response::make('', 200, ['Content-Type' => 'text/plain']);
@@ -182,6 +185,30 @@ Route::middleware(['auth'])->group(function () {
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard/admin', [DashboardController::class, 'admin'])->name('dashboard.admin');
     Route::get('/dashboard/user', [DashboardController::class, 'user'])->name('dashboard.user');
+});
+
+Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/dropbox', [DropboxController::class, 'index'])->name('dropbox.index');
+    Route::post('/dropbox/scan', [DropboxController::class, 'scanRoot'])->name('dropbox.scan');
+    Route::post('/dropbox/toggle/{id}', [DropboxController::class, 'toggleVisibility'])->name('dropbox.toggle');
+
+    Route::post('/dropbox/sync', [DropboxController::class, 'syncSubfolders'])->name('dropbox.sync');
+});
+
+Route::middleware(['auth'])->group(function () {
+    // 1. Overzicht
+    Route::get('/files', [DropboxViewerController::class, 'index'])->name('dossiers.index');
+    
+    // 🛑 BELANGRIJK: Deze moeten BOVEN de {id} route staan!
+    
+    // 2. Preview (De viewer pagina)
+    Route::get('/files/view', [DropboxViewerController::class, 'preview'])->name('dossiers.view');
+    
+    // 3. Stream (De data zelf)
+    Route::get('/files/stream', [DropboxViewerController::class, 'stream'])->name('dossiers.stream');
+
+    // 4. Detailpagina (De wildcard {id} vangt alles op wat overblijft)
+    Route::get('/files/{id}', [DropboxViewerController::class, 'show'])->name('dossiers.show');
 });
 
 Route::middleware(['auth'])->group(function () {

@@ -22,3 +22,9 @@ Schedule::call(function () {
 Schedule::command('mail:repair-tasks')
     ->dailyAt('17:00')
     ->timezone('Europe/Brussels');
+
+    // Draai de grote sync elk kwartier
+Schedule::command('dropbox:sync-subfolders')
+        ->everyFifteenMinutes() // Of ->everyTenMinutes() of ->hourly()
+        ->withoutOverlapping()  // 🔥 HEEL BELANGRIJK!
+        ->runInBackground();

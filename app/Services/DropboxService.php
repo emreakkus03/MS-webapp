@@ -507,6 +507,28 @@ class DropboxService
         'timeout' => 120,
     ]);
 }
+/**
+     * Zoek specifiek naar de Namespace ID van 'MS INFRA'
+     */
+    public function getInfraNamespaceId()
+    {
+        $namespaces = $this->listNamespaces();
 
+        if (empty($namespaces)) {
+            throw new \Exception("Geen namespaces gevonden! Check of je Team Member ID klopt.");
+        }
+
+        // ZOEK NU NAAR 'MS INFRA' IN PLAATS VAN FLUVIUS
+        $infra = collect($namespaces)
+            ->first(fn($ns) => stripos($ns['name'], 'MS INFRA') !== false);
+
+        if (!$infra) {
+            // Debug: Laat zien wat er wél gevonden is
+            $foundNames = collect($namespaces)->pluck('name')->implode(', ');
+            throw new \Exception("Kon namespace 'MS INFRA' niet vinden. Gevonden mappen: " . $foundNames);
+        }
+
+        return $infra['namespace_id'];
+    }
 
 }

@@ -165,7 +165,25 @@
                                     Takenbeheer
                                 </a>
                             </li>
+                            <li>
+                                <a href="{{ route('admin.dropbox.index') }}"
+                                    class="flex items-center gap-3 px-4 py-2 rounded-md transition
+                          {{ request()->is('admin*') ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
+                                    <img src="{{ asset('images/icon/file-settings.svg') }}" alt="Logo"
+                                        class="w-7 h-7 text-gray-500">
+                                    Vergunningbeheer
+                                </a>
+                            </li>
                         @endif
+                        <li>
+                            <a href="{{ route('dossiers.index') }}"
+                                class="flex items-center gap-3 px-4 py-2 rounded-md transition
+                          {{ request()->is('files*') ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
+                                <img src="{{ asset('images/icon/license.svg') }}" alt="Logo"
+                                    class="w-7 h-7 text-gray-500">
+                                Vergunningen
+                            </a>
+                        </li>
                         <li>
                             <a href="{{ route('leaves.index') }}"
                                 class="flex items-center gap-3 px-4 py-2 rounded-md transition
