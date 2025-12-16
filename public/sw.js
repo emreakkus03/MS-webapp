@@ -90,6 +90,15 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 // FRONTEND → SW
 // --------------------------
 self.addEventListener("message", async (event) => {
+
+    // 🛡️ SECURITY FIX VOOR SNYK
+    // We controleren of het bericht van ONZE EIGEN website komt.
+    // Als de origin niet klopt (bijv. hacker-site.com), negeren we het bericht.
+    if (event.origin !== self.location.origin) {
+        console.warn("SW: Bericht genegeerd van onbekende oorsprong:", event.origin);
+        return; 
+    }
+    
     if (event.data?.type === "ADD_UPLOAD") {
         await addItem(event.data);
         if ("sync" in self.registration) {

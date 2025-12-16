@@ -83,23 +83,33 @@ class DropboxViewerController extends Controller
      */
    public function stream(Request $request)
     {
+        // 1. Input ophalen
         $path = $request->input('path');
         $nsId = $request->input('ns_id');
 
-        // DEBUG 1: Check of de parameters aankomen
         if (empty($path) || empty($nsId)) {
-            dd("FOUT: Parameters ontbreken.", $request->all());
+            abort(400, 'Parameters ontbreken.');
         }
-        
-        try {
-            // DEBUG 2: Toon wat we naar Dropbox sturen (haal dit weg als het werkt)
-            // dd("We vragen link aan voor:", $nsId, $path);
 
+        // 🛡️ ROBUUSTE SECURITY CHECK
+        // We blokkeren alleen als er '../' of '..\' staat.
+        // Dit betekent dat iemand uit de map probeert te breken.
+        // Gewone namen met rare punten zoals "categorie..pdf" mogen nu WEL door!
+        if (str_contains($path, '../') || str_contains($path, '..\\') || str_contains($path, "\0")) {
+            abort(403, 'Ongeldig bestandspad gedetecteerd. Hacking poging geblokkeerd.');
+        }
+
+        try {
+            // 2. Haal de tijdelijke link op bij Dropbox
             $link = $this->dropbox->getTemporaryLink($nsId, $path);
             
-            // Als we hier zijn, is de link gelukt!
+            // 🛡️ EXTRA SECURITY: Check of het wel écht een URL is
+            if (!filter_var($link, FILTER_VALIDATE_URL)) {
+                throw new \Exception('Dropbox gaf geen geldige URL terug.');
+            }
+
+            // 3. Bepaal MIME type
             $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-            
             $mimeType = match($extension) {
                 'pdf' => 'application/pdf',
                 'jpg', 'jpeg' => 'image/jpeg',
@@ -112,24 +122,26 @@ class DropboxViewerController extends Controller
                 default => 'application/octet-stream',
             };
 
+            // 4. Open de stream veilig
+            // We gebruiken de $link (de URL van Dropbox), niet het lokale $path
             $fileStream = fopen($link, 'r');
+
+            if (!$fileStream) {
+                throw new \Exception('Kon de stream naar Dropbox niet openen.');
+            }
 
             return response()->stream(function() use ($fileStream) {
                 fpassthru($fileStream);
                 fclose($fileStream);
             }, 200, [
                 "Content-Type" => $mimeType,
+                // basename() hieronder zorgt er ook voor dat hackers geen paden in de bestandsnaam kunnen smokkelen
                 "Content-Disposition" => "inline; filename=\"" . basename($path) . "\"",
             ]);
 
         } catch (\Exception $e) {
-            // 🛑 HIER ZIT DE FOUT: We gooien hem nu op het scherm!
-            dd([
-                'ERROR_MESSAGE' => $e->getMessage(),
-                'NAMESPACE_ID' => $nsId,
-                'PATH' => $path,
-                'TRACE' => $e->getTraceAsString()
-            ]);
+            \Illuminate\Support\Facades\Log::error('Dropbox stream error: ' . $e->getMessage());
+            abort(404, 'Bestand niet gevonden of kan niet worden geladen.');
         }
     }
 }
