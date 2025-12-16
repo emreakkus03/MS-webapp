@@ -168,7 +168,7 @@
                             <li>
                                 <a href="{{ route('admin.dropbox.index') }}"
                                     class="flex items-center gap-3 px-4 py-2 rounded-md transition
-                          {{ request()->is('admin*') ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
+                          {{ request()->routeIs('admin.dropbox.*') ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
                                     <img src="{{ asset('images/icon/file-settings.svg') }}" alt="Logo"
                                         class="w-7 h-7 text-gray-500">
                                     Vergunningbeheer
@@ -193,6 +193,20 @@
                                 Verlofbeheer
                             </a>
                         </li>
+
+                        @if (auth()->user()->role === 'admin')
+    <li>
+        {{-- 👇 HIER AANPASSEN: r2.index --}}
+        <a href="{{ route('r2.index') }}"
+           class="flex items-center gap-3 px-4 py-2 rounded-md transition
+           {{-- 👇 HIER OOK EVEN CHECKEN: Zorg dat hij alleen highlight op r2 routes --}}
+           {{ request()->routeIs('r2.*') ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
+           
+            <img src="{{ asset('images/icon/cloud.svg') }}" alt="Logo" class="w-7 h-7 text-gray-500">
+            R2 Bucket 
+        </a>
+    </li>
+@endif
                     </ul>
                 </nav>
 

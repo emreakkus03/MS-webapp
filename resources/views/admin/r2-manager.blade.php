@@ -3,19 +3,20 @@
         
         {{-- Header --}}
         <div class="flex flex-col md:flex-row justify-between items-center mb-6">
-            <h1 class="text-2xl font-bold text-gray-800">☁️ R2 Beheer</h1>
+            <h1 class="text-2xl font-bold text-gray-800">R2 Bucket Beheer</h1>
+           
             
             <div class="flex gap-3 mt-4 md:mt-0">
                 <form action="{{ route('r2.retry') }}" method="POST">
                     @csrf
-                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow flex items-center gap-2">
+                    <button type="submit" class="bg-[#283142] hover:bg-[#B51D2D] text-white px-4 py-2 rounded shadow flex items-center gap-2">
                         <span>🚀 Forceer Retry</span>
                     </button>
                 </form>
 
                 <form action="{{ route('r2.clear') }}" method="POST" onsubmit="return confirm('⚠️ WEET JE HET ZEKER?\n\nDit wist ALLE bestanden in R2 en je wachtrij database!');">
                     @csrf
-                    <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded shadow flex items-center gap-2">
+                    <button type="submit" class="bg-[#B51D2D] hover:bg-[#B51D4D] text-white px-4 py-2 rounded shadow flex items-center gap-2">
                         <span>🗑️ Alles Verwijderen</span>
                     </button>
                 </form>
