@@ -28,3 +28,8 @@ Schedule::command('dropbox:sync-subfolders')
         ->everyFifteenMinutes() // Of ->everyTenMinutes() of ->hourly()
         ->withoutOverlapping()  // 🔥 HEEL BELANGRIJK!
         ->runInBackground();
+
+Schedule::command('r2:retry-all')
+        ->hourly()               
+        ->withoutOverlapping()   
+        ->runInBackground();

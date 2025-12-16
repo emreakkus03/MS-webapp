@@ -10,6 +10,7 @@ use App\Http\Controllers\LeaveRequestController;
 use App\Http\Controllers\R2Controller;
 use App\Http\Controllers\Admin\DropboxController;
 use App\Http\Controllers\DropboxViewerController;
+use App\Http\Controllers\R2ManagementController;
 use Illuminate\Support\Facades\Auth;
 use App\Events\TestEvent;
 use Aws\S3\S3Client;
@@ -193,6 +194,12 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
     Route::post('/dropbox/toggle/{id}', [DropboxController::class, 'toggleVisibility'])->name('dropbox.toggle');
 
     Route::post('/dropbox/sync', [DropboxController::class, 'syncSubfolders'])->name('dropbox.sync');
+});
+
+Route::middleware(['auth'])->prefix('admin/r2')->group(function () {
+    Route::get('/', [R2ManagementController::class, 'index'])->name('r2.index');
+    Route::post('/retry', [R2ManagementController::class, 'retryAll'])->name('r2.retry');
+    Route::post('/clear', [R2ManagementController::class, 'clearBucket'])->name('r2.clear');
 });
 
 Route::middleware(['auth'])->group(function () {

@@ -8,7 +8,7 @@ use App\Models\R2PendingUpload; // <--- Toevoegen
 
 class ClearR2Bucket extends Command
 {
-    protected $signature = 'r2:clear';
+   protected $signature = 'r2:clear {--force : Forceer verwijdering zonder vraag}';
     protected $description = 'Verwijdert ALLE bestanden uit R2 én schoont de database op.';
 
     public function handle()
@@ -16,9 +16,11 @@ class ClearR2Bucket extends Command
         $this->warn("⚠️  LET OP: Je gaat de volledige R2 bucket leegmaken!");
         $this->warn("⚠️  Dit verwijdert ook alle 'pending' records uit de database.");
         
-        if (!$this->confirm('Weet je zeker dat je ALLES wil verwijderen? (Dit kan niet ongedaan worden gemaakt)', true)) {
-            $this->info("❌ Actie geannuleerd.");
-            return 1;
+        if (! $this->option('force')) {
+            if (! $this->confirm('Weet je zeker dat je ALLES wil verwijderen?', true)) {
+                $this->info("❌ Actie geannuleerd.");
+                return 1;
+            }
         }
 
         // 1. Database leegmaken (Truncate)
