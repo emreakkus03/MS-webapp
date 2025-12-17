@@ -11,6 +11,7 @@ use App\Http\Controllers\R2Controller;
 use App\Http\Controllers\Admin\DropboxController;
 use App\Http\Controllers\DropboxViewerController;
 use App\Http\Controllers\R2ManagementController;
+use App\Http\Controllers\Admin\ActivityLogController;
 use Illuminate\Support\Facades\Auth;
 use App\Events\TestEvent;
 use Aws\S3\S3Client;
@@ -200,6 +201,11 @@ Route::middleware(['auth'])->prefix('admin/r2')->group(function () {
     Route::get('/', [R2ManagementController::class, 'index'])->name('r2.index');
     Route::post('/retry', [R2ManagementController::class, 'retryAll'])->name('r2.retry');
     Route::post('/clear', [R2ManagementController::class, 'clearBucket'])->name('r2.clear');
+});
+
+
+Route::middleware(['auth', 'can:view-logs'])->group(function () {
+    Route::get('/logs', [ActivityLogController::class, 'index'])->name('admin.activity.index');
 });
 
 Route::middleware(['auth'])->group(function () {

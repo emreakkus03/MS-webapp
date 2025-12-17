@@ -5,9 +5,12 @@ namespace App\Models;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
+
 class Team extends Authenticatable
 {
-    use Notifiable;
+    use Notifiable, LogsActivity;
 
     protected $table = 'teams';
 
@@ -20,6 +23,15 @@ class Team extends Authenticatable
     protected $hidden = [
         'password',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            // We loggen alleen als deze velden veranderen
+            ->logOnly(['name', 'role', 'members']) 
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
+    }
 
     // Wachtwoord automatisch hashen
     public function setPasswordAttribute($password)
