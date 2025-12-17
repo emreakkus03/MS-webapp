@@ -5,6 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="manifest" href="{{ asset('manifest.json') }}">
+<meta name="theme-color" content="#B51D2D">
+<link rel="apple-touch-icon" href="{{ asset('images/logo/msinfra_logo.png') }}">
     <link rel="icon" href="{{ asset('favicon.ico') }}" type="image/x-icon">
     <title>{{ $title ?? 'MS-Webapp' }}</title>
     <link rel="stylesheet" href="{{ asset('css/reset.css') }}">
