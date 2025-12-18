@@ -97,18 +97,20 @@ class R2Controller extends Controller
         $filenameHash = md5($file->getClientOriginalName() . $request->adres_path);
         $lockKey = 'upload_lock_file_' . $filenameHash;
 
-        // 🛑 CHECK 1: Lock actief?
-        if (Cache::has($lockKey)) {
-            Log::info("✋ Upload geblokkeerd door Lock (al bezig): " . $file->getClientOriginalName());
-            
-            // 👇 ESSENTIEEL: We sturen het 'path' mee terug! Anders stuurt SW 'undefined' naar registerUpload.
-            return response()->json([
-                'success' => true, 
-                'status' => 'duplicate_ignored',
-                'path' => $fullPath 
-            ]);
-        }
+       // In R2Controller.php -> uploadFromSW
 
+// 🛑 CHECK 1: Lock actief?
+if (Cache::has($lockKey)) {
+    Log::info("✋ Upload geblokkeerd door Lock (al bezig): " . $file->getClientOriginalName());
+    
+    // 👇 AANPASSING: Geef GEEN 200 OK, maar een 429 (Too Many Requests)
+    // Hierdoor weet de SW: "Even wachten, ik mag hem nog NIET verwijderen."
+    return response()->json([
+        'success' => false, 
+        'error' => 'Upload already in progress',
+        'status' => 'locked'
+    ], 429); 
+}
         Cache::put($lockKey, true, 60);
 
         try {

@@ -1,8 +1,8 @@
-const SW_VERSION = 'v5-deduplication-fix';
+const SW_VERSION = 'v6-bypass-fix'; // 👈 Aangepast: Versie omhoog voor force update
 const API = self.location.origin;
 
 // ==============================================
-// 📌 SERVICE WORKER v5 – Deduplication & Rate Limit
+// 📌 SERVICE WORKER v6 – Deduplication & URL Bypass
 // ==============================================
 
 const DB_NAME = "R2UploadDB";
@@ -42,15 +42,12 @@ async function deleteItem(id) {
 
 // 👇 DE GROTE FIX: DEDUPLICATIE
 async function addItem(data) {
-    // 1. Haal de huidige wachtrij op
     const currentItems = await getAll();
-    
-    // 2. Check of dit bestand al bestaat (op basis van naam)
     const exists = currentItems.find(item => item.name === data.name);
 
     if (exists) {
         console.log(`⚠️ SW: Bestand '${data.name}' staat al in de wachtrij. Dubbele toevoeging genegeerd.`);
-        return; // 🛑 STOP! Voeg niet toe.
+        return; 
     }
 
     const db = await openDB();
@@ -90,13 +87,13 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 // FRONTEND → SW
 // --------------------------
 self.addEventListener("message", async (event) => {
-
-    // 🛡️ SECURITY FIX VOOR SNYK
-    // We controleren of het bericht van ONZE EIGEN website komt.
-    // Als de origin niet klopt (bijv. hacker-site.com), negeren we het bericht.
     if (event.origin !== self.location.origin) {
-        console.warn("SW: Bericht genegeerd van onbekende oorsprong:", event.origin);
         return; 
+    }
+    // 👇 VOEG DIT BLOKJE TOE
+    if (event.data?.type === "FORCE_PROCESS") {
+        console.log("⚡ Force Process commando ontvangen. Queue starten...");
+        await processQueue();
     }
     
     if (event.data?.type === "ADD_UPLOAD") {
@@ -169,9 +166,16 @@ async function processQueue() {
 
             let res;
             try {
-                res = await fetch(`${API}/r2/upload`, {
+                // 👇 AANPASSING: Gebruik URL parameter i.p.v. Header
+                const uploadUrl = new URL(`${API}/r2/upload`);
+                uploadUrl.searchParams.append("sw_bypass", "true"); 
+
+                res = await fetch(uploadUrl.toString(), {
                     method: "POST",
-                    headers: { "X-CSRF-TOKEN": item.csrf },
+                    headers: { 
+                        "X-CSRF-TOKEN": item.csrf
+                        // Geen custom bypass header meer nodig
+                    },
                     credentials: 'include',
                     body: form
                 });
@@ -188,6 +192,12 @@ async function processQueue() {
             if (!res.ok) throw new Error(`Server error: ${res.status}`);
 
             const json = await res.json();
+
+            // 👇 CRUCIALE VEILIGHEIDSCHECK
+            if (!json.path) {
+                throw new Error("Server response mist file path - Mogelijke SW Loop");
+            }
+
             console.log("SW: Upload OK:", json.path);
 
             const reg = await fetch(`${API}/r2/register-upload`, {
@@ -214,7 +224,8 @@ async function processQueue() {
 
         } catch (err) {
             console.warn(`SW: Fout bij '${item.name}':`, err.message);
-            if (["OFFLINE", "NETWORK_FAIL", "RATE_LIMIT"].includes(err.message)) {
+            // Bij server error (500) of netwerkfout stoppen we direct
+            if (["OFFLINE", "NETWORK_FAIL", "RATE_LIMIT"].includes(err.message) || err.message.includes("Server error")) {
                 sendToClients({ type: "UPLOAD_FAILED", name: item.name, reason: "pauze" });
                 break;
             }
@@ -226,33 +237,29 @@ async function processQueue() {
 }
 
 // --------------------------
-// FETCH HANDLER
-// --------------------------
-// --------------------------
 // FETCH HANDLER (Dwing ALLES via de Queue)
 // --------------------------
 self.addEventListener("fetch", (event) => {
     const url = new URL(event.request.url);
 
+    // 👇 AANPASSING: Check nu op de URL parameter
+    // Als sw_bypass=true in de URL staat, mag hij DIRECT naar het internet.
+    if (url.searchParams.get("sw_bypass") === "true") {
+        return; // Verlaat de SW, ga naar netwerk (of faal als offline)
+    }
+
     // Als de frontend probeert te uploaden...
-    if (url.href === `${API}/r2/upload` && event.request.method === "POST") {
-        
-        event.respondWith(async function() {
-            // 🛑 STOP! We laten dit NOOIT direct doorgaan naar de server.
-            // We vangen het op en stoppen het in onze eigen wachtrij.
-            // Dit voorkomt dat de browser en de queue tegelijk gaan uploaden.
-            return await saveToQueueAndRespond(event.request);
-        }());
+    // We gebruiken pathname zodat query params de match niet verpesten
+    if (url.pathname === '/r2/upload' && event.request.method === "POST") {
+        event.respondWith(saveToQueueAndRespond(event.request));
     }
 });
 
 async function saveToQueueAndRespond(request) {
     try {
-        // We moeten de request klonen om de body te kunnen lezen
         const formData = await request.clone().formData();
         const file = formData.get("file");
 
-        // We voegen hem toe aan de queue (addItem heeft nu jouw deduplicatie check!)
         await addItem({
             name: file.name,
             fileType: file.type,
@@ -261,28 +268,20 @@ async function saveToQueueAndRespond(request) {
             namespace_id: formData.get("namespace_id"),
             adres_path: formData.get("adres_path"),
             csrf: formData.get("_token"),
-            // Als de request geen ID heeft, maken we er een.
-            // Als hij er wel een heeft (vanuit frontend), gebruiken we die voor deduplicatie.
             unique_id: formData.get("unique_id") || Date.now().toString()
         });
 
-        // Probeer direct te syncen
         if ("sync" in self.registration) {
             self.registration.sync.register("sync-r2-uploads").catch(console.warn);
         } else {
-            // Fallback voor browsers zonder Background Sync
             processQueue();
         }
 
-        // Stuur bericht naar UI
         sendToClients({ type: "QUEUED", file: file.name });
 
-        // ✅ We liegen tegen de frontend: "Het is gelukt!" (200 OK)
-        // De frontend denkt dat de upload klaar is, maar in werkelijkheid
-        // zit hij veilig in onze IndexedDB wachtrij.
         return new Response(
             JSON.stringify({ 
-                success: true, // We zeggen 'true' zodat frontend niet gaat retryen
+                success: true, 
                 queued: true, 
                 message: "In wachtrij geplaatst" 
             }),
