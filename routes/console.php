@@ -25,7 +25,7 @@ Schedule::command('mail:repair-tasks')
 
     // Draai de grote sync elk kwartier
 Schedule::command('dropbox:sync-subfolders')
-        ->everyMinute() // Of ->everyTenMinutes() of ->hourly()
+        ->everyTwoMinutes() // Of ->everyTenMinutes() of ->hourly()
         ->withoutOverlapping(10)
         ->runInBackground();
 
