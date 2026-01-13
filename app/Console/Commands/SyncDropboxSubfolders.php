@@ -13,72 +13,71 @@ class SyncDropboxSubfolders extends Command
     protected $description = 'Haalt recursief alle submappen op van zichtbare hoofdmappen';
 
     public function handle(DropboxService $dropbox)
-    {
-        $this->info('🚀 Starten met synchronisatie...');
+{
+    $this->info('🚀 Starten met synchronisatie controle...');
 
-        // 1. Zoek mappen die AAN staan, maar nog niet klaar zijn
-        $foldersToSync = DropboxFolder::where('is_visible', true)
-                                      ->where('is_synced', false)
-                                      ->get();
+    // 1. Haal ALLE zichtbare mappen op, ongeacht of ze al eens gesynct zijn
+    // We willen immers checken of er IETS NIEUWS is bijgekomen.
+    $foldersToSync = DropboxFolder::where('is_visible', true)->get();
 
-        if ($foldersToSync->isEmpty()) {
-            $this->info('Geen nieuwe mappen om te synchroniseren.');
-            return;
-        }
+    if ($foldersToSync->isEmpty()) {
+        $this->info('Geen zichtbare mappen gevonden om te controleren.');
+        return;
+    }
 
-        foreach ($foldersToSync as $parentFolder) {
-            $this->info("📂 Bezig met ophalen inhoud van: " . $parentFolder->name);
-            Log::info("Sync gestart voor: " . $parentFolder->path_display);
+    foreach ($foldersToSync as $parentFolder) {
+        $this->info("🔄 Controleren op updates in: " . $parentFolder->name);
+        
+        try {
+            $nsId = $dropbox->getInfraNamespaceId(); 
             
-            try {
-                // 👇 HIER WAS DE FOUT: We gebruiken nu de INFRA ID, net zoals in de controller
-                $nsId = $dropbox->getInfraNamespaceId(); 
-                
-                $hasMore = true;
-                $cursor = null;
-                $totalEntries = 0;
+            $hasMore = true;
+            $cursor = null; // Als je slim wilt zijn, sla je deze cursor op in je DB voor de volgende keer, maar voor nu doen we een 'full scan'
+            $totalEntries = 0;
 
-                // 2. Loop door de pagina's van Dropbox
-                while ($hasMore) {
-                    if ($cursor) {
-                        // Volgende pagina ophalen
-                        $result = $dropbox->listFoldersContinue($nsId, $cursor);
-                    } else {
-                        // Eerste keer: RECURSIVE = TRUE (Alles ophalen!)
-                        // We gebruiken het path_display direct uit de database
-                        $result = $dropbox->listFoldersInNamespace($nsId, $parentFolder->path_display, true);
-                    }
-
-                    $entries = $result['entries'];
-                    $cursor = $result['cursor'];
-                    $hasMore = $result['has_more'];
-
-                    // 3. Verwerken in DB
-                    foreach ($entries as $entry) {
-                        if (($entry['.tag'] ?? '') === 'folder') {
-                            DropboxFolder::updateOrCreate(
-                                ['dropbox_id' => $entry['id']],
-                                [
-                                    'name' => $entry['name'],
-                                    'path_display' => $entry['path_display'],
-                                    'parent_path' => $parentFolder->path_display, // Koppel aan de hoofdmap (2025)
-                                    'is_visible' => true // Submappen zijn ook zichtbaar
-                                ]
-                            );
-                            $totalEntries++;
-                        }
-                    }
-                    $this->info("... {$totalEntries} mappen verwerkt.");
+            while ($hasMore) {
+                if ($cursor) {
+                    $result = $dropbox->listFoldersContinue($nsId, $cursor);
+                } else {
+                    // We halen ALLES recursief op. 
+                    // Let op: Bij HELE grote mappen kan dit traag worden, 
+                    // maar voor nu is dit de zekerste manier om nieuwe submappen te vinden.
+                    $result = $dropbox->listFoldersInNamespace($nsId, $parentFolder->path_display, true);
                 }
 
-                // 4. Markeer als klaar
-                $parentFolder->update(['is_synced' => true]);
-                $this->info("✅ Klaar! {$totalEntries} submappen toegevoegd.");
+                $entries = $result['entries'];
+                $cursor = $result['cursor'];
+                $hasMore = $result['has_more'];
 
-            } catch (\Exception $e) {
-                $this->error("❌ Fout: " . $e->getMessage());
-                Log::error("Sync error: " . $e->getMessage());
+                foreach ($entries as $entry) {
+                    // Alleen mappen opslaan
+                    if (($entry['.tag'] ?? '') === 'folder') {
+                        
+                        // updateOrCreate zorgt ervoor dat:
+                        // 1. Nieuwe mappen worden aangemaakt
+                        // 2. Bestaande mappen worden geupdate (bv als de naam veranderd is)
+                        DropboxFolder::updateOrCreate(
+                            ['dropbox_id' => $entry['id']], 
+                            [
+                                'name' => $entry['name'],
+                                'path_display' => $entry['path_display'],
+                                'parent_path' => $parentFolder->path_display,
+                                'is_visible' => true 
+                            ]
+                        );
+                        $totalEntries++;
+                    }
+                }
             }
+
+            // We zetten hem op true (voor de zekerheid), maar de volgende keer pakken we hem toch weer mee
+            $parentFolder->update(['is_synced' => true]);
+            $this->info("✅ {$parentFolder->name} bijgewerkt. Totaal {$totalEntries} submappen in database/gecontroleerd.");
+
+        } catch (\Exception $e) {
+            $this->error("❌ Fout bij {$parentFolder->name}: " . $e->getMessage());
+            Log::error("Sync error: " . $e->getMessage());
         }
     }
+}
 }
