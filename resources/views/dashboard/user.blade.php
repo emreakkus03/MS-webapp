@@ -251,120 +251,111 @@
     </div>
 
     @push('scripts')
-        <script>
-            let overlay = null;
+<script>
+    let overlay = null;
 
-            function showGlobalUploadProgress(current, total, filename) {
-                if (!overlay) {
-                    overlay = document.createElement("div");
-                    overlay.className = "fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center";
-                    overlay.innerHTML = `
-            <div class="bg-white p-5 rounded-xl shadow-xl text-center">
+    // 1. Toon de groene voortgang
+    function showGlobalUploadProgress(current, total, filename) {
+        if (!overlay) {
+            overlay = document.createElement("div");
+            overlay.className = "fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center";
+            overlay.innerHTML = `
+            <div class="bg-white p-5 rounded-xl shadow-xl text-center w-80">
                 <h3 class="text-lg font-bold mb-2">Foto's worden geüpload...</h3>
-                <p id="uploadStatus" class="text-sm text-gray-600 mb-2"></p>
-                <div class="w-64 bg-gray-300 rounded h-3">
-                    <div id="uploadBar" class="h-3 bg-green-500 rounded" style="width: 0%"></div>
+                <p id="uploadStatus" class="text-sm text-gray-600 mb-2 truncate">Verbinden...</p>
+                <div class="w-full bg-gray-300 rounded h-3 overflow-hidden">
+                    <div id="uploadBar" class="h-3 bg-green-500 rounded transition-all duration-300" style="width: 0%"></div>
                 </div>
             </div>`;
-                    document.body.appendChild(overlay);
-                }
+            document.body.appendChild(overlay);
+        }
 
-                const percent = Math.floor((current / total) * 100);
-                document.getElementById("uploadStatus").textContent =
-                    `${current}/${total} • ${filename}`;
-                document.getElementById("uploadBar").style.width = percent + "%";
+        const percent = Math.floor((current / total) * 100);
+        document.getElementById("uploadStatus").textContent = `${current}/${total} • ${filename}`;
+        
+        // Zorg dat hij groen is (voor het geval hij rood was)
+        const bar = document.getElementById("uploadBar");
+        bar.classList.remove("bg-red-500");
+        bar.classList.add("bg-green-500");
+        bar.style.width = percent + "%";
+    }
+
+    // 👇 2. NIEUW: Toon een rode foutmelding als het mislukt
+    function updateUploadError(filename) {
+        if (overlay) {
+            const status = document.getElementById("uploadStatus");
+            const bar = document.getElementById("uploadBar");
+            
+            status.textContent = `⚠️ Fout bij ${filename}. Even wachten...`;
+            
+            // Maak de balk ROOD
+            bar.classList.remove("bg-green-500");
+            bar.classList.add("bg-red-500"); 
+        }
+    }
+
+    function hideGlobalUploadProgress() {
+        if (overlay) {
+            overlay.remove();
+            overlay = null;
+        }
+    }
+
+    // 3. Service Worker Listeners
+    if (navigator.serviceWorker) {
+        navigator.serviceWorker.addEventListener("message", (event) => {
+            const msg = event.data;
+            if (!msg) return;
+
+            if (msg.type === "QUEUED") console.log(`📥 In wachtrij: ${msg.file}`);
+
+            if (msg.type === "PROGRESS") {
+                showGlobalUploadProgress(msg.current, msg.total, msg.name);
             }
 
-            function hideGlobalUploadProgress() {
-                if (overlay) {
-                    overlay.remove();
-                    overlay = null;
-                }
+            // 👇 NIEUW: Luister naar mislukkingen!
+            if (msg.type === "UPLOAD_FAILED") {
+                console.warn(`Upload pauze voor: ${msg.name}`);
+                updateUploadError(msg.name);
             }
 
-            if (navigator.serviceWorker) {
-                navigator.serviceWorker.addEventListener("message", (event) => {
-                    const msg = event.data;
-                    if (!msg) return;
-
-                    if (msg.type === "QUEUED") {
-                        console.log(`📥 In wachtrij geplaatst: ${msg.file}`);
-                    }
-
-                    if (msg.type === "PROGRESS") {
-                        showGlobalUploadProgress(msg.current, msg.total, msg.name);
-                    }
-
-                    if (msg.type === "UPLOADED") {
-                        console.log(`☁️ Geüpload naar R2: ${msg.name}`);
-                    }
-
-                    if (msg.type === "COMPLETE") {
-                        hideGlobalUploadProgress();
-                        showToast("✨ Server update: Alle foto's zijn veilig aangekomen!", 5000);
-                    }
-                });
+            if (msg.type === "COMPLETE") {
+                hideGlobalUploadProgress();
+                showToast("✨ Server update: Alles is veilig aangekomen!", 5000);
+                setTimeout(() => window.location.reload(), 1500);
             }
+        });
+    }
 
+    // 4. Je bestaande logica (sendToSW, online, visibility)
+    // Die was goed, dus die laten we staan:
+    function sendToSW(message) {
+        if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage(message);
+        }
+    }
 
+    window.addEventListener('online', () => {
+        console.log("🌐 Internet terug.");
+        sendToSW({ type: "FORCE_PROCESS" });
+    });
 
-
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(reg => {
-                        console.log("SW geregistreerd:", reg.scope);
-
-                        // 👇 DIT IS DE TOEVOEGING
-                        // Check direct bij het openen van de app of er nog iets in de wachtrij staat
-                        if (reg.sync) {
-                            // We registreren de sync opnieuw. Als er niets in de queue zit, doet dit niks (veilig).
-                            // Als er wél iets zit, wordt het nu direct geüpload.
-                            reg.sync.register("sync-r2-uploads")
-                                .catch(err => console.warn("Kon sync niet triggeren bij start:", err));
-                        }
-                        // 👆 EINDE TOEVOEGING
-
-                        // ... hier staat je updatefound code ...
-
-                        // Als een nieuwe SW klaar is om te activeren
-                        reg.addEventListener('updatefound', () => {
-                            const newSW = reg.installing;
-
-                            newSW.addEventListener('statechange', () => {
-                                if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                                    console.log("Nieuwe service worker beschikbaar — herladen...");
-                                    window.location.reload();
-                                }
-                            });
-                        });
-
-                        // Als de service worker actief wordt en control krijgt
-                        navigator.serviceWorker.addEventListener('controllerchange', () => {
-                            console.log("🔥 SW heeft nu control over de pagina");
-                            window.location.reload();
-                        });
-                    });
-            }
-
-
-            // In x-layouts.dashboard (of je blade file)
-
-window.addEventListener("online", () => {
-    console.log("📶 Verbinding hersteld! Directe sync forceren...");
-
-    // 1. Stuur een DIRECT commando naar de SW (Dit is de snelle fix)
-    sendToSW({ type: "FORCE_PROCESS" });
-
-    // 2. Als backup: registreer ook de background sync (voor als je tabblad net sluit)
-    navigator.serviceWorker.ready.then(reg => {
-        if(reg.sync) {
-            reg.sync.register("sync-r2-uploads").catch(console.warn);
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && navigator.onLine) {
+            console.log("👁️ Tablet wakker.");
+            sendToSW({ type: "FORCE_PROCESS" });
         }
     });
-});
-        </script>
-    @endpush
 
+    // Registratie logic... (Je bestaande code voor registratie mag hieronder blijven)
+     if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').then(reg => {
+             // ... jouw update code ...
+             if (reg.sync) reg.sync.register("sync-r2-uploads").catch(console.warn);
+        });
+     }
+</script>
+@endpush
 
     <script type="module">
         navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -946,26 +937,27 @@ window.addEventListener("online", () => {
         }
 
         // 🔹 Submit handler met eerlijke feedback
-document.getElementById("finishForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!validateForm()) return;
+        document.getElementById("finishForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            if (!validateForm()) return;
 
-    const form = e.target;
-    const taskId = form.action.match(/tasks\/(\d+)/)?.[1];
-    const formData = new FormData(form);
-    const files = [...document.getElementById("photoUpload").files].slice(0, 30); 
-    const adresSelect = document.getElementById("adresSelect");
-    const namespaceId = adresSelect.options[adresSelect.selectedIndex]?.dataset.namespace;
-    const adresPath = adresSelect.value;
+            const form = e.target;
+            const taskId = form.action.match(/tasks\/(\d+)/)?.[1];
+            const formData = new FormData(form);
+            const files = [...document.getElementById("photoUpload").files].slice(0, 30);
+            const adresSelect = document.getElementById("adresSelect");
+            const namespaceId = adresSelect.options[adresSelect.selectedIndex]?.dataset.namespace;
+            const adresPath = adresSelect.value;
 
-    const finishButton = document.getElementById("finishButton");
-    finishButton.disabled = true;
-    finishButton.textContent = "Verwerken...";
+            const finishButton = document.getElementById("finishButton");
+            finishButton.disabled = true;
+            finishButton.textContent = "Verwerken...";
 
-    // 🔹 Loader tonen
-    const loader = document.createElement("div");
-    loader.className = "fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50 transition-opacity duration-300";
-    loader.innerHTML = `
+            // 🔹 Loader tonen
+            const loader = document.createElement("div");
+            loader.className =
+                "fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50 transition-opacity duration-300";
+            loader.innerHTML = `
         <div class="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
             <svg class="animate-spin h-8 w-8 text-[#B51D2D] mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -974,114 +966,116 @@ document.getElementById("finishForm").addEventListener("submit", async (e) => {
             <p id="loaderText" class="text-gray-700 text-sm font-medium">Foto's klaarmaken voor verzending...</p>
         </div>
     `;
-    document.body.appendChild(loader);
+            document.body.appendChild(loader);
 
-    try {
-        if (files.length > 0) {
-            const compressOptions = {
-                maxSizeMB: 0.45,
-                maxWidthOrHeight: 1280,
-                useWebWorker: true,
-                initialQuality: 0.65
-            };
+            try {
+                if (files.length > 0) {
+                    const compressOptions = {
+                        maxSizeMB: 0.45,
+                        maxWidthOrHeight: 1280,
+                        useWebWorker: true,
+                        initialQuality: 0.65
+                    };
 
-            // Comprimeren
-            const compressedFiles = await compressInBatches(files, compressOptions, 2);
-            const csrf = document.querySelector('meta[name="csrf-token"]').content;
+                    // Comprimeren
+                    const compressedFiles = await compressInBatches(files, compressOptions, 2);
+                    const csrf = document.querySelector('meta[name="csrf-token"]').content;
 
-            // Naar Service Worker sturen
-            for (let i = 0; i < compressedFiles.length; i++) {
-                await sendToSW({
-                    type: "ADD_UPLOAD",
-                    name: compressedFiles[i].name,
-                    blob: compressedFiles[i],
-                    fileType: compressedFiles[i].type,
-                    task_id: taskId,
-                    namespace_id: namespaceId,
-                    adres_path: adresPath,
-                    csrf: csrf
-                });
-            }
-            
-            console.log(`✅ ${compressedFiles.length} foto's naar wachtrij gestuurd.`);
-        }
+                    // Naar Service Worker sturen
+                    for (let i = 0; i < compressedFiles.length; i++) {
+                        await sendToSW({
+                            type: "ADD_UPLOAD",
+                            name: compressedFiles[i].name,
+                            blob: compressedFiles[i],
+                            fileType: compressedFiles[i].type,
+                            task_id: taskId,
+                            namespace_id: namespaceId,
+                            adres_path: adresPath,
+                            csrf: csrf
+                        });
+                    }
 
-        // ✅ Taak afronden (Status update naar backend)
-        const finishUrl = `/tasks/${taskId}/finish`;
-        
-        // Data voor de status update (zonder fotos, die gaan via SW)
-        const statusData = new FormData();
-        statusData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
-        statusData.append("damage", form.querySelector('input[name="damage"]:checked')?.value || "");
-        statusData.append("note", form.querySelector('textarea[name="note"]').value || "");
+                    console.log(`✅ ${compressedFiles.length} foto's naar wachtrij gestuurd.`);
+                }
 
-        // Gebruik sendBeacon indien beschikbaar (robuuster bij afsluiten)
-        if (navigator.sendBeacon) {
-            navigator.sendBeacon(finishUrl, statusData);
-            handleFrontendSuccess(taskId, form, loader);
-        } else {
-            // Fallback fetch
-            const res = await fetch(finishUrl, {
-                method: "POST",
-                headers: { "Accept": "application/json" },
-                body: statusData
-            });
-            if (res.ok) {
-                const json = await res.json();
-                handleFrontendSuccess(taskId, form, loader, json.status);
-            } else {
+                // ✅ Taak afronden (Status update naar backend)
+                const finishUrl = `/tasks/${taskId}/finish`;
+
+                // Data voor de status update (zonder fotos, die gaan via SW)
+                const statusData = new FormData();
+                statusData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
+                statusData.append("damage", form.querySelector('input[name="damage"]:checked')?.value || "");
+                statusData.append("note", form.querySelector('textarea[name="note"]').value || "");
+
+                // Gebruik sendBeacon indien beschikbaar (robuuster bij afsluiten)
+                if (navigator.sendBeacon) {
+                    navigator.sendBeacon(finishUrl, statusData);
+                    handleFrontendSuccess(taskId, form, loader);
+                } else {
+                    // Fallback fetch
+                    const res = await fetch(finishUrl, {
+                        method: "POST",
+                        headers: {
+                            "Accept": "application/json"
+                        },
+                        body: statusData
+                    });
+                    if (res.ok) {
+                        const json = await res.json();
+                        handleFrontendSuccess(taskId, form, loader, json.status);
+                    } else {
+                        removeLoader(loader);
+                    }
+                }
+
+            } catch (err) {
+                console.error("Fout in submit flow:", err);
+                showToast("⚠️ Er ging iets mis. Probeer opnieuw.");
                 removeLoader(loader);
+            } finally {
+                finishButton.disabled = false;
+                finishButton.textContent = "Voltooien";
+            }
+        });
+
+        // 👇 Nieuwe hulpfunctie om dubbele code te voorkomen en tekst te fixen
+        function handleFrontendSuccess(taskId, form, loader, serverStatus = null) {
+            // 1. Update de status in de tabel
+            const currentStatus = document.querySelector(`tr[data-task-id="${taskId}"]`)?.dataset.status;
+            const damage = form.querySelector('input[name="damage"]:checked')?.value;
+            let newStatus = serverStatus || currentStatus;
+
+            if (!serverStatus) {
+                if (currentStatus === "open") newStatus = "in behandeling";
+                else if (["in behandeling", "reopened"].includes(currentStatus)) {
+                    newStatus = (damage === "none") ? "finished" : "in behandeling";
+                }
+            }
+            updateTaskStatusRow(taskId, newStatus);
+
+            // 2. 👇 DE BELANGRIJKSTE WIJZIGING: DE TEKST
+            const loaderText = document.getElementById("loaderText");
+            if (loaderText) {
+                // Zeg NIET "Afgerond", maar "In wachtrij"
+                loaderText.textContent = "📦 Foto's in wachtrij geplaatst. Upload draait op achtergrond.";
+            }
+
+            // 3. Toon eerlijke toast
+            showToast("📂 Wijzigingen opgeslagen & foto's in wachtrij!", 4000);
+
+            // 4. Sluit formulier en verwijder loader na korte pauze
+            closeTaskForm();
+            setTimeout(() => {
+                removeLoader(loader);
+            }, 1500); // Iets langer laten staan zodat ze de tekst kunnen lezen
+        }
+
+        function removeLoader(loader) {
+            if (loader) {
+                loader.classList.add("opacity-0");
+                setTimeout(() => loader.remove(), 300);
             }
         }
-
-    } catch (err) {
-        console.error("Fout in submit flow:", err);
-        showToast("⚠️ Er ging iets mis. Probeer opnieuw.");
-        removeLoader(loader);
-    } finally {
-        finishButton.disabled = false;
-        finishButton.textContent = "Voltooien";
-    }
-});
-
-// 👇 Nieuwe hulpfunctie om dubbele code te voorkomen en tekst te fixen
-function handleFrontendSuccess(taskId, form, loader, serverStatus = null) {
-    // 1. Update de status in de tabel
-    const currentStatus = document.querySelector(`tr[data-task-id="${taskId}"]`)?.dataset.status;
-    const damage = form.querySelector('input[name="damage"]:checked')?.value;
-    let newStatus = serverStatus || currentStatus;
-    
-    if (!serverStatus) {
-        if (currentStatus === "open") newStatus = "in behandeling";
-        else if (["in behandeling", "reopened"].includes(currentStatus)) {
-            newStatus = (damage === "none") ? "finished" : "in behandeling";
-        }
-    }
-    updateTaskStatusRow(taskId, newStatus);
-
-    // 2. 👇 DE BELANGRIJKSTE WIJZIGING: DE TEKST
-    const loaderText = document.getElementById("loaderText");
-    if (loaderText) {
-        // Zeg NIET "Afgerond", maar "In wachtrij"
-        loaderText.textContent = "📦 Foto's in wachtrij geplaatst. Upload draait op achtergrond.";
-    }
-
-    // 3. Toon eerlijke toast
-    showToast("📂 Wijzigingen opgeslagen & foto's in wachtrij!", 4000);
-
-    // 4. Sluit formulier en verwijder loader na korte pauze
-    closeTaskForm();
-    setTimeout(() => {
-        removeLoader(loader);
-    }, 1500); // Iets langer laten staan zodat ze de tekst kunnen lezen
-}
-
-function removeLoader(loader) {
-    if(loader) {
-        loader.classList.add("opacity-0");
-        setTimeout(() => loader.remove(), 300);
-    }
-}
 
         // 🔹 Toast helper
         function showToast(message, duration = 4000) {
