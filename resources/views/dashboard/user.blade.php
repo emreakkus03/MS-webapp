@@ -704,19 +704,44 @@
         progressWrapper.appendChild(progressBar);
         document.getElementById("photoPreview").after(progressWrapper);
 
-        document.getElementById("photoUpload").addEventListener("change", (e) => {
-            // === Lightbox met navigatie ===
+       // ===============================================
+            // 🔹 FOTO PREVIEW & LIGHTBOX (Gerepareerd)
+            // ===============================================
+
+            // Variabelen globaal houden (zodat ze niet resetten of dubbelen)
+            let activeObjectUrls = []; // Hier bewaren we de levende links
             const lightbox = document.getElementById("photoLightbox");
             const lightboxImg = document.getElementById("lightboxImage");
             const closeLightbox = document.getElementById("closeLightbox");
             const prevPhoto = document.getElementById("prevPhoto");
             const nextPhoto = document.getElementById("nextPhoto");
+            const previewContainer = document.getElementById("photoPreview");
 
             let previewImages = [];
             let currentIndex = 0;
 
-            // Open lightbox bij klik
-            document.getElementById("photoPreview").addEventListener("click", (e) => {
+            // 1. Lightbox Functie (Toon afbeelding)
+            function showImage(index) {
+                // Update de lijst (want misschien zijn er foto's bijgekomen/weggehaald)
+                previewImages = [...document.querySelectorAll("#photoPreview img")];
+                
+                if (previewImages.length === 0) return;
+
+                // Loop logic (einde -> begin, begin -> einde)
+                if (index < 0) index = previewImages.length - 1;
+                if (index >= previewImages.length) index = 0;
+                
+                currentIndex = index;
+                lightboxImg.src = previewImages[currentIndex].src;
+                
+                lightbox.classList.remove("hidden");
+                lightbox.classList.add("flex");
+            }
+
+            // 2. Event Listeners (Deze definiëren we 1x BUITEN de upload functie)
+            
+            // Klik op een thumbnail
+            previewContainer.addEventListener("click", (e) => {
                 if (e.target.tagName === "IMG") {
                     previewImages = [...document.querySelectorAll("#photoPreview img")];
                     currentIndex = previewImages.indexOf(e.target);
@@ -724,15 +749,7 @@
                 }
             });
 
-            function showImage(index) {
-                if (index < 0) index = previewImages.length - 1;
-                if (index >= previewImages.length) index = 0;
-                currentIndex = index;
-                lightboxImg.src = previewImages[currentIndex].src;
-                lightbox.classList.remove("hidden");
-                lightbox.classList.add("flex");
-            }
-
+            // Navigatieknoppen
             prevPhoto.addEventListener("click", (e) => {
                 e.stopPropagation();
                 showImage(currentIndex - 1);
@@ -743,6 +760,7 @@
                 showImage(currentIndex + 1);
             });
 
+            // Sluiten
             closeLightbox.addEventListener("click", () => {
                 lightbox.classList.add("hidden");
                 lightbox.classList.remove("flex");
@@ -755,6 +773,7 @@
                 }
             });
 
+            // Toetsenbord ondersteuning
             document.addEventListener("keydown", (e) => {
                 if (lightbox.classList.contains("hidden")) return;
                 if (e.key === "ArrowLeft") showImage(currentIndex - 1);
@@ -765,36 +784,46 @@
                 }
             });
 
-            // === Previews ===
-            let files = [...e.target.files];
-            let preview = document.getElementById("photoPreview");
-            preview.innerHTML = "";
-
-            if (files.length > 30) {
-                alert("Je mag maximaal 30 foto's uploaden.");
-                files = files.slice(0, 30);
-            }
-
-            files.forEach(file => {
-                if (file.size > 30 * 1024 * 1024) {
-                    alert(`Bestand ${file.name} is groter dan 30MB en wordt overgeslagen.`);
-                    return;
+            // 3. De File Input Change Handler (Bestanden kiezen)
+            document.getElementById("photoUpload").addEventListener("change", (e) => {
+                // STAP A: Oude URLs opruimen (geheugen schoonmaken van vorige selectie)
+                if (activeObjectUrls.length > 0) {
+                    activeObjectUrls.forEach(url => URL.revokeObjectURL(url));
+                    activeObjectUrls = [];
                 }
 
-                // 🔥 NIEUWE METHODE: gebruik blob URL i.p.v. FileReader
-                const objectUrl = URL.createObjectURL(file);
+                let files = [...e.target.files];
+                let preview = document.getElementById("photoPreview");
+                preview.innerHTML = "";
 
-                let img = document.createElement("img");
-                img.src = objectUrl;
-                img.classList.add("h-16", "w-16", "object-cover", "rounded", "cursor-pointer");
-                preview.appendChild(img);
+                if (files.length > 30) {
+                    alert("Je mag maximaal 30 foto's uploaden.");
+                    files = files.slice(0, 30);
+                }
 
-                // Ruim blob URL op wanneer de afbeelding verdwijnt
-                img.onload = () => URL.revokeObjectURL(objectUrl);
+                files.forEach(file => {
+                    if (file.size > 30 * 1024 * 1024) {
+                        alert(`Bestand ${file.name} is groter dan 30MB en wordt overgeslagen.`);
+                        return;
+                    }
+
+                    // 🔥 DE FIX: URL maken en opslaan in de lijst, NIET direct verwijderen!
+                    const objectUrl = URL.createObjectURL(file);
+                    activeObjectUrls.push(objectUrl);
+
+                    let img = document.createElement("img");
+                    img.src = objectUrl;
+                    // Styling
+                    img.classList.add("h-16", "w-16", "object-cover", "rounded", "cursor-pointer", "border", "border-gray-300");
+                    img.title = "Klik om te vergroten";
+                    
+                    preview.appendChild(img);
+                });
+
+                // Reset progress bar (als die er nog stond van vorige keer)
+                const progressWrapper = document.querySelector("#photoPreview + div");
+                if (progressWrapper) progressWrapper.classList.add("hidden");
             });
-
-            progressWrapper.classList.add("hidden"); // reset progress
-        });
 
         function showError(id, message) {
             let el = document.getElementById(id);
