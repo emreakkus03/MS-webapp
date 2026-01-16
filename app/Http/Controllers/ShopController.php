@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Material;
 use App\Models\Order;
+use App\Models\Team;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -121,7 +122,7 @@ class ShopController extends Controller
         return $order;
     });
 
-    $warehouseUsers = User::whereIn('role', ['warehouseman', 'admin'])->get();
+    $warehouseUsers = Team::whereIn('role', ['warehouseman', 'admin'])->get();
 
     // 2. Stuur de notificatie
     if ($warehouseUsers->count() > 0) {
