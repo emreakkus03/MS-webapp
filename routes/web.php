@@ -26,6 +26,22 @@ use App\Mail\RepairTasksMail;
 use Illuminate\Support\Facades\Response;
 use Aws\Credentials\Credentials;
 
+
+use App\Imports\MaterialsImport;
+use Maatwebsite\Excel\Facades\Excel;
+
+
+Route::get('/run-import', function () {
+    try {
+        // GEWIJZIGD: We gebruiken nu storage_path('app/materials.xlsx')
+        // Dit vertelt Laravel: "Kijk in de map storage/app naar materials.xlsx"
+        Excel::import(new MaterialsImport, storage_path('app/materials.xlsx'));
+        
+        return 'Import succesvol voltooid! Check je database.';
+    } catch (\Exception $e) {
+        return 'Er ging iets mis: ' . $e->getMessage();
+    }
+});
 Route::get('/3f73e6bc076b1cb056e072cc30dc485b.txt', function () {
     return Response::make('', 200, ['Content-Type' => 'text/plain']);
 });
