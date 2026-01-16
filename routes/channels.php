@@ -16,3 +16,8 @@ Broadcast::channel('admin-tasks', function ($user) {
 Broadcast::channel('App.Models.Team.{id}', function ($user, $id) {
     return (string) $user->id === (string) $id;
 });
+
+// 🔐 Standaard User kanaal (nodig voor de notificaties die we net bouwden)
+Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
+    return (int) $user->id === (int) $id;
+});

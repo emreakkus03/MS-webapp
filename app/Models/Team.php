@@ -43,4 +43,9 @@ class Team extends Authenticatable
     {
         return $this->hasMany(Task::class, 'team_id');
     }
+
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
 }

@@ -1,0 +1,102 @@
+<x-layouts.dashboard>
+<div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-8 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-slate-900 mb-2">Magazijn Shop 🛠️</h1>
+            <p class="text-slate-600">Beheer en bestel materialen uit onze magazijn</p>
+        </div>
+
+        <!-- Search & Navigation -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <form action="{{ route('shop.index') }}" method="GET" class="mb-6">
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <input 
+                        type="text" 
+                        name="search" 
+                        placeholder="Zoek op naam of SAP..." 
+                        value="{{ request('search') }}"
+                        class="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                    <button 
+                        type="submit"
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors duration-200"
+                    >
+                        Zoeken
+                    </button>
+                </div>
+            </form>
+
+            <div class="flex flex-col sm:flex-row gap-3">
+                <a 
+                    href="{{ route('shop.history') }}" 
+                    class="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-center"
+                >
+                    📋 Mijn Historiek
+                </a>
+                <a 
+                    href="{{ route('cart.view') }}" 
+                    class="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-center"
+                >
+                    🛒 Winkelmand ({{ count(session('cart', [])) }})
+                </a>
+            </div>
+        </div>
+
+        <!-- Materials Table -->
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-slate-800 text-white">
+                        <tr>
+                            <th class="px-6 py-4 text-left font-semibold">SAP</th>
+                            <th class="px-6 py-4 text-left font-semibold">Omschrijving</th>
+                            <th class="px-6 py-4 text-left font-semibold">Verpakking</th>
+                            <th class="px-6 py-4 text-left font-semibold">Actie</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200">
+                        @forelse($materials as $material)
+                        <tr class="hover:bg-slate-50 transition-colors duration-150">
+                            <td class="px-6 py-4 text-slate-900 font-mono font-semibold">{{ $material->sap_number }}</td>
+                            <td class="px-6 py-4 text-slate-700">{{ $material->description }}</td>
+                            <td class="px-6 py-4 text-slate-600">{{ $material->packaging }}</td>
+                            <td class="px-6 py-4">
+                                <form action="{{ route('cart.add', $material->id) }}" method="POST" class="flex items-center gap-2">
+                                    @csrf
+                                    <input 
+                                        type="number" 
+                                        name="quantity" 
+                                        value="1" 
+                                        min="1"
+                                        class="w-16 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                                    >
+                                    <span class="text-slate-600 text-sm">{{ $material->unit }}</span>
+                                    <button 
+                                        type="submit"
+                                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 whitespace-nowrap"
+                                    >
+                                        Toevoegen
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        @empty
+                        <tr>
+                            <td colspan="4" class="px-6 py-8 text-center text-slate-600">
+                                Geen materialen gevonden
+                            </td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="px-6 py-4 border-t border-slate-200 bg-slate-50">
+                {{ $materials->links() }}
+            </div>
+        </div>
+    </div>
+</div>
+</x-layouts.dashboard>

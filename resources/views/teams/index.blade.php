@@ -142,6 +142,7 @@
                         <label class="block text-sm font-medium">Rol</label>
                         <select name="role" class="w-full border px-3 py-2 rounded">
                             <option value="team" selected>team</option>
+                            <option value="warehouseman">warehouseman</option>
                             <option value="admin">admin</option>
                         </select>
                     </div>

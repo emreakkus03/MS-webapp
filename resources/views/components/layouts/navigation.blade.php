@@ -207,17 +207,42 @@
                             </li>
                         @endif
 
-                        @can('view-logs')
-    <li>
-        <a href="{{ route('admin.activity.index') }}" 
-            class="flex items-center gap-3 px-4 py-2 rounded-md transition
-           {{ request()->routeIs('admin.activity.*') ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
-             <img src="{{ asset('images/icon/spy.svg') }}" alt="Logo"
+                        <li>
+                            <a href="{{ route('shop.index') }}"
+                                class="flex items-center gap-3 px-4 py-2 rounded-md transition
+           {{ request()->routeIs('shop.*') ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
+
+                                <img src="{{ asset('images/icon/shopping-bag.svg') }}" alt="Logo"
+                                    class="w-7 h-7 text-gray-500">
+                                Bestellen
+                            </a>
+                        </li>
+                        
+
+                        @if (Auth::user()->role === 'warehouseman' || Auth::user()->role === 'admin')
+                            <li>
+                                <a href="{{ route('warehouse.index') }}"
+                                    class="flex items-center gap-3 px-4 py-2 rounded-md transition
+           {{ request()->routeIs('warehouse.*') ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
+
+                                    <img src="{{ asset('images/icon/clipboard-list.svg') }}" alt="Logo"
                                         class="w-7 h-7 text-gray-500">
-            Logs
-        </a>
-    </li>
-@endcan
+                                    Bestellingen beheer
+                                </a>
+                            </li>
+                        @endif
+
+                        @can('view-logs')
+                            <li>
+                                <a href="{{ route('admin.activity.index') }}"
+                                    class="flex items-center gap-3 px-4 py-2 rounded-md transition
+           {{ request()->routeIs('admin.activity.*') ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
+                                    <img src="{{ asset('images/icon/spy.svg') }}" alt="Logo"
+                                        class="w-7 h-7 text-gray-500">
+                                    Logs
+                                </a>
+                            </li>
+                        @endcan
                     </ul>
                 </nav>
 
@@ -246,29 +271,52 @@
 
 </aside>
 <script src="//unpkg.com/alpinejs" defer></script>
-@if (auth()->check() && auth()->user()->role === 'admin')
+{{-- 1. IEDEREEN moet dit script laden, anders werkt Echo niet voor ploegen --}}
+@auth
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             if (window.Echo) {
-                console.log("Echo is ready, subscribing to admin channels...");
+                console.log("Echo is ready...");
 
-                // 🔹 Notities bij taken
-                window.Echo.private('admin-tasks')
+                // -----------------------------------------------------------
+                // NIEUW: DIT VOEGEN WE TOE (Voor Shop & Magazijn meldingen)
+                // Dit luistert naar berichten specifiek voor DEZE ingelogde gebruiker
+                // -----------------------------------------------------------
+                const userId = "{{ auth()->id() }}";
+                window.Echo.private('App.Models.User.' + userId)
                     .notification((notification) => {
-                        console.log("Realtime admin-task binnen:", notification);
+                        console.log("Persoonlijke melding:", notification);
                         updateNotifications(notification.message);
                     });
 
-                // 🔹 Afgeronde taken
-                window.Echo.private('App.Models.Team.admins')
-                    .notification((notification) => {
-                        console.log("Realtime taak voltooid:", notification);
-                        updateNotifications(notification.message);
-                    });
+
+                // -----------------------------------------------------------
+                // JOUW BESTAANDE CODE (Nu veilig binnen de if admin check)
+                // Hierdoor krijgen teams deze meldingen NIET.
+                // -----------------------------------------------------------
+                @if (auth()->user()->role === 'admin')
+                    console.log("Subscribing to admin channels...");
+
+                    // 🔹 Notities bij taken
+                    window.Echo.private('admin-tasks')
+                        .notification((notification) => {
+                            console.log("Realtime admin-task binnen:", notification);
+                            updateNotifications(notification.message);
+                        });
+
+                    // 🔹 Afgeronde taken
+                    window.Echo.private('App.Models.Team.admins')
+                        .notification((notification) => {
+                            console.log("Realtime taak voltooid:", notification);
+                            updateNotifications(notification.message);
+                        });
+                @endif
+                
             } else {
                 console.error("Echo is niet beschikbaar!");
             }
 
+            // 👇 JOUW ORIGINELE FUNCTIE (ONAANGEPAST) 👇
             function updateNotifications(message) {
                 const now = new Date();
                 const timestamp = now.toLocaleDateString('nl-BE') + " " + now.toLocaleTimeString('nl-BE', {
@@ -341,4 +389,4 @@
             }
         });
     </script>
-@endif
+@endauth

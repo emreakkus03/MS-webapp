@@ -31,7 +31,7 @@ class TeamController extends Controller
             ->with('filters', $request->only(['role', 'search']));
     }
 
-     public function store(Request $request)
+    public function store(Request $request)
     {
         $user = auth()->guard()->user();
         abort_unless($user && $user->role === 'admin', 403);
@@ -39,7 +39,7 @@ class TeamController extends Controller
         $request->validate([
             'name' => 'required|string|unique:teams,name',
             'password' => 'required|string|min:6',
-            'role' => 'required|in:admin,team', // ✅ alleen geldige rollen
+            'role' => 'required|in:admin,team,warehouseman', // ✅ alleen geldige rollen
             'members' => 'nullable|string',
         ]);
 
@@ -50,9 +50,9 @@ class TeamController extends Controller
         // ✅ Leden verwerken (met komma’s)
         $members = $request->members
             ? collect(explode(',', $request->members))
-                ->map(fn($name) => trim(ucwords(strtolower(e(strip_tags($name))))))
-                ->filter() // verwijder lege namen
-                ->implode(', ')
+            ->map(fn($name) => trim(ucwords(strtolower(e(strip_tags($name))))))
+            ->filter() // verwijder lege namen
+            ->implode(', ')
             : null;
 
         // ✅ Team aanmaken
@@ -76,7 +76,7 @@ class TeamController extends Controller
         return view('teams.edit', compact('team'));
     }
 
-     public function update(Request $request, $id)
+    public function update(Request $request, $id)
     {
         $team = Team::findOrFail($id);
 
@@ -97,9 +97,9 @@ class TeamController extends Controller
         // ✅ Leden verwerken (werkt ook met samengestelde namen)
         $team->members = $request->members
             ? collect(explode(',', $request->members))
-                ->map(fn($name) => trim(ucwords(strtolower(e(strip_tags($name))))))
-                ->filter()
-                ->implode(', ')
+            ->map(fn($name) => trim(ucwords(strtolower(e(strip_tags($name))))))
+            ->filter()
+            ->implode(', ')
             : null;
 
         // ✅ Alleen wachtwoord wijzigen als het is ingevuld

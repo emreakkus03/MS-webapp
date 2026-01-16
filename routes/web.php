@@ -12,6 +12,8 @@ use App\Http\Controllers\Admin\DropboxController;
 use App\Http\Controllers\DropboxViewerController;
 use App\Http\Controllers\R2ManagementController;
 use App\Http\Controllers\Admin\ActivityLogController;
+use App\Http\Controllers\ShopController;
+use App\Http\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Auth;
 use App\Events\TestEvent;
 use Aws\S3\S3Client;
@@ -23,7 +25,6 @@ use Illuminate\Support\Facades\Mail;
 use App\Mail\RepairTasksMail;
 use Illuminate\Support\Facades\Response;
 use Aws\Credentials\Credentials;
-
 
 Route::get('/3f73e6bc076b1cb056e072cc30dc485b.txt', function () {
     return Response::make('', 200, ['Content-Type' => 'text/plain']);
@@ -300,12 +301,32 @@ Route::get('/test-repair-mail', function () {
 
 Route::post('/r2/upload', [R2Controller::class, 'uploadFromSW'])->name('r2.upload');
 
-/*Route::get('/download-r2-backup', function () {
-    $path = storage_path('app/r2_backup.zip');
+Route::middleware(['auth'])->group(function () {
+    // De Shop Pagina (Lijst met materialen)
+    Route::get('/shop', [ShopController::class, 'index'])->name('shop.index');
+    Route::get('/shop/order-received/{order}', [ShopController::class, 'orderSuccess'])->name('shop.success');
+    
+    // Acties voor winkelmandje
+    Route::post('/cart/add/{id}', [ShopController::class, 'addToCart'])->name('cart.add');
+    Route::post('/cart/update/{id}', [ShopController::class, 'updateCart'])->name('cart.update');
+    Route::get('/cart', [ShopController::class, 'viewCart'])->name('cart.view');
+    Route::post('/cart/remove/{id}', [ShopController::class, 'removeFromCart'])->name('cart.remove');
+    
+    // De finale bestelling plaatsen
+    Route::post('/checkout', [ShopController::class, 'checkout'])->name('shop.checkout');
 
-    if (!file_exists($path)) {
-        abort(404, "ZIP file not found");
-    }
+    Route::get('/my-orders', [ShopController::class, 'history'])->name('shop.history');
+});
 
-    return response()->download($path, 'r2_backup.zip');
-}); */
+// Je kunt hier later 'middleware' => ['auth', 'role:magazijnier'] aan toevoegen
+Route::prefix('warehouse')->middleware(['auth'])->group(function () {
+    
+    // Dashboard: Overzicht van alle bestellingen
+    Route::get('/', [WarehouseController::class, 'index'])->name('warehouse.index');
+
+    // Actie 1: Printen (Toont de printpagina en zet status op 'printed')
+    Route::get('/orders/{order}/print', [WarehouseController::class, 'printOrder'])->name('warehouse.print');
+
+    // Actie 2: Klaar melden (Zet status op 'ready')
+    Route::post('/orders/{order}/complete', [WarehouseController::class, 'markAsReady'])->name('warehouse.complete');
+});
