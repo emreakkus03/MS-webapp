@@ -32,7 +32,7 @@ class OrderReady extends Notification implements ShouldQueue
         // We sturen dit naar het unieke kanaal van de gebruiker (team).
         // Standaard Laravel conventie: App.Models.User.{id}
         // Omdat in jouw app team_id = user_id:
-        return [new PrivateChannel('App.Models.User.' . $this->order->team_id)];
+        return [new PrivateChannel('App.Models.Team.' . $this->order->team_id)];
     }
 
     public function toDatabase(object $notifiable): array
