@@ -1,8 +1,8 @@
-const SW_VERSION = 'v8-tunnel-fix'; // 👈 Versie omhoog!
+const SW_VERSION = 'v6-bypass-fix'; // 👈 Aangepast: Versie omhoog voor force update
 const API = self.location.origin;
 
 // ==============================================
-// 📌 SERVICE WORKER v8 – Tunnel Fix & UI Feedback
+// 📌 SERVICE WORKER v6 – Deduplication & URL Bypass
 // ==============================================
 
 const DB_NAME = "R2UploadDB";
@@ -40,12 +40,15 @@ async function deleteItem(id) {
     db.transaction(STORE, "readwrite").objectStore(STORE).delete(id);
 }
 
-// 👇 DEDUPLICATIE
+// 👇 DE GROTE FIX: DEDUPLICATIE
 async function addItem(data) {
     const currentItems = await getAll();
     const exists = currentItems.find(item => item.name === data.name);
 
-    if (exists) return; 
+    if (exists) {
+        console.log(`⚠️ SW: Bestand '${data.name}' staat al in de wachtrij. Dubbele toevoeging genegeerd.`);
+        return; 
+    }
 
     const db = await openDB();
     let blobData;
@@ -84,20 +87,28 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 // FRONTEND → SW
 // --------------------------
 self.addEventListener("message", async (event) => {
-    if (event.origin !== self.location.origin) return;
-    
+    if (event.origin !== self.location.origin) {
+        return; 
+    }
+    // 👇 VOEG DIT BLOKJE TOE
     if (event.data?.type === "FORCE_PROCESS") {
-        console.log("⚡ Force Process commando ontvangen.");
-        event.waitUntil(processQueue());
+        console.log("⚡ Force Process commando ontvangen. Queue starten...");
+        await processQueue();
     }
     
     if (event.data?.type === "ADD_UPLOAD") {
         await addItem(event.data);
         if ("sync" in self.registration) {
-            try { await self.registration.sync.register("sync-r2-uploads"); } 
-            catch (e) { console.warn("Sync error", e); }
+            try {
+                await self.registration.sync.register("sync-r2-uploads");
+            } catch (e) {
+                console.warn("Background Sync fout", e);
+            }
         }
         sendToClients({ type: "QUEUED", file: event.data.name });
+    }
+    if (event.data?.type === "SKIP_WAITING") {
+        self.skipWaiting();
     }
 });
 
@@ -109,18 +120,19 @@ async function sendToClients(msg) {
 // --------------------------
 // BACKGROUND SYNC
 // --------------------------
-self.addEventListener("sync", (event) => {
-    if (event.tag === "sync-r2-uploads") {
-        console.log("🤖 Android Background Sync gestart");
-        event.waitUntil(processQueue());
-    }
+self.addEventListener("sync", async (event) => {
+    if (event.tag !== "sync-r2-uploads") return;
+    await processQueue();
 });
 
 // --------------------------
 // QUEUE PROCESSOR
 // --------------------------
 async function processQueue() {
-    if (isProcessingQueue) return;
+    if (isProcessingQueue) {
+        console.log("SW: Queue draait al, skip.");
+        return;
+    }
 
     const items = await getAll();
     if (items.length === 0) return;
@@ -128,7 +140,7 @@ async function processQueue() {
     isProcessingQueue = true;
     let done = 0;
 
-    console.log(`SW: Verwerken van ${items.length} items...`);
+    console.log(`SW: Start verwerking van ${items.length} unieke items...`);
 
     for (const item of items) {
         try {
@@ -152,43 +164,45 @@ async function processQueue() {
             form.append("_token", item.csrf);
             form.append("unique_id", item.id); 
 
-            // URL met bypass parameter
-            const uploadUrl = new URL(`${API}/r2/upload`);
-            uploadUrl.searchParams.append("sw_bypass", "true"); 
+            let res;
+            try {
+                // 👇 AANPASSING: Gebruik URL parameter i.p.v. Header
+                const uploadUrl = new URL(`${API}/r2/upload`);
+                uploadUrl.searchParams.append("sw_bypass", "true"); 
 
-            // 
-            
-            // 👇 DE GROTE FIX: HEADERS OM TUNNEL ERROR 511 TE VOORKOMEN
-            const res = await fetch(uploadUrl.toString(), {
-                method: "POST",
-                headers: { 
-                    "X-CSRF-TOKEN": item.csrf,
-                    "ngrok-skip-browser-warning": "true", // Voor Ngrok
-                    "Bypass-Tunnel-Reminder": "true"      // Voor Localtunnel
-                },
-                credentials: 'include',
-                body: form
-            });
-
-            if (!res.ok) {
-                console.warn(`SW: Server error ${res.status}.`);
-                throw new Error("SERVER_HICCUP");
+                res = await fetch(uploadUrl.toString(), {
+                    method: "POST",
+                    headers: { 
+                        "X-CSRF-TOKEN": item.csrf
+                        // Geen custom bypass header meer nodig
+                    },
+                    credentials: 'include',
+                    body: form
+                });
+            } catch (err) {
+                throw new Error("NETWORK_FAIL");
             }
 
+            if (res.status === 429) {
+                console.warn("SW: 429 Rate Limit. Wacht 5s...");
+                await new Promise(r => setTimeout(r, 5000)); 
+                throw new Error("RATE_LIMIT");
+            }
+
+            if (!res.ok) throw new Error(`Server error: ${res.status}`);
+
             const json = await res.json();
-            if (!json.path) throw new Error("Missing path");
+
+            // 👇 CRUCIALE VEILIGHEIDSCHECK
+            if (!json.path) {
+                throw new Error("Server response mist file path - Mogelijke SW Loop");
+            }
 
             console.log("SW: Upload OK:", json.path);
 
-            // Database Registratie (Ook hier headers toevoegen!)
             const reg = await fetch(`${API}/r2/register-upload`, {
                 method: "POST",
-                headers: { 
-                    "Content-Type": "application/json", 
-                    "X-CSRF-TOKEN": item.csrf,
-                    "ngrok-skip-browser-warning": "true", // Ook hier toevoegen!
-                    "Bypass-Tunnel-Reminder": "true"
-                },
+                headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": item.csrf },
                 credentials: 'include',
                 body: JSON.stringify({
                     task_id: item.task_id,
@@ -205,36 +219,37 @@ async function processQueue() {
 
             sendToClients({ type: "UPLOADED", name: item.name, done, total: items.length });
 
+            // Rusttijd
+            await new Promise(r => setTimeout(r, 500));
+
         } catch (err) {
             console.warn(`SW: Fout bij '${item.name}':`, err.message);
-
-            // 👇 UI UPDATE: Vertel frontend dat het mislukt is (Rode balk)
-            sendToClients({ type: "UPLOAD_FAILED", name: item.name });
-
-            // Retry Logica
-            if (["SERVER_HICCUP", "NETWORK_FAIL", "RATE_LIMIT", "Failed to fetch"].includes(err.message) || err.message.includes("Server error")) {
-                console.log("SW: Tijdelijke fout. Wacht 3s...");
-                await new Promise(r => setTimeout(r, 3000));
-                break; // Pauzeer queue, probeer later opnieuw
-            } else {
-                break; // Stop bij fatale fout
+            // Bij server error (500) of netwerkfout stoppen we direct
+            if (["OFFLINE", "NETWORK_FAIL", "RATE_LIMIT"].includes(err.message) || err.message.includes("Server error")) {
+                sendToClients({ type: "UPLOAD_FAILED", name: item.name, reason: "pauze" });
+                break;
             }
         }
     }
 
     isProcessingQueue = false;
-    if (done === items.length) {
-        sendToClients({ type: "COMPLETE" });
-    }
+    sendToClients({ type: "COMPLETE" });
 }
 
 // --------------------------
-// FETCH HANDLER
+// FETCH HANDLER (Dwing ALLES via de Queue)
 // --------------------------
 self.addEventListener("fetch", (event) => {
     const url = new URL(event.request.url);
-    if (url.searchParams.get("sw_bypass") === "true") return; 
 
+    // 👇 AANPASSING: Check nu op de URL parameter
+    // Als sw_bypass=true in de URL staat, mag hij DIRECT naar het internet.
+    if (url.searchParams.get("sw_bypass") === "true") {
+        return; // Verlaat de SW, ga naar netwerk (of faal als offline)
+    }
+
+    // Als de frontend probeert te uploaden...
+    // We gebruiken pathname zodat query params de match niet verpesten
     if (url.pathname === '/r2/upload' && event.request.method === "POST") {
         event.respondWith(saveToQueueAndRespond(event.request));
     }
@@ -264,11 +279,17 @@ async function saveToQueueAndRespond(request) {
 
         sendToClients({ type: "QUEUED", file: file.name });
 
-        return new Response(JSON.stringify({ success: true, queued: true }), { 
-            status: 200, headers: { "Content-Type": "application/json" } 
-        });
+        return new Response(
+            JSON.stringify({ 
+                success: true, 
+                queued: true, 
+                message: "In wachtrij geplaatst" 
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+        );
 
     } catch (e) {
+        console.error("SW: Fout bij opslaan in queue", e);
         return new Response(JSON.stringify({ error: "Storage failed" }), { status: 500 });
     }
 }
