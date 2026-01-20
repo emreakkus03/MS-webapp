@@ -7,6 +7,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Broadcasting\PrivateChannel;
 
 class NewOrderReceived extends Notification implements ShouldQueue
 {
@@ -22,7 +23,12 @@ class NewOrderReceived extends Notification implements ShouldQueue
     public function via(object $notifiable): array
     {
         // Pas 'broadcast' toe als je pusher/reverb gebruikt, anders alleen 'database'
-        return ['database']; 
+        return ['database', 'broadcast']; 
+    }
+
+    public function broadcastOn(): array
+    {
+        return [new PrivateChannel('warehouseman-orders')];
     }
 
     public function toDatabase(object $notifiable): array
