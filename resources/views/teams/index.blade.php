@@ -33,6 +33,8 @@
             <tr>
                 <th class="px-4 py-2 border-b text-left font-semibold">Naam</th>
                 <th class="px-4 py-2 border-b text-left font-semibold">Leden</th>
+                <th class="px-4 py-2 border-b text-left font-semibold">P-nr. Ver.</th>
+                <th class="px-4 py-2 border-b text-left font-semibold">Onderaannemer</th>
                 <th class="px-4 py-2 border-b text-left font-semibold hidden sm:table-cell">Rol</th>
                 
                 <th class="px-4 py-2 border-b text-left font-semibold">Acties</th>
@@ -50,6 +52,16 @@
                     <td class="px-4 py-2 border-b text-gray-600">
                         <div class="max-w-[250px] truncate">
                             {{ $team->members ?: '-' }}
+                        </div>
+                    </td>
+                    <td class="px-4 py-2 border-b text-gray-600">
+                        <div class="max-w-[250px] truncate">
+                            {{ $team->employee_number ?: '-' }}
+                        </div>
+                    </td>
+                    <td class="px-4 py-2 border-b text-gray-600">
+                        <div class="max-w-[250px] truncate">
+                            {{ $team->subcontractor ?: '-' }}
                         </div>
                     </td>
 
@@ -145,6 +157,16 @@
                             <option value="warehouseman">warehouseman</option>
                             <option value="admin">admin</option>
                         </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">P-nr. Ver.</label>
+                        <input type="text" name="employee_number" class="w-full border px-3 py-2 rounded"
+                               placeholder="bv. P12345">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Subcontractor</label>
+                        <input type="text" name="subcontractor" class="w-full border px-3 py-2 rounded"
+                               placeholder="bv. Subcontractor A">
                     </div>
                     <div>
                         <label class="block text-sm font-medium">Leden (komma gescheiden)</label>

@@ -48,6 +48,30 @@
             >
         </div>
 
+        <!-- P-nr. Ver. -->
+        <div>
+            <label class="block text-sm font-medium">P-nr. Ver.</label>
+            <input 
+                type="text" 
+                name="employee_number" 
+                value="{{ $team->employee_number }}" 
+                class="w-full border px-3 py-2 rounded"
+                placeholder="bv. P12345"
+            >
+        </div>
+
+        <!-- Subcontractor -->
+        <div>
+            <label class="block text-sm font-medium">Subcontractor</label>
+            <input 
+                type="text" 
+                name="subcontractor" 
+                value="{{ $team->subcontractor }}" 
+                class="w-full border px-3 py-2 rounded"
+                placeholder="bv. Subcontractor A"
+            >
+        </div>
+
         <!-- Acties -->
         <div class="flex justify-between">
             <a 

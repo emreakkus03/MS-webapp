@@ -38,6 +38,8 @@ class TeamController extends Controller
 
         $request->validate([
             'name' => 'required|string|unique:teams,name',
+            'employee_number' => 'nullable|string',
+            'subcontractor' => 'nullable|string',
             'password' => 'required|string|min:6',
             'role' => 'required|in:admin,team,warehouseman', // ✅ alleen geldige rollen
             'members' => 'nullable|string',
@@ -58,6 +60,8 @@ class TeamController extends Controller
         // ✅ Team aanmaken
         $team = new Team();
         $team->name = $teamName;
+        $team->employee_number = $request->employee_number;
+        $team->subcontractor = $request->subcontractor;
         $team->password = $request->password;
         $team->role = $role;
         $team->members = $members;
@@ -85,6 +89,8 @@ class TeamController extends Controller
 
         $request->validate([
             'name' => 'required|string|unique:teams,name,' . $team->id,
+            'employee_number' => 'nullable|string',
+            'subcontractor' => 'nullable|string',
             'password' => 'nullable|string|min:6',
             'role' => 'required|in:admin,team',
             'members' => 'nullable|string',
@@ -106,6 +112,8 @@ class TeamController extends Controller
         if (!empty($request->password)) {
             $team->password = $request->password;
         }
+        $team->employee_number = $request->employee_number;
+        $team->subcontractor = $request->subcontractor;
 
         $team->save();
 

@@ -18,6 +18,8 @@ class Team extends Authenticatable
         'name',
         'password',
         'members',
+        'employee_number',
+        'subcontractor',
     ];
 
     protected $hidden = [
