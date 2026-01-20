@@ -712,98 +712,118 @@ window.addEventListener("online", () => {
         progressBar.className = "bg-green-500 h-3 rounded w-0";
         progressWrapper.appendChild(progressBar);
         document.getElementById("photoPreview").after(progressWrapper);
+document.addEventListener("DOMContentLoaded", () => {
+    // === 1. VARIABELEN & SELECTORS ===
+    const photoUpload = document.getElementById("photoUpload");
+    const previewContainer = document.getElementById("photoPreview");
+    const lightbox = document.getElementById("photoLightbox");
+    const lightboxImg = document.getElementById("lightboxImage");
+    const closeLightbox = document.getElementById("closeLightbox");
+    const prevPhoto = document.getElementById("prevPhoto");
+    const nextPhoto = document.getElementById("nextPhoto");
+    
+    // Zorg dat deze bestaat in je HTML, anders geeft dit een error!
+    const progressWrapper = document.getElementById("progressWrapper"); 
 
-        document.getElementById("photoUpload").addEventListener("change", (e) => {
-            // === Lightbox met navigatie ===
-            const lightbox = document.getElementById("photoLightbox");
-            const lightboxImg = document.getElementById("lightboxImage");
-            const closeLightbox = document.getElementById("closeLightbox");
-            const prevPhoto = document.getElementById("prevPhoto");
-            const nextPhoto = document.getElementById("nextPhoto");
+    let previewImages = [];
+    let currentIndex = 0;
 
-            let previewImages = [];
-            let currentIndex = 0;
+    // === 2. UPLOAD LOGICA (Alleen previews maken) ===
+    photoUpload.addEventListener("change", (e) => {
+        let files = [...e.target.files];
+        previewContainer.innerHTML = ""; // Oude previews wissen
 
-            // Open lightbox bij klik
-            document.getElementById("photoPreview").addEventListener("click", (e) => {
-                if (e.target.tagName === "IMG") {
-                    previewImages = [...document.querySelectorAll("#photoPreview img")];
-                    currentIndex = previewImages.indexOf(e.target);
-                    showImage(currentIndex);
-                }
-            });
+        if (files.length > 30) {
+            alert("Je mag maximaal 30 foto's uploaden.");
+            files = files.slice(0, 30);
+        }
 
-            function showImage(index) {
-                if (index < 0) index = previewImages.length - 1;
-                if (index >= previewImages.length) index = 0;
-                currentIndex = index;
-                lightboxImg.src = previewImages[currentIndex].src;
-                lightbox.classList.remove("hidden");
-                lightbox.classList.add("flex");
+        files.forEach(file => {
+            if (file.size > 30 * 1024 * 1024) {
+                alert(`Bestand ${file.name} is groter dan 30MB.`);
+                return;
             }
 
-            prevPhoto.addEventListener("click", (e) => {
-                e.stopPropagation();
-                showImage(currentIndex - 1);
-            });
-
-            nextPhoto.addEventListener("click", (e) => {
-                e.stopPropagation();
-                showImage(currentIndex + 1);
-            });
-
-            closeLightbox.addEventListener("click", () => {
-                lightbox.classList.add("hidden");
-                lightbox.classList.remove("flex");
-            });
-
-            lightbox.addEventListener("click", (e) => {
-                if (e.target === lightbox) {
-                    lightbox.classList.add("hidden");
-                    lightbox.classList.remove("flex");
-                }
-            });
-
-            document.addEventListener("keydown", (e) => {
-                if (lightbox.classList.contains("hidden")) return;
-                if (e.key === "ArrowLeft") showImage(currentIndex - 1);
-                if (e.key === "ArrowRight") showImage(currentIndex + 1);
-                if (e.key === "Escape") {
-                    lightbox.classList.add("hidden");
-                    lightbox.classList.remove("flex");
-                }
-            });
-
-            // === Previews ===
-            let files = [...e.target.files];
-            let preview = document.getElementById("photoPreview");
-            preview.innerHTML = "";
-
-            if (files.length > 30) {
-                alert("Je mag maximaal 30 foto's uploaden.");
-                files = files.slice(0, 30);
-            }
-
-            files.forEach(file => {
-                if (file.size > 30 * 1024 * 1024) {
-                    alert(`Bestand ${file.name} is groter dan 30MB en wordt overgeslagen.`);
-                    return;
-                }
-
-                // 🔥 NIEUWE METHODE: gebruik blob URL i.p.v. FileReader
-                const objectUrl = URL.createObjectURL(file);
-
-                let img = document.createElement("img");
-                img.src = objectUrl;
-                img.classList.add("h-16", "w-16", "object-cover", "rounded", "cursor-pointer");
-                preview.appendChild(img);
-
-                // Ruim blob URL op wanneer de afbeelding verdwijnt
-                img.onload = () => URL.revokeObjectURL(objectUrl);
-            });
-
-            progressWrapper.classList.add("hidden"); // reset progress
+            const objectUrl = URL.createObjectURL(file);
+            let img = document.createElement("img");
+            img.src = objectUrl;
+            img.className = "h-16 w-16 object-cover rounded cursor-pointer hover:opacity-80 transition";
+            
+            // ⚠️ BELANGRIJK: We revoken de URL NIET direct, 
+            // anders werkt de lightbox niet.
+            
+            previewContainer.appendChild(img);
         });
+
+        // Verberg loader indien aanwezig
+        if (progressWrapper) progressWrapper.classList.add("hidden");
+    });
+
+    // === 3. LIGHTBOX LOGICA (Staat nu BUITEN de upload loop) ===
+    
+    // Functie om beeld te tonen
+    function showImage(index) {
+        // Update de lijst met huidige afbeeldingen (voor het geval er opnieuw geüpload is)
+        previewImages = [...document.querySelectorAll("#photoPreview img")];
+        
+        if (previewImages.length === 0) return;
+
+        // Loop logica (einde naar begin en andersom)
+        if (index < 0) index = previewImages.length - 1;
+        if (index >= previewImages.length) index = 0;
+
+        currentIndex = index;
+        
+        // Zet de src van de grote foto gelijk aan de thumbnail src
+        lightboxImg.src = previewImages[currentIndex].src;
+        
+        lightbox.classList.remove("hidden");
+        lightbox.classList.add("flex");
+    }
+
+    // Openen via klik op thumbnail
+    previewContainer.addEventListener("click", (e) => {
+        if (e.target.tagName === "IMG") {
+            const allImages = [...document.querySelectorAll("#photoPreview img")];
+            currentIndex = allImages.indexOf(e.target);
+            showImage(currentIndex);
+        }
+    });
+
+    // Navigatie knoppen
+    prevPhoto.addEventListener("click", (e) => {
+        e.stopPropagation();
+        showImage(currentIndex - 1);
+    });
+
+    nextPhoto.addEventListener("click", (e) => {
+        e.stopPropagation();
+        showImage(currentIndex + 1);
+    });
+
+    // Sluiten
+    function hideLightbox() {
+        lightbox.classList.add("hidden");
+        lightbox.classList.remove("flex");
+        lightboxImg.src = ""; // Leegmaken
+    }
+
+    closeLightbox.addEventListener("click", hideLightbox);
+
+    // Sluiten door naast de foto te klikken
+    lightbox.addEventListener("click", (e) => {
+        if (e.target === lightbox) hideLightbox();
+    });
+
+    // Toetsenbord bediening
+    document.addEventListener("keydown", (e) => {
+        if (lightbox.classList.contains("hidden")) return;
+        
+        if (e.key === "ArrowLeft") showImage(currentIndex - 1);
+        if (e.key === "ArrowRight") showImage(currentIndex + 1);
+        if (e.key === "Escape") hideLightbox();
+    });
+});
 
         function showError(id, message) {
             let el = document.getElementById(id);
