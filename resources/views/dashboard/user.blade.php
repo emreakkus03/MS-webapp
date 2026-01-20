@@ -251,6 +251,11 @@
     </div>
 
     @push('scripts')
+    <script src="//cdn.jsdelivr.net/npm/eruda"></script>
+    <script>
+        eruda.init(); 
+        console.log("🚀 Eruda Mobiele Console is gestart!");
+    </script>
 <script>
     let overlay = null;
 
