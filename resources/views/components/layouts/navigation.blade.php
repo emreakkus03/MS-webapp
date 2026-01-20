@@ -271,65 +271,75 @@
 
 </aside>
 <script src="//unpkg.com/alpinejs" defer></script>
-{{-- 1. IEDEREEN moet dit script laden, anders werkt Echo niet voor ploegen --}}
 @auth
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             if (window.Echo) {
-                console.log("Echo is ready...");
+                console.log("🔊 Echo is gestart...");
 
-                // -----------------------------------------------------------
-                // NIEUW: DIT VOEGEN WE TOE (Voor Shop & Magazijn meldingen)
-                // Dit luistert naar berichten specifiek voor DEZE ingelogde gebruiker
-                // -----------------------------------------------------------
                 const userId = "{{ auth()->id() }}";
+
+                // ===========================================================
+                // 1. IEDEREEN: Persoonlijk kanaal (bv. voor 'OrderReady')
+                // ===========================================================
+                // Dit luistert naar App.Models.User.{id}
                 window.Echo.private('App.Models.User.' + userId)
                     .notification((notification) => {
-                        console.log("Persoonlijke melding:", notification);
-                        updateNotifications(notification.message);
+                        console.log("🔔 Persoonlijke melding:", notification);
+                        updateNotifications(notification.message, notification.url);
                     });
 
+                // ===========================================================
+                // 2. MAGAZIJN & ADMIN: Bestellingen (voor 'NewOrderReceived')
+                // ===========================================================
+                @if (auth()->user()->role === 'admin' || auth()->user()->role === 'warehouseman')
+                    console.log("📦 Luisteren naar magazijn bestellingen...");
+                    
+                    window.Echo.private('warehouseman-orders')
+                        .notification((notification) => {
+                            console.log("📦 Nieuwe bestelling ontvangen:", notification);
+                            updateNotifications(notification.message, notification.url);
+                        });
+                @endif
 
-                // -----------------------------------------------------------
-                // JOUW BESTAANDE CODE (Nu veilig binnen de if admin check)
-                // Hierdoor krijgen teams deze meldingen NIET.
-                // -----------------------------------------------------------
+                // ===========================================================
+                // 3. ALLEEN ADMIN: Takenbeheer
+                // ===========================================================
                 @if (auth()->user()->role === 'admin')
-                    console.log("Subscribing to admin channels...");
+                    console.log("🔐 Admin kanalen activeren...");
 
-                    // 🔹 Notities bij taken
+                    // Admin taken (notities etc)
                     window.Echo.private('admin-tasks')
                         .notification((notification) => {
-                            console.log("Realtime admin-task binnen:", notification);
-                            updateNotifications(notification.message);
+                            updateNotifications(notification.message, "/tasks");
                         });
 
-                    // 🔹 Afgeronde taken
+                    // Voltooide taken
                     window.Echo.private('App.Models.Team.admins')
                         .notification((notification) => {
-                            console.log("Realtime taak voltooid:", notification);
-                            updateNotifications(notification.message);
+                            updateNotifications(notification.message, "/tasks");
                         });
                 @endif
                 
             } else {
-                console.error("Echo is niet beschikbaar!");
+                console.error("❌ Echo niet geladen. Check je Reverb/Pusher config.");
             }
 
-            // 👇 JOUW ORIGINELE FUNCTIE (ONAANGEPAST) 👇
-            function updateNotifications(message) {
+            // ===============================================================
+            // 🔹 UPDATE UI FUNCTIE (Met URL support)
+            // ===============================================================
+            function updateNotifications(message, url = null) {
                 const now = new Date();
                 const timestamp = now.toLocaleDateString('nl-BE') + " " + now.toLocaleTimeString('nl-BE', {
                     hour: '2-digit',
                     minute: '2-digit'
                 });
 
-                // Update badge
+                // 1. Update Rood Bolletje (Badge)
                 let badge = document.querySelector(".absolute.-top-1.-right-1");
                 if (!badge) {
                     badge = document.createElement("span");
-                    badge.className =
-                        "absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-1.5 py-0.5";
+                    badge.className = "absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-1.5 py-0.5";
                     badge.innerText = "1";
                     const btn = document.querySelector("button.relative");
                     if (btn) btn.appendChild(badge);
@@ -337,38 +347,49 @@
                     badge.innerText = parseInt(badge.innerText) + 1;
                 }
 
-                // Update lijst
+                // 2. Voeg toe aan dropdown lijst
                 const notifList = document.getElementById("notifications");
                 if (notifList) {
-                    if (notifList.children.length === 1 && notifList.children[0].classList.contains(
-                            "text-gray-400")) {
+                    // Haal "Geen meldingen" weg
+                    if (notifList.children.length === 1 && notifList.children[0].innerText.includes("Geen meldingen")) {
                         notifList.innerHTML = "";
                     }
+
                     const li = document.createElement("li");
-                    li.className = "p-3 text-sm font-bold text-gray-900 bg-gray-50";
-                    li.innerHTML = `<div>${message}</div><div class="text-xs text-gray-500">${timestamp}</div>`;
+                    li.className = "text-sm font-bold text-gray-900 bg-blue-50 border-b border-gray-100 hover:bg-gray-100 transition";
+                    
+                    let contentHtml = `
+                        <div class="p-3">
+                            <div>${message}</div>
+                            <div class="text-xs text-gray-500 mt-1">${timestamp}</div>
+                        </div>
+                    `;
+
+                    if (url) {
+                        li.innerHTML = `<a href="${url}" class="block w-full h-full">${contentHtml}</a>`;
+                    } else {
+                        li.innerHTML = contentHtml;
+                    }
+
                     notifList.prepend(li);
                 }
 
-                // ✅ Favicon rood maken
-                changeFavicon("/favicon-red.ico");
-
-                // ✅ Tabblad markeren
+                // 3. Browser Tabblad & Favicon
+                changeFavicon("{{ asset('favicon-red.ico') }}"); 
                 if (!document.title.startsWith("(1)")) {
                     document.title = "(1) " + document.title;
                 }
 
-                // ✅ Desktop notification
+                // 4. Desktop Notificatie
                 if (Notification.permission === "granted") {
-                    let notif = new Notification("MS Infra - Nieuwe melding", {
-                        body: `${message}\n(${timestamp})`,
-                        icon: "/favicon-red.ico"
+                    let notif = new Notification("MS Infra", {
+                        body: message,
+                        icon: "{{ asset('images/logo/msinfra_logo.png') }}"
                     });
 
-                    // Klik → open Takenbeheer
                     notif.onclick = function() {
                         window.focus();
-                        window.location.href = "/tasks";
+                        if (url) window.location.href = url;
                     };
                 }
             }
@@ -383,7 +404,6 @@
                 link.href = src;
             }
 
-            // Vraag toestemming voor desktop notificaties
             if (Notification.permission !== "granted" && Notification.permission !== "denied") {
                 Notification.requestPermission();
             }
