@@ -40,6 +40,11 @@
                 >
                     🛒 Winkelmand ({{ count(session('cart', [])) }})
                 </a>
+                @if(auth()->user()->role === 'admin')
+                    <a href="{{ route('shop.create') }}" class="flex-1 sm:flex-none bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-center">
+                        + Nieuw Materiaal
+                    </a>
+                @endif
             </div>
         </div>
 
@@ -62,23 +67,41 @@
                             <td class="px-6 py-4 text-slate-700">{{ $material->description }}</td>
                             <td class="px-6 py-4 text-slate-600">{{ $material->packaging }}</td>
                             <td class="px-6 py-4">
-                                <form action="{{ route('cart.add', $material->id) }}" method="POST" class="flex items-center gap-2">
-                                    @csrf
-                                    <input 
-                                        type="number" 
-                                        name="quantity" 
-                                        value="1" 
-                                        min="1"
-                                        class="w-16 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                                    >
-                                    <span class="text-slate-600 text-sm">{{ $material->unit }}</span>
-                                    <button 
-                                        type="submit"
-                                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 whitespace-nowrap"
-                                    >
-                                        Toevoegen
-                                    </button>
-                                </form>
+                                <div class="flex flex-col gap-2">
+                                    <form action="{{ route('cart.add', $material->id) }}" method="POST" class="flex items-center gap-2">
+                                        @csrf
+                                        <input 
+                                            type="number" 
+                                            name="quantity" 
+                                            value="1" 
+                                            min="1"
+                                            class="w-16 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                                        >
+                                        <span class="text-slate-600 text-sm w-12">{{ $material->unit }}</span>
+                                        <button 
+                                            type="submit"
+                                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 whitespace-nowrap text-sm"
+                                        >
+                                            Toevoegen
+                                        </button>
+                                    </form>
+
+                                    @if(auth()->user()->role === 'admin')
+                                    <div class="flex items-center gap-2 pt-2 border-t border-gray-100">
+                                        <a href="{{ route('shop.edit', $material->id) }}" class="text-xs font-bold text-blue-600 hover:text-blue-800">
+                                            ✏️ Bewerken
+                                        </a>
+                                        <span class="text-gray-300">|</span>
+                                        <form action="{{ route('shop.destroy', $material->id) }}" method="POST" class="inline" onsubmit="return confirm('Weet je zeker dat je {{ $material->description }} definitief wilt verwijderen?');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="text-xs font-bold text-red-600 hover:text-red-800">
+                                                🗑️ Verwijderen
+                                            </button>
+                                        </form>
+                                    </div>
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                         @empty

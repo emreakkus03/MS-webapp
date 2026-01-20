@@ -173,4 +173,92 @@ public function history()
     return view('shop.history', compact('orders'));
 }
 
+public function create()
+    {
+        // BEVEILIGING: Alleen admins mogen hierin
+        if (Auth::user()->role !== 'admin') {
+            abort(403, 'Alleen beheerders mogen materialen toevoegen.');
+        }
+
+        return view('shop.create');
+    }
+
+    // 2. Sla het nieuwe materiaal op in de database (POST)
+    public function store(Request $request)
+    {
+        if (Auth::user()->role !== 'admin') {
+            abort(403);
+        }
+
+        // Validatie: zorg dat alles is ingevuld en het SAP nummer uniek is
+        $request->validate([
+            'description' => 'required|string|max:255',
+            'sap_number'  => 'required|string|unique:materials,sap_number',
+            'unit'        => 'required|string|max:10', // bijv. stuks, kg, doos
+            'packaging'   => 'nullable|string|max:50', // bijv. per 10 verpakt
+            'image'       => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Optioneel: foto upload
+        ]);
+
+        // Opslaan
+        Material::create([
+            'description' => $request->description,
+            'sap_number'  => $request->sap_number,
+            'unit'        => $request->unit,
+            'packaging'   => $request->packaging,
+            // Als je images hebt, zou je hier de path opslaan, anders null
+        ]);
+
+        return redirect()->route('shop.index')->with('success', 'Nieuw materiaal succesvol toegevoegd!');
+    }
+
+    // 3. Toon het formulier om te wijzigen
+    public function edit($id)
+    {
+        if (Auth::user()->role !== 'admin') {
+            abort(403);
+        }
+
+        $material = Material::findOrFail($id);
+        return view('shop.edit', compact('material'));
+    }
+
+    // 4. Update de wijzigingen in de database (PUT/PATCH)
+    public function update(Request $request, $id)
+    {
+        if (Auth::user()->role !== 'admin') {
+            abort(403);
+        }
+
+        $material = Material::findOrFail($id);
+
+        $request->validate([
+            'description' => 'required|string|max:255',
+            // Bij update: check uniek SAP nummer, maar negeer het huidige ID van dit materiaal
+            'sap_number'  => 'required|string|unique:materials,sap_number,' . $material->id,
+            'unit'        => 'required|string',
+            'packaging'   => 'nullable|string',
+        ]);
+
+        $material->update([
+            'description' => $request->description,
+            'sap_number'  => $request->sap_number,
+            'unit'        => $request->unit,
+            'packaging'   => $request->packaging,
+        ]);
+
+        return redirect()->route('shop.index')->with('success', 'Materiaal is bijgewerkt.');
+    }
+
+    // 5. Verwijder materiaal uit de database (DELETE)
+    public function destroy($id)
+    {
+        if (Auth::user()->role !== 'admin') {
+            abort(403);
+        }
+
+        $material = Material::findOrFail($id);
+        $material->delete();
+
+        return redirect()->route('shop.index')->with('success', 'Materiaal is verwijderd.');
+    }
 }

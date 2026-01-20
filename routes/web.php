@@ -321,6 +321,13 @@ Route::middleware(['auth'])->group(function () {
     // De Shop Pagina (Lijst met materialen)
     Route::get('/shop', [ShopController::class, 'index'])->name('shop.index');
     Route::get('/shop/order-received/{order}', [ShopController::class, 'orderSuccess'])->name('shop.success');
+    Route::get('/shop/create', [ShopController::class, 'create'])->name('shop.create');
+    Route::post('/shop', [ShopController::class, 'store'])->name('shop.store');
+    
+    Route::get('/shop/{id}/edit', [ShopController::class, 'edit'])->name('shop.edit');
+    Route::put('/shop/{id}', [ShopController::class, 'update'])->name('shop.update');
+    
+    Route::delete('/shop/{id}', [ShopController::class, 'destroy'])->name('shop.destroy');
     
     // Acties voor winkelmandje
     Route::post('/cart/add/{id}', [ShopController::class, 'addToCart'])->name('cart.add');
