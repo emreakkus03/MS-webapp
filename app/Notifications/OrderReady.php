@@ -7,7 +7,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Broadcasting\PrivateChannel; // 👈 1. Importeer dit!
+use Illuminate\Broadcasting\PrivateChannel;
 
 class OrderReady extends Notification implements ShouldQueue
 {
@@ -22,16 +22,12 @@ class OrderReady extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        // 👈 2. Zet 'broadcast' erbij!
-        return ['database', 'broadcast']; 
+        return ['database', 'broadcast'];
     }
 
-    // 👈 3. DIT IS NIEUW: HET UNIEKE KANAAL
     public function broadcastOn(): array
     {
-        // We sturen dit naar het unieke kanaal van de gebruiker (team).
-        // Standaard Laravel conventie: App.Models.User.{id}
-        // Omdat in jouw app team_id = user_id:
+        // 👇 HIER ZIT DE FIX: We gebruiken 'App.Models.Team'
         return [new PrivateChannel('App.Models.Team.' . $this->order->team_id)];
     }
 
@@ -46,7 +42,7 @@ class OrderReady extends Notification implements ShouldQueue
         ];
     }
     
-   public function toBroadcast(object $notifiable): BroadcastMessage
+    public function toBroadcast(object $notifiable): BroadcastMessage
     {
         return new BroadcastMessage([
             'message' => "Je bestelling #{$this->order->id} staat klaar om afgehaald te worden!",
