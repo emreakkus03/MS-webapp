@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 use App\Notifications\NewOrderReceived;
+use App\Notifications\OrderReady;
 use Illuminate\Support\Facades\Notification;
 use App\Models\User;
 
@@ -261,4 +262,26 @@ public function create()
 
         return redirect()->route('shop.index')->with('success', 'Materiaal is verwijderd.');
     }
+
+public function markAsReady(Request $request, $id)
+{
+    
+    $order = Order::findOrFail($id);
+
+    
+    $order->update([
+        'status' => 'ready' 
+    ]);
+
+    
+    $team = Team::find($order->team_id);
+
+    
+    if ($team) {
+        
+        $team->notify(new OrderReady($order));
+    }
+
+    return redirect()->back()->with('success', 'Bestelling gemeld als klaar!');
+}
 }
