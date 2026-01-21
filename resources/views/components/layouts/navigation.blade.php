@@ -277,7 +277,17 @@
         document.addEventListener("DOMContentLoaded", () => {
             if (window.Echo) {
                 console.log("Echo is ready...");
+const userId = "{{ auth()->id() }}";
 
+                // ===========================================================
+                // ✅ NIEUW: IEDEREEN LUISTERT NAAR ZIJN EIGEN TEAM KANAAL
+                // ===========================================================
+                // Hier komt de OrderReady notificatie binnen!
+                window.Echo.private('App.Models.Team.' + userId)
+                    .notification((notification) => {
+                        console.log("🔔 Persoonlijke melding (OrderReady):", notification);
+                        updateNotifications(notification.message, notification.url);
+                    });
                 
 
                 @if (auth()->user()->role === 'warehouseman')
