@@ -283,11 +283,11 @@
                 // ===========================================================
                 // 1. IEDEREEN: Persoonlijk kanaal (bv. voor 'OrderReady')
                 // ===========================================================
-                window.Echo.private('teams-order-ready.' + userId)
-                    .notification((notification) => {
-                        console.log("🔔 Persoonlijke melding:", notification);
-                        updateNotifications(notification.message, notification.url);
-                    });
+                window.Echo.private('App.Models.Team.' + userId)
+    .notification((notification) => {
+        console.log("🔔 Persoonlijke melding:", notification);
+        updateNotifications(notification.message, notification.url);
+    });
 
                 @if (auth()->user()->role === 'warehouseman')
                     console.log("📦 Luisteren naar magazijn bestellingen...");
