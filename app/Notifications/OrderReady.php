@@ -27,8 +27,7 @@ class OrderReady extends Notification implements ShouldQueue
 
     public function broadcastOn(): array
     {
-        // 👇 HIER ZIT DE FIX: We gebruiken 'App.Models.Team'
-        return [new PrivateChannel('App.Models.Team.' . $this->order->team_id)];
+        return [new PrivateChannel('teams-order-ready.' . $this->order->team_id)];
     }
 
     public function toDatabase(object $notifiable): array

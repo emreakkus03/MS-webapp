@@ -16,6 +16,10 @@ Broadcast::channel('warehouseman-orders', function ($user) {
     return $user->role === 'warehouseman';
 });
 
+Broadcast::channel('teams-order-ready.{id}', function ($user, $id) {
+    return (int) $user->id === (int) $id;
+});
+
 // 🔐 Persoonlijk kanaal per team/user
 Broadcast::channel('App.Models.Team.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;

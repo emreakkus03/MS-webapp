@@ -217,7 +217,7 @@
                                 Bestellen
                             </a>
                         </li>
-                        
+
 
                         @if (Auth::user()->role === 'warehouseman' || Auth::user()->role === 'admin')
                             <li>
@@ -283,7 +283,7 @@
                 // ===========================================================
                 // 1. IEDEREEN: Persoonlijk kanaal (bv. voor 'OrderReady')
                 // ===========================================================
-                window.Echo.private('App.Models.Team.' + userId)
+                window.Echo.private('teams-order-ready.' + userId)
                     .notification((notification) => {
                         console.log("🔔 Persoonlijke melding:", notification);
                         updateNotifications(notification.message, notification.url);
@@ -291,7 +291,7 @@
 
                 @if (auth()->user()->role === 'warehouseman')
                     console.log("📦 Luisteren naar magazijn bestellingen...");
-                    
+
                     window.Echo.private('warehouseman-orders')
                         .notification((notification) => {
                             console.log("📦 Nieuwe bestelling binnen:", notification);
@@ -320,7 +320,7 @@
                             updateNotifications(notification.message);
                         });
                 @endif
-                
+
             } else {
                 console.error("Echo is niet beschikbaar!");
             }
