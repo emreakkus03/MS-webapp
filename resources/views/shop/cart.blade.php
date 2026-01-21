@@ -55,45 +55,65 @@
         <h3 class="text-2xl font-semibold mb-4">Gegevens voor afhaling</h3>
         
       <form id="checkout-form" action="{{ route('shop.checkout') }}" method="POST" class="space-y-4">
-            @csrf
+    @csrf
+    
+   @php
+        $user = auth()->user();
+        
+        // 🕒 FIX: Tijdzone forceren naar Brussel
+        $nowInBelgium = now()->timezone('Europe/Brussels');
+        
+        // Check of de gebruiker de regels mag omzeilen
+        $canBypassTimeRule = in_array($user->role, ['admin', 'warehouseman']);
+
+        if ($canBypassTimeRule) {
+            // Admin & Magazijnier mogen ALTIJD vandaag kiezen
+            $minDate = $nowInBelgium->format('Y-m-d');
+        } else {
             
-            @php
-                // Check de huidige tijd (server tijd)
-                // Als het uur >= 13 is, dan is de minDate 'morgen', anders 'vandaag'
-                $minDate = now()->hour >= 13 ? now()->addDay()->format('Y-m-d') : now()->format('Y-m-d');
-            @endphp
+            $minDate = $nowInBelgium->hour >= 13 ? $nowInBelgium->addDay()->format('Y-m-d') : $nowInBelgium->format('Y-m-d');
+        }
+    @endphp
 
-            <div>
-                <label class="block font-medium mb-2">Gewenste afhaaldatum:</label>
-                
-                <input type="date" 
-                       name="pickup_date" 
-                       required 
-                       min="{{ $minDate }}" 
-                       class="w-full px-3 py-2 border border-gray-300 rounded">
-                
-                @if(now()->hour >= 13)
-                    <p class="text-xs text-orange-600 mt-1">
-                        ⚠️ Omdat het na 13:00u is, is afhalen vandaag niet meer mogelijk.
-                    </p>
-                @endif
-            </div>
+    <div>
+        <label class="block font-medium mb-2">Gewenste afhaaldatum:</label>
+        
+        <input type="date" 
+               name="pickup_date" 
+               required 
+               min="{{ $minDate }}" 
+               class="w-full px-3 py-2 border border-gray-300 rounded">
+        
+       
+        @if(now()->hour >= 13 && !$canBypassTimeRule)
+            <p class="text-xs text-orange-600 mt-1">
+                ⚠️ Omdat het na 13:00u is, is afhalen vandaag niet meer mogelijk.
+            </p>
+        @endif
 
-            <div>
-                <label class="block font-medium mb-2" for="license_plate">Nummerplaat Voertuig:</label>
-                <input type="text" 
-                       name="license_plate" 
-                       id="license_plate"
-                       placeholder="Bv. 1-ABC-123" 
-                       required
-                       class="w-full px-3 py-2 border border-gray-300 rounded"
-                       oninput="this.value = this.value.toUpperCase()" 
-                       onblur="formatBelgianPlate(this)"
-                >
-            </div>
+        {{-- INFO VOOR ADMINS (Optioneel, handig voor duidelijkheid) --}}
+        @if(now()->hour >= 13 && $canBypassTimeRule)
+            <p class="text-xs text-blue-600 mt-1">
+                ℹ️ <strong>Admin/Magazijnier:</strong> Je kunt ondanks het tijdstip toch voor vandaag bestellen.
+            </p>
+        @endif
+    </div>
 
-            <button type="submit" class="px-5 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">✅ Bestelling Plaatsen</button>
-        </form>
+    <div>
+        <label class="block font-medium mb-2" for="license_plate">Nummerplaat Voertuig:</label>
+        <input type="text" 
+               name="license_plate" 
+               id="license_plate"
+               placeholder="Bv. 1-ABC-123" 
+               required
+               class="w-full px-3 py-2 border border-gray-300 rounded"
+               oninput="this.value = this.value.toUpperCase()" 
+               onblur="formatBelgianPlate(this)"
+        >
+    </div>
+
+    <button type="submit" class="px-5 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">✅ Bestelling Plaatsen</button>
+</form>
 
     @else
         <p class="text-gray-600">Je winkelmandje is nog leeg.</p>

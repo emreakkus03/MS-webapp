@@ -24,7 +24,7 @@ class ShopController extends Controller
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where('description', 'like', "%$search%")
-                  ->orWhere('sap_number', 'like', "%$search%");
+                ->orWhere('sap_number', 'like', "%$search%");
         }
 
         // We pagineren per 20 items, anders wordt de pagina te traag
@@ -40,7 +40,7 @@ class ShopController extends Controller
         $cart = session()->get('cart', []);
 
         // Als product al in mandje zit, tel aantal op. Anders nieuw toevoegen.
-        if(isset($cart[$id])) {
+        if (isset($cart[$id])) {
             $cart[$id]['quantity'] += $request->quantity;
         } else {
             $cart[$id] = [
@@ -62,12 +62,12 @@ class ShopController extends Controller
         $cart = session()->get('cart', []);
         return view('shop.cart', compact('cart'));
     }
-    
+
     // 4. Verwijder item uit mandje
     public function removeFromCart($id)
     {
         $cart = session()->get('cart');
-        if(isset($cart[$id])) {
+        if (isset($cart[$id])) {
             unset($cart[$id]);
             session()->put('cart', $cart);
         }
@@ -75,106 +75,115 @@ class ShopController extends Controller
     }
 
     public function checkout(Request $request)
-{
-    $dateRule = now()->hour >= 13 ? 'tomorrow' : 'today';
-    // 1. Validatie uitgebreid met 'quantities'
-    $request->validate([
-        'pickup_date'   => 'required|date|after_or_equal:' . $dateRule,
-        'license_plate' => 'required|string',
-        'quantities'    => 'required|array', // We verwachten een lijst met aantallen
-        'quantities.*'  => 'required|integer|min:1', // Elk aantal moet min. 1 zijn
-    ]);
+    {
+        $user = Auth::user();
+        // 🕒 FIX: Haal de tijd expliciet op in Brussel tijdzone
+    $nowInBelgium = now()->timezone('Europe/Brussels');
 
-    $cart = session()->get('cart');
-    
-    if(!$cart) {
-        return redirect()->back()->with('error', 'Je winkelmand is leeg!');
+    if (in_array($user->role, ['admin', 'warehouseman'])) {
+        $dateRule = 'today';
+    } else {
+        // Gebruik de Belgische tijd om het uur te checken
+        $dateRule = $nowInBelgium->hour >= 13 ? 'tomorrow' : 'today';
     }
-
-    // 2. UPDATE LOGICA: Werk de sessie bij met de nieuwe aantallen uit het formulier
-    foreach ($request->quantities as $id => $quantity) {
-        if (isset($cart[$id])) {
-            $cart[$id]['quantity'] = $quantity;
-        }
-    }
-    session()->put('cart', $cart); // Sla de nieuwe aantallen op
-
-    $user = Auth::user();
-    $teamId = $user->id; 
-
-    $order = DB::transaction(function () use ($request, $cart, $teamId) {
-        
-        // A. Maak de Order aan
-        $order = Order::create([
-            'team_id'       => $teamId,
-            'pickup_date'   => $request->pickup_date,
-            'license_plate' => $request->license_plate,
-            'status'        => 'pending'
+        // 1. Validatie uitgebreid met 'quantities'
+        $request->validate([
+            'pickup_date'   => 'required|date|after_or_equal:' . $dateRule,
+            'license_plate' => 'required|string',
+            'quantities'    => 'required|array', // We verwachten een lijst met aantallen
+            'quantities.*'  => 'required|integer|min:1', // Elk aantal moet min. 1 zijn
         ]);
 
-        // B. Koppel de materialen (Nu met de geüpdatete aantallen uit $cart)
-        foreach($cart as $id => $details) {
-            $order->materials()->attach($id, [
-                'quantity' => $details['quantity'],
-                'ready' => false 
-            ]);
+        $cart = session()->get('cart');
+
+        if (!$cart) {
+            return redirect()->back()->with('error', 'Je winkelmand is leeg!');
         }
 
-        return $order;
-    });
+        // 2. UPDATE LOGICA: Werk de sessie bij met de nieuwe aantallen uit het formulier
+        foreach ($request->quantities as $id => $quantity) {
+            if (isset($cart[$id])) {
+                $cart[$id]['quantity'] = $quantity;
+            }
+        }
+        session()->put('cart', $cart); // Sla de nieuwe aantallen op
 
-    $warehouseUsers = Team::whereIn('role', ['warehouseman', 'admin'])->get();
 
-    // 2. Stuur de notificatie
-    if ($warehouseUsers->count() > 0) {
-        // We sturen de $order mee die net is aangemaakt
-        Notification::send($warehouseUsers, new NewOrderReceived($order));
+        $teamId = $user->id;
+
+        $order = DB::transaction(function () use ($request, $cart, $teamId) {
+
+            // A. Maak de Order aan
+            $order = Order::create([
+                'team_id'       => $teamId,
+                'pickup_date'   => $request->pickup_date,
+                'license_plate' => $request->license_plate,
+                'status'        => 'pending'
+            ]);
+
+            // B. Koppel de materialen (Nu met de geüpdatete aantallen uit $cart)
+            foreach ($cart as $id => $details) {
+                $order->materials()->attach($id, [
+                    'quantity' => $details['quantity'],
+                    'ready' => false
+                ]);
+            }
+
+            return $order;
+        });
+
+        $warehouseUsers = Team::whereIn('role', ['warehouseman', 'admin'])->get();
+
+        // 2. Stuur de notificatie
+        if ($warehouseUsers->count() > 0) {
+            // We sturen de $order mee die net is aangemaakt
+            Notification::send($warehouseUsers, new NewOrderReceived($order));
+        }
+
+        session()->forget('cart');
+
+        return redirect()->route('shop.success', $order->id);
     }
+    public function orderSuccess(Order $order)
+    {
+        // Check voor de zekerheid of de order wel van dit team is (veiligheid)
+        if (Auth::user()->id !== $order->team_id && Auth::user()->role !== 'admin') {
+            abort(403);
+        }
 
-    session()->forget('cart');
-
-    return redirect()->route('shop.success', $order->id);
-}
-public function orderSuccess(Order $order)
-{
-    // Check voor de zekerheid of de order wel van dit team is (veiligheid)
-    if (Auth::user()->id !== $order->team_id && Auth::user()->role !== 'admin') {
-        abort(403);
+        return view('shop.success', compact('order'));
     }
-
-    return view('shop.success', compact('order'));
-}
     // Voeg deze functie toe in je ShopController class
-public function updateCart(Request $request, $id)
-{
-    $cart = session()->get('cart');
+    public function updateCart(Request $request, $id)
+    {
+        $cart = session()->get('cart');
 
-    if(isset($cart[$id])) {
-        // Update het aantal met de nieuwe waarde uit de input
-        $cart[$id]['quantity'] = $request->quantity;
-        
-        session()->put('cart', $cart);
-        return redirect()->back()->with('success', 'Aantal bijgewerkt!');
+        if (isset($cart[$id])) {
+            // Update het aantal met de nieuwe waarde uit de input
+            $cart[$id]['quantity'] = $request->quantity;
+
+            session()->put('cart', $cart);
+            return redirect()->back()->with('success', 'Aantal bijgewerkt!');
+        }
+
+        return redirect()->back()->with('error', 'Product niet gevonden in mandje.');
     }
 
-    return redirect()->back()->with('error', 'Product niet gevonden in mandje.');
-}
+    public function history()
+    {
+        $user = Auth::user();
 
-public function history()
-{
-    $user = Auth::user();
+        // Haal orders op waar team_id gelijk is aan de user id
+        // We laden meteen de 'materials' mee om N+1 problemen te voorkomen (sneller)
+        $orders = Order::where('team_id', $user->id)
+            ->with('materials')
+            ->orderBy('created_at', 'desc') // Nieuwste bovenaan
+            ->get();
 
-    // Haal orders op waar team_id gelijk is aan de user id
-    // We laden meteen de 'materials' mee om N+1 problemen te voorkomen (sneller)
-    $orders = Order::where('team_id', $user->id)
-                   ->with('materials')
-                   ->orderBy('created_at', 'desc') // Nieuwste bovenaan
-                   ->get();
+        return view('shop.history', compact('orders'));
+    }
 
-    return view('shop.history', compact('orders'));
-}
-
-public function create()
+    public function create()
     {
         // BEVEILIGING: Alleen admins mogen hierin
         if (Auth::user()->role !== 'admin') {
