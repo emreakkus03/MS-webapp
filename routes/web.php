@@ -351,6 +351,6 @@ Route::prefix('warehouse')->middleware(['auth'])->group(function () {
     Route::get('/orders/{order}/print', [WarehouseController::class, 'printOrder'])->name('warehouse.print');
 
     // Actie 2: Klaar melden (Zet status op 'ready')
-    Route::post('/orders/{order}/complete', [WarehouseController::class, 'markAsReady'])->name('warehouse.complete');
-    Route::post('/orders/{id}/ready', [ShopController::class, 'markAsReady'])->name('orders.ready');
+    Route::post('/orders/{id}/complete', [WarehouseController::class, 'markAsReady'])->name('warehouse.complete');
+   
 });

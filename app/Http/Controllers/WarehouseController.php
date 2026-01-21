@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Notifications\OrderReady;
 use App\Models\User;
+use App\Models\Team;
 
 class WarehouseController extends Controller
 {
@@ -64,17 +65,20 @@ class WarehouseController extends Controller
         return view('warehouse.print', compact('order'));
     }
 
-    public function markAsReady(Order $order)
-    {
-        $this->checkAdminAndWarehousemanAccess();
-        $order->update(['status' => 'ready']);
-        // Omdat team_id in orders eigenlijk de user_id is:
-    $teamUser = User::find($order->team_id);
+    public function markAsReady(Request $request, $id)
+{
+    $this->checkAdminAndWarehousemanAccess();
+    $order = Order::findOrFail($id);
+    $order->update(['status' => 'ready']);
 
-    // 2. Stuur notificatie als de user bestaat
-    if ($teamUser) {
-        $teamUser->notify(new OrderReady($order));
+    // 👇 Haal het Team op
+    $team = Team::find($order->team_id);
+
+    // 👇 Stuur de notificatie naar het TEAM
+    if ($team) {
+        $team->notify(new OrderReady($order));
     }
-        return redirect()->back()->with('success', 'Order #' . $order->id . ' is klaar gemeld! ✅');
-    }
+
+    return back()->with('success', 'Klaar gemeld!');
+}
 }
