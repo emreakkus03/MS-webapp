@@ -25,7 +25,7 @@ class NewLeaveRequestMail extends Mailable
     {
         return new Envelope(
             // Onderwerp: Nieuwe verlofaanvraag - [Naam]
-            from: new Address('no-reply@msinfra.be', 'MS Infra Verlof'),
+            from: new Address(env('MAIL_FROM_ADDRESS'), 'MS Infra Verlof'),
             subject: '📅 Nieuwe verlofaanvraag: ' . $this->leaveRequest->member_name,
         );
     }

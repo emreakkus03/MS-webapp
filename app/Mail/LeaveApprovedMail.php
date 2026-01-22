@@ -24,7 +24,7 @@ class LeaveApprovedMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            from: new Address('no-reply@msinfra.be', 'MS Infra Verlof'),
+            from: new Address(env('MAIL_FROM_ADDRESS'), 'MS Infra Verlof'),
             subject: '✅ Verlof goedgekeurd: ' . $this->leaveRequest->member_name,
         );
     }
