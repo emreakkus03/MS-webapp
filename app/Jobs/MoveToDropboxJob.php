@@ -18,19 +18,21 @@ class MoveToDropboxJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $tries = 3;
-    public $timeout = 300; // iets langer, veilig bij grote batches
+    public $timeout = 600; // Ruime tijd voor grote batches
 
     protected array $photos;
     protected string $adresPath;
     protected string $namespaceId;
     protected ?int $taskId;
+    protected string $rootPath; // 👈 Nieuw: De basismap
 
-    public function __construct(array $photos, string $adresPath, string $namespaceId, ?int $taskId = null)
+    public function __construct(array $photos, string $adresPath, string $namespaceId, ?int $taskId = null, string $rootPath = "/Webapp uploads")
     {
         $this->photos = $photos;
         $this->adresPath = $adresPath;
         $this->namespaceId = $namespaceId;
         $this->taskId = $taskId;
+        $this->rootPath = $rootPath; // Standaard P1, maar wordt overschreven door controller
     }
 
     public function handle(): void
@@ -44,39 +46,44 @@ class MoveToDropboxJob implements ShouldQueue
             return;
         }
 
-        $isPerceel1 = $this->namespaceId !== $fluviusNamespaceId;
-        $usedNamespace = $isPerceel1
-            ? $this->namespaceId
-            : $fluviusNamespaceId;
+        // 1. Bepaal de juiste Namespace & Pad
+        // Als de rootPath begint met /Webapp uploads -> Perceel 1 (Namespace modus)
+        // Anders (bijv /Fluvius/Perceel 2...) -> Perceel 2 (Folder modus, default NS)
+        
+        $isPerceel1 = str_starts_with($this->rootPath, '/Webapp uploads');
+        
+        // Als het Perceel 1 is, gebruiken we de meegeleverde namespace.
+        // Als het Perceel 2 is, forceren we de Fluvius namespace (want P2 is een gewone map daarin).
+        $targetNamespace = $isPerceel1 ? $this->namespaceId : $fluviusNamespaceId;
 
-        Log::info('🧭 Namespace gebruikt voor upload', [
-            'frontend_namespace' => $this->namespaceId,
-            'used_namespace'     => $usedNamespace,
-            'fluvius_namespace'  => $fluviusNamespaceId,
-            'is_perceel1'        => $isPerceel1,
+        // Bouw het volledige pad: Root + Submap (Straatnaam)
+        // rtrim/ltrim zorgt dat we geen dubbele slashes // krijgen
+        $finalUploadPath = rtrim($this->rootPath, '/') . '/' . ltrim($this->adresPath, '/');
+
+        Log::info('🚀 Start Dropbox Job', [
+            'task_id' => $this->taskId,
+            'target_namespace' => $targetNamespace,
+            'upload_path' => $finalUploadPath,
+            'is_perceel1' => $isPerceel1
         ]);
 
-        $adresPath = $this->normalizeAdresPath($this->adresPath, $isPerceel1);
-        Log::info('📂 Normalized adresPath', [
-            'raw'        => $this->adresPath,
-            'normalized' => $adresPath
-        ]);
-
-        // 🔹 Verwerk in batches van max. 10 bestanden tegelijk
-        $chunks = array_chunk($this->photos, 10);
+        // 2. Upload in batches
+        $chunks = array_chunk($this->photos, 5); // Kleinere batches voor stabiliteit
+        
         foreach ($chunks as $batchIndex => $batchPhotos) {
-            Log::info("🚀 Start batch " . ($batchIndex + 1) . "/" . count($chunks));
-
             foreach ($batchPhotos as $photo) {
                 try {
-                    $r2Stream = Storage::disk('r2')->readStream($photo);
-                    if (!$r2Stream) {
-                        Log::warning("⚠️ Kan R2-bestand niet lezen: {$photo}");
+                    // Check of file bestaat op R2
+                    if (!Storage::disk('r2')->exists($photo)) {
+                        Log::warning("⚠️ Bestand weg op R2: {$photo}");
                         continue;
                     }
 
+                    $r2Stream = Storage::disk('r2')->readStream($photo);
                     $filename = basename($photo);
-                    $uploadPath = "{$adresPath}/{$filename}";
+                    
+                    // Volledige pad voor dit bestand
+                    $fileDestPath = "{$finalUploadPath}/{$filename}";
 
                     $client = new HttpClient();
                     $accessToken = $dropbox->getAccessToken();
@@ -86,107 +93,60 @@ class MoveToDropboxJob implements ShouldQueue
                             'Authorization' => "Bearer {$accessToken}",
                             'Content-Type' => 'application/octet-stream',
                             'Dropbox-API-Arg' => json_encode([
-                                'path' => $uploadPath,
+                                'path' => $fileDestPath,
                                 'mode' => 'add',
                                 'autorename' => true,
                                 'mute' => false,
                             ]),
                             'Dropbox-API-Path-Root' => json_encode([
                                 '.tag' => 'namespace_id',
-                                'namespace_id' => $usedNamespace,
+                                'namespace_id' => $targetNamespace,
                             ]),
-                            'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
+                            // User Select header alleen als je een Team Member ID hebt
+                            'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'), 
                         ],
                         'body' => $r2Stream,
-                        'timeout' => 90,
+                        'timeout' => 120,
                     ]);
 
-                    if (is_resource($r2Stream)) {
-                        fclose($r2Stream);
-                    }
+                    if (is_resource($r2Stream)) fclose($r2Stream);
 
                     if ($response->getStatusCode() === 200) {
-                        Log::info("✅ Bestand geüpload naar Dropbox", [
-                            'path' => $uploadPath,
-                            'namespace' => $usedNamespace,
-                        ]);
+                        Log::info("✅ Upload OK: {$filename}");
+                        
+                        // Opruimen R2
                         Storage::disk('r2')->delete($photo);
-                         \App\Models\R2PendingUpload::where('r2_path', $photo)->delete();
+                        \App\Models\R2PendingUpload::where('r2_path', $photo)->delete();
 
-                        // 📋 DB-pad aanpassen
-                        $dbPath = preg_replace('#^/MS INFRA/Fluvius Aansluitingen#i', '', $uploadPath);
-                        if ($isPerceel1 && !preg_match('#^/PERCEEL\s*1/#i', $dbPath)) {
-                            $dbPath = '/PERCEEL 1' . (str_starts_with($dbPath, '/') ? '' : '/') . $dbPath;
-                        }
+                        // Opslaan in database (pad updaten)
+                        $this->updateTaskPhoto($task, $fileDestPath);
 
-                        $existing = $task->photo ? explode(',', $task->photo) : [];
-                        $existing[] = $dbPath;
-                        $task->photo = implode(',', $existing);
-                        $task->save();
-
-                        Log::info("💾 Task {$task->id} bijgewerkt met DB-pad: {$dbPath}");
                     } else {
-                        Log::error("⚠️ Dropbox upload mislukt: status {$response->getStatusCode()} voor {$uploadPath}");
+                        Log::error("⚠️ Upload mislukt: {$response->getStatusCode()}");
                     }
 
-                    // 🕐 Kleine pauze (0.4s) om Dropbox te ontlasten
-                    usleep(400000);
+                    // Korte pauze voor API rate limits
+                    usleep(500000); 
 
                 } catch (\Throwable $e) {
-                    Log::error("❌ Fout bij verplaatsen naar Dropbox: {$photo} → " . $e->getMessage());
-                     // 🔴 Mislukt: zet status failed
-    \App\Models\R2PendingUpload::where('r2_path', $photo)
-        ->update(['status' => 'failed']);
+                    Log::error("❌ Fout bij {$photo}: " . $e->getMessage());
+                    \App\Models\R2PendingUpload::where('r2_path', $photo)->update(['status' => 'failed']);
                 }
             }
-
-            // ⏸️ 2s rust na elke batch
-            sleep(2);
-            Log::info("✅ Batch " . ($batchIndex + 1) . " afgerond, kleine pauze voor stabiliteit");
-        }
-
-        Log::info("🎉 Alle batches succesvol geüpload voor task {$this->taskId}");
-    }
-
-    private function normalizeAdresPath(string $path, bool $isPerceel1): string
-    {
-        $path = trim($path, '/');
-        $path = preg_replace('#^(MS INFRA/Fluvius Aansluitingen/)+#i', '', $path);
-
-        if (preg_match('#^PERCEEL\s*[12]/#i', $path)) {
-            if ($isPerceel1) {
-                $path = preg_replace('#^PERCEEL\s*1/#i', '', $path);
-            }
-            return '/' . ltrim($path, '/');
-        }
-
-        if (preg_match('#^Webapp uploads#i', $path)) {
-            if ($isPerceel1) {
-                return '/' . $path;
-            } else {
-                return "/PERCEEL 2/{$path}";
-            }
-        }
-
-        if ($isPerceel1) {
-            return "/Webapp uploads/{$path}";
-        } else {
-            return "/PERCEEL 2/Webapp uploads/{$path}";
+            sleep(1); // Rust tussen batches
         }
     }
 
-    private function getPerceel1Namespace(DropboxService $dropbox): ?string
+    private function updateTaskPhoto(Task $task, string $newPath)
     {
-        try {
-            $namespaces = $dropbox->listNamespaces();
-            $match = collect($namespaces)->first(fn($ns) =>
-                stripos($ns['name'], 'perceel 1') !== false ||
-                stripos($ns['name'], 'aansluitingen') !== false
-            );
-            return $match['namespace_id'] ?? null;
-        } catch (\Throwable $e) {
-            Log::error("⚠️ Kon Perceel 1 namespace niet ophalen: " . $e->getMessage());
-            return null;
-        }
+        // Haal bestaande foto's op
+        $existing = $task->photo ? explode(',', $task->photo) : [];
+        
+        // Voeg nieuwe toe
+        $existing[] = $newPath;
+        
+        // Opslaan (unieke waarden)
+        $task->photo = implode(',', array_unique($existing));
+        $task->save();
     }
 }

@@ -13,6 +13,9 @@ class Task extends Model
     use HasFactory, LogsActivity;
 
     protected $fillable = ['team_id', 'address_id', 'time', 'status', 'note', 'photo'];
+    protected $casts = [
+    'time' => 'datetime',
+    ];
 
     public function getActivitylogOptions(): LogOptions
     {

@@ -341,7 +341,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/my-orders', [ShopController::class, 'history'])->name('shop.history');
 });
 
-// Je kunt hier later 'middleware' => ['auth', 'role:magazijnier'] aan toevoegen
+// Je kunt hier later 'mid/tasksdleware' => ['auth', 'role:magazijnier'] aan toevoegen
 Route::prefix('warehouse')->middleware(['auth'])->group(function () {
     
     // Dashboard: Overzicht van alle bestellingen

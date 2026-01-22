@@ -1,19 +1,13 @@
-const SW_VERSION = 'v6-bypass-fix'; // 👈 Aangepast: Versie omhoog voor force update
+const SW_VERSION = 'v8-lock-fix'; // 👈 Versie omhoog
 const API = self.location.origin;
-
-// ==============================================
-// 📌 SERVICE WORKER v6 – Deduplication & URL Bypass
-// ==============================================
 
 const DB_NAME = "R2UploadDB";
 const STORE = "pending";
 
-// 🛑 GLOBAL LOCK
-let isProcessingQueue = false; 
+// 🛑 LOCKING MECHANISME (Tegen dubbele uploads)
+let queueRunningPromise = null;
 
-// --------------------------
-// IndexedDB Helpers
-// --------------------------
+// --- IndexedDB Helpers ---
 function openDB() {
     return new Promise((resolve) => {
         const req = indexedDB.open(DB_NAME, 1);
@@ -40,30 +34,20 @@ async function deleteItem(id) {
     db.transaction(STORE, "readwrite").objectStore(STORE).delete(id);
 }
 
-// 👇 DE GROTE FIX: DEDUPLICATIE
 async function addItem(data) {
     const currentItems = await getAll();
     const exists = currentItems.find(item => item.name === data.name);
-
-    if (exists) {
-        console.log(`⚠️ SW: Bestand '${data.name}' staat al in de wachtrij. Dubbele toevoeging genegeerd.`);
-        return; 
-    }
+    if (exists) return; // Deduplicatie bij toevoegen
 
     const db = await openDB();
-    let blobData;
-    if (data.blob instanceof Blob) {
-        blobData = await data.blob.arrayBuffer();
-    } else {
-        blobData = data.blob;
-    }
+    let blobData = (data.blob instanceof Blob) ? await data.blob.arrayBuffer() : data.blob;
 
     const clean = {
         name: data.name,
         fileType: data.fileType,
         task_id: data.task_id,
-        namespace_id: data.namespace_id,
-        adres_path: data.adres_path,
+        namespace_id: data.namespace_id || "",
+        root_path: data.root_path || "", 
         csrf: data.csrf,
         blob: blobData
     };
@@ -77,38 +61,29 @@ async function addItem(data) {
     });
 }
 
-// --------------------------
-// Install / Activate
-// --------------------------
+// --- Lifecycle ---
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 
-// --------------------------
-// FRONTEND → SW
-// --------------------------
+// --- Message Handler ---
 self.addEventListener("message", async (event) => {
-    if (event.origin !== self.location.origin) {
-        return; 
-    }
-    // 👇 VOEG DIT BLOKJE TOE
+    if (event.origin !== self.location.origin) return;
+    
+    // Bij 'FORCE_PROCESS' (zodra internet terug is), gebruiken we nu de veilige functie
     if (event.data?.type === "FORCE_PROCESS") {
-        console.log("⚡ Force Process commando ontvangen. Queue starten...");
+        console.log("⚡ Force Process: Queue starten...");
         await processQueue();
     }
     
     if (event.data?.type === "ADD_UPLOAD") {
         await addItem(event.data);
         if ("sync" in self.registration) {
-            try {
-                await self.registration.sync.register("sync-r2-uploads");
-            } catch (e) {
-                console.warn("Background Sync fout", e);
-            }
+            try { await self.registration.sync.register("sync-r2-uploads"); } 
+            catch (e) { console.warn("Sync error", e); }
+        } else {
+            processQueue(); // Fallback
         }
         sendToClients({ type: "QUEUED", file: event.data.name });
-    }
-    if (event.data?.type === "SKIP_WAITING") {
-        self.skipWaiting();
     }
 });
 
@@ -117,140 +92,113 @@ async function sendToClients(msg) {
     for (const client of allClients) client.postMessage(msg);
 }
 
-// --------------------------
-// BACKGROUND SYNC
-// --------------------------
 self.addEventListener("sync", async (event) => {
-    if (event.tag !== "sync-r2-uploads") return;
-    await processQueue();
+    if (event.tag === "sync-r2-uploads") await processQueue();
 });
 
-// --------------------------
-// QUEUE PROCESSOR
-// --------------------------
+// --- SAFE QUEUE PROCESSOR (Met Progress Fix) ---
 async function processQueue() {
-    if (isProcessingQueue) {
-        console.log("SW: Queue draait al, skip.");
-        return;
+    if (queueRunningPromise) {
+        console.log("SW: 🔒 Queue draait al. Verzoek genegeerd.");
+        return queueRunningPromise;
     }
 
-    const items = await getAll();
-    if (items.length === 0) return;
+    queueRunningPromise = (async () => {
+        console.log("SW: 🚀 Start verwerking...");
+        let done = 0; // Lokale teller voor deze sessie
+        
+        while (true) {
+            const items = await getAll();
+            if (items.length === 0) break; 
 
-    isProcessingQueue = true;
-    let done = 0;
-
-    console.log(`SW: Start verwerking van ${items.length} unieke items...`);
-
-    for (const item of items) {
-        try {
             if (!self.navigator.onLine) {
-                console.log("SW: Offline, pauze.");
+                console.log("SW: 📵 Offline. Pauze.");
                 break; 
             }
 
-            sendToClients({
-                type: "PROGRESS",
-                current: done + 1,
-                total: items.length,
-                name: item.name,
-            });
+            const item = items[0]; 
+            
+            // 👇 FIX: Bereken totaal dynamisch (wat we al deden + wat er nog ligt)
+            // Zo blijft de teller kloppen: 1/6, 2/6, etc.
+            const totalInQueue = items.length;
+            const realTotal = done + totalInQueue;
+            const currentNum = done + 1;
 
-            const form = new FormData();
-            form.append("file", new Blob([item.blob], { type: item.fileType }), item.name);
-            form.append("task_id", item.task_id);
-            form.append("namespace_id", item.namespace_id);
-            form.append("adres_path", item.adres_path);
-            form.append("_token", item.csrf);
-            form.append("unique_id", item.id); 
-
-            let res;
             try {
-                // 👇 AANPASSING: Gebruik URL parameter i.p.v. Header
-                const uploadUrl = new URL(`${API}/r2/upload`);
-                uploadUrl.searchParams.append("sw_bypass", "true"); 
+                // Stuur progressie naar frontend
+                sendToClients({ 
+                    type: "PROGRESS", 
+                    current: currentNum, 
+                    total: realTotal, 
+                    name: item.name 
+                });
 
-                res = await fetch(uploadUrl.toString(), {
+                const form = new FormData();
+                form.append("photos[]", new Blob([item.blob], { type: item.fileType }), item.name);
+                form.append("namespace_id", item.namespace_id || ""); 
+                form.append("root_path", item.root_path || ""); 
+                form.append("_token", item.csrf);
+
+                const uploadUrl = new URL(`${API}/tasks/${item.task_id}/upload-temp`);
+                uploadUrl.searchParams.append("sw_bypass", "true");
+
+                const res = await fetch(uploadUrl.toString(), {
                     method: "POST",
                     headers: { 
-                        "X-CSRF-TOKEN": item.csrf
-                        // Geen custom bypass header meer nodig
+                        "X-CSRF-TOKEN": item.csrf,
+                        "X-Requested-With": "XMLHttpRequest",
+                        "Accept": "application/json"
                     },
                     credentials: 'include',
                     body: form
                 });
+
+                if (res.status === 429) throw new Error("RATE_LIMIT");
+
+                const textData = await res.text();
+                let json;
+                try { json = JSON.parse(textData); } 
+                catch (e) { throw new Error(`Server Error (Geen JSON): ${res.status}`); }
+
+                if (!res.ok) throw new Error(json.message || `Server fout: ${res.status}`);
+
+                console.log(`SW: ✅ Upload OK: ${item.name}`);
+                await deleteItem(item.id);
+                
+                done++; // Teller omhoog
+                
+                // Stuur bevestiging van deze specifieke file
+                sendToClients({ type: "UPLOADED", name: item.name });
+                
+                await new Promise(r => setTimeout(r, 500)); 
+
             } catch (err) {
-                throw new Error("NETWORK_FAIL");
-            }
-
-            if (res.status === 429) {
-                console.warn("SW: 429 Rate Limit. Wacht 5s...");
-                await new Promise(r => setTimeout(r, 5000)); 
-                throw new Error("RATE_LIMIT");
-            }
-
-            if (!res.ok) throw new Error(`Server error: ${res.status}`);
-
-            const json = await res.json();
-
-            // 👇 CRUCIALE VEILIGHEIDSCHECK
-            if (!json.path) {
-                throw new Error("Server response mist file path - Mogelijke SW Loop");
-            }
-
-            console.log("SW: Upload OK:", json.path);
-
-            const reg = await fetch(`${API}/r2/register-upload`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": item.csrf },
-                credentials: 'include',
-                body: JSON.stringify({
-                    task_id: item.task_id,
-                    r2_path: json.path,
-                    namespace_id: item.namespace_id,
-                    adres_path: item.adres_path
-                })
-            });
-
-            if (!reg.ok) throw new Error("Register fail");
-
-            await deleteItem(item.id);
-            done++;
-
-            sendToClients({ type: "UPLOADED", name: item.name, done, total: items.length });
-
-            // Rusttijd
-            await new Promise(r => setTimeout(r, 500));
-
-        } catch (err) {
-            console.warn(`SW: Fout bij '${item.name}':`, err.message);
-            // Bij server error (500) of netwerkfout stoppen we direct
-            if (["OFFLINE", "NETWORK_FAIL", "RATE_LIMIT"].includes(err.message) || err.message.includes("Server error")) {
-                sendToClients({ type: "UPLOAD_FAILED", name: item.name, reason: "pauze" });
-                break;
+                console.warn(`SW: ❌ Fout bij '${item.name}':`, err.message);
+                if (["RATE_LIMIT", "Failed to fetch", "NetworkError"].some(s => err.message.includes(s)) || !self.navigator.onLine) {
+                    console.log("SW: 🛑 Pauze door netwerkfout.");
+                    break;
+                }
+                await new Promise(r => setTimeout(r, 2000));
             }
         }
-    }
+        
+        console.log("SW: 🏁 Queue klaar.");
+        
+        // 👇 FIX: Stuur het COMPLETE bericht direct hier, zodat het zeker aankomt
+        sendToClients({ type: "COMPLETE" });
+        
+    })();
 
-    isProcessingQueue = false;
-    sendToClients({ type: "COMPLETE" });
+    await queueRunningPromise;
+    queueRunningPromise = null;
 }
 
-// --------------------------
-// FETCH HANDLER (Dwing ALLES via de Queue)
-// --------------------------
+// --- Fetch Interceptor ---
 self.addEventListener("fetch", (event) => {
     const url = new URL(event.request.url);
+    if (url.searchParams.get("sw_bypass") === "true") return;
 
-    // 👇 AANPASSING: Check nu op de URL parameter
-    // Als sw_bypass=true in de URL staat, mag hij DIRECT naar het internet.
-    if (url.searchParams.get("sw_bypass") === "true") {
-        return; // Verlaat de SW, ga naar netwerk (of faal als offline)
-    }
-
-    // Als de frontend probeert te uploaden...
-    // We gebruiken pathname zodat query params de match niet verpesten
-    if (url.pathname === '/r2/upload' && event.request.method === "POST") {
+    if (url.pathname.includes('/upload-temp') && event.request.method === "POST") {
         event.respondWith(saveToQueueAndRespond(event.request));
     }
 });
@@ -258,17 +206,17 @@ self.addEventListener("fetch", (event) => {
 async function saveToQueueAndRespond(request) {
     try {
         const formData = await request.clone().formData();
-        const file = formData.get("file");
+        // Frontend stuurt 'photos[]', dus dat moeten we ophalen
+        const file = formData.get("photos[]") || formData.get("file"); 
 
         await addItem({
             name: file.name,
             fileType: file.type,
             blob: file, 
-            task_id: formData.get("task_id"),
+            task_id: request.url.split('/tasks/')[1].split('/')[0],
             namespace_id: formData.get("namespace_id"),
-            adres_path: formData.get("adres_path"),
-            csrf: formData.get("_token"),
-            unique_id: formData.get("unique_id") || Date.now().toString()
+            root_path: formData.get("root_path"),
+            csrf: formData.get("_token")
         });
 
         if ("sync" in self.registration) {
@@ -277,19 +225,10 @@ async function saveToQueueAndRespond(request) {
             processQueue();
         }
 
-        sendToClients({ type: "QUEUED", file: file.name });
-
-        return new Response(
-            JSON.stringify({ 
-                success: true, 
-                queued: true, 
-                message: "In wachtrij geplaatst" 
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-
+        return new Response(JSON.stringify({ success: true, queued: true }), { 
+            status: 200, headers: { "Content-Type": "application/json" } 
+        });
     } catch (e) {
-        console.error("SW: Fout bij opslaan in queue", e);
         return new Response(JSON.stringify({ error: "Storage failed" }), { status: 500 });
     }
 }
