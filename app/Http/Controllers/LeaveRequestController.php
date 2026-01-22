@@ -11,6 +11,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 use App\Notifications\LeaveRequestStatusUpdatedNotification;
+use Illuminate\Support\Facades\Mail; // 👈 Belangrijk
+use App\Mail\NewLeaveRequestMail;    // 👈 De mail uit stap 3
+use App\Mail\LeaveApprovedMail;  
+use Illuminate\Support\Facades\Log;    // 👈 De mail uit stap 3
 
 class LeaveRequestController extends Controller
 {
@@ -105,7 +109,24 @@ class LeaveRequestController extends Controller
             'start_date' => $validated['start_date'],
             'end_date' => $validated['end_date'],
             'note' => $validated['note'] ?? null,
+            'status' => 'pending'
         ]);
+
+        // ---------------------------------------------------------
+        // 📧 NIEUW: MAIL VERSTUREN NAAR ADMINS
+        // ---------------------------------------------------------
+        $adminEmails = [
+            'emreakkus003@gmail.com',
+        ];
+
+        try {
+            // We sturen de mail direct
+            Mail::to($adminEmails)->send(new NewLeaveRequestMail($leave));
+        } catch (\Exception $e) {
+            // Log fout als mail niet werkt, zodat app niet crasht
+            Log::error('Mail kon niet verzonden worden: ' . $e->getMessage());
+        }
+        // ---------------------------------------------------------
 
         // ✅ Stuur notificatie naar alle admins
         $admins = Team::where('role', 'admin')->get();
@@ -139,6 +160,21 @@ class LeaveRequestController extends Controller
         $leave = LeaveRequest::findOrFail($id);
         $leave->update(['status' => $validated['status']]);
 
+        // ---------------------------------------------------------
+        // 📧 NIEUW: MAIL NAAR HR BIJ GOEDKEURING
+        // ---------------------------------------------------------
+        if ($validated['status'] === 'approved') {
+            $hrEmail = 'emreakkus003@gmail.com'; // 👈 Pas dit aan naar het echte HR adres!
+            
+            try {
+                Mail::to($hrEmail)
+                    
+                    ->send(new LeaveApprovedMail($leave));
+            } catch (\Exception $e) {
+                Log::error('HR Mail kon niet verzonden worden: ' . $e->getMessage());
+            }
+        }
+
         // ✅ Stuur notificatie naar het team/lid dat deze aanvraag deed
         $team = Team::find($leave->team_id);
         $leaveType = $leave->leaveType->name ?? 'verlof';
@@ -152,8 +188,11 @@ class LeaveRequestController extends Controller
                 $team->id // ✅ meegeven aan de notification
             ));
         }
+        $msg = $validated['status'] === 'approved' 
+            ? 'Verlof goedgekeurd en mail verstuurd naar HR.' 
+            : 'Verlofaanvraag afgewezen.';
 
-        return back()->with('success', 'Verlofaanvraag status geupdate ');
+        return back()->with('success', 'Verlofaanvraag status geupdate ', $msg);
     }
 
     public function update(Request $request, $id)

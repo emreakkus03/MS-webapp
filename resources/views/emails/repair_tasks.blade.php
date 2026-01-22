@@ -34,7 +34,7 @@
     <div style="margin-top: 25px;">
         <p style="margin: 0 0 10px 0;">
             <strong>Met vriendelijke groet,<br>
-            IT Support Team (Emre)</strong>
+            IT Support Team (Emre Akkus)</strong>
         </p>
 
         <table role="presentation" style="border-collapse: collapse; border: none; margin-top: 8px;">
