@@ -7,6 +7,7 @@ use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Mail\Mailables\Address;
 use App\Models\LeaveRequest;
 
 class NewLeaveRequestMail extends Mailable
@@ -24,6 +25,7 @@ class NewLeaveRequestMail extends Mailable
     {
         return new Envelope(
             // Onderwerp: Nieuwe verlofaanvraag - [Naam]
+            from: new Address('no-reply@msinfra.be', 'MS Infra Verlof'),
             subject: '📅 Nieuwe verlofaanvraag: ' . $this->leaveRequest->member_name,
         );
     }

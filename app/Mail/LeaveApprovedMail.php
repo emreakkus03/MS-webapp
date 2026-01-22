@@ -7,6 +7,7 @@ use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Mail\Mailables\Address;
 use App\Models\LeaveRequest;
 
 class LeaveApprovedMail extends Mailable
@@ -23,6 +24,7 @@ class LeaveApprovedMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
+            from: new Address('no-reply@msinfra.be', 'MS Infra Verlof'),
             subject: '✅ Verlof goedgekeurd: ' . $this->leaveRequest->member_name,
         );
     }
