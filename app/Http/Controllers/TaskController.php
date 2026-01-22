@@ -515,7 +515,7 @@ public function uploadTemp(Request $request, $taskId, DropboxService $dropbox)
             } catch (\Throwable $e) {
                 // Als we hier zijn, is er én geen .env én geen internet.
                 // We zetten een placeholder zodat R2 upload TOCH doorgaat. De Job fixt het later wel.
-                \Log::error("Namespace ID onbekend tijdens upload: " . $e->getMessage());
+                Log::error("Namespace ID onbekend tijdens upload: " . $e->getMessage());
                 $namespaceId = "OFFLINE_PENDING";
             }
         }
