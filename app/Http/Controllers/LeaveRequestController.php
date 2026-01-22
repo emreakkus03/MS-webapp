@@ -116,7 +116,9 @@ class LeaveRequestController extends Controller
         // 📧 NIEUW: MAIL VERSTUREN NAAR ADMINS
         // ---------------------------------------------------------
         $adminEmails = [
-            'emreakkus003@gmail.com',
+            'can.coskun@msinfra.be',
+            'Marco.pieters@msinfra.be',
+            'selcuk.yilmaz@msinfra.be'
         ];
 
         try {
