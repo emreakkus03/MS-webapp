@@ -63,7 +63,7 @@
 
         <!-- Subcontractor -->
         <div>
-            <label class="block text-sm font-medium">Subcontractor</label>
+            <label class="block text-sm font-medium">Onderaannemer</label>
             <input 
                 type="text" 
                 name="subcontractor" 
