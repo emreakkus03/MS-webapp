@@ -4,20 +4,16 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\R2PendingUpload;
-use Illuminate\Support\Facades\Artisan;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
-
+use App\Jobs\MoveToDropboxJob; // 👈 Vergeet deze import niet!
 
 class R2ManagementController extends Controller
 {
-
     private function checkAdminAccess()
     {
         $user = Auth::user();
-
-        // Als er geen user is OF de rol is geen admin -> STOP.
         if (!$user || $user->role !== 'admin') {
             abort(403, 'Geen toegang. Alleen voor beheerders.');
         }
@@ -26,17 +22,13 @@ class R2ManagementController extends Controller
     public function index()
     {
         $this->checkAdminAccess();
-        $uploads = R2PendingUpload::whereIn('status', ['pending', 'failed'])->orderBy('created_at', 'desc')->get();
-
-        // 2. 👇 DIT IS HET STUK DAT JE MISTE (De Previews genereren)
-        // In je foreach loop:
+        $uploads = R2PendingUpload::whereIn('status', ['pending', 'failed'])
+                    ->orderBy('created_at', 'desc')
+                    ->get();
 
         foreach ($uploads as $upload) {
             try {
-                /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
-                $disk = Storage::disk('r2'); // 👈 We vertellen VS Code: "Dit is een Adapter"
-
-                // Link is 10 minuten geldig
+                $disk = Storage::disk('r2');
                 $upload->preview_url = $disk->temporaryUrl(
                     $upload->r2_path,
                     now()->addMinutes(10)
@@ -52,11 +44,42 @@ class R2ManagementController extends Controller
     public function retryAll()
     {
         $this->checkAdminAccess();
+        
         try {
-            Artisan::call('r2:retry-all');
-            return redirect()->back()->with('success', 'Herstart van alle vastgelopen uploads is gestart.');
+            // 1. Haal alle items op die vastzitten
+            $uploads = R2PendingUpload::whereIn('status', ['pending', 'failed'])->get();
+
+            if ($uploads->isEmpty()) {
+                return redirect()->back()->with('warning', 'Geen uploads gevonden om te herstarten.');
+            }
+
+            $count = 0;
+
+            foreach ($uploads as $upload) {
+                // 2. Check of bestand bestaat (extra veiligheid)
+                if (!Storage::disk('r2')->exists($upload->r2_path)) {
+                    continue; 
+                }
+
+                // 3. Reset status
+                $upload->update(['status' => 'pending']);
+
+                // 4. Dispatch DIRECT met de 5 parameters
+                dispatch(new MoveToDropboxJob(
+                    [$upload->r2_path],
+                    $upload->adres_path,
+                    $upload->namespace_id,
+                    $upload->task_id,
+                    $upload->root_path // 👈 DE FIX: Hier sturen we de juiste mapinfo mee
+                ))->onQueue('uploads');
+
+                $count++;
+            }
+
+            return redirect()->back()->with('success', "🚀 {$count} uploads zijn opnieuw in de wachtrij geplaatst.");
+
         } catch (Exception $e) {
-            return redirect()->back()->with('error', 'Fout bij het herstarten van uploads: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Fout bij herstarten: ' . $e->getMessage());
         }
     }
 
@@ -64,8 +87,9 @@ class R2ManagementController extends Controller
     {
         $this->checkAdminAccess();
         try {
-            Artisan::call('r2:clear', ['--force' => true]);
-            return redirect()->back()->with('Waarschuwing', 'Bucket en database zijn leeggemaakt.');
+            // Roep de artisan command aan met --force
+            \Illuminate\Support\Facades\Artisan::call('r2:clear', ['--force' => true]);
+            return redirect()->back()->with('warning', 'Bucket en database zijn leeggemaakt.');
         } catch (Exception $e) {
             return redirect()->back()->with('error', 'Kon niet legen: ' . $e->getMessage());
         }

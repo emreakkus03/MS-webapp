@@ -160,14 +160,14 @@
 
                     <!-- Cascade dropdowns -->
                     <div>
-    <label class="block text-sm font-medium">Type werk</label>
-    <select id="perceelSelect" class="w-full border px-3 py-2 rounded mt-1 text-sm md:text-base">
-        <option value="">-- Laden... --</option>
-    </select>
-    <p id="errorPerceel" class="text-red-500 text-xs md:text-sm mt-1 hidden"></p>
-</div>
+                        <label class="block text-sm font-medium">Type werk</label>
+                        <select id="perceelSelect" class="w-full border px-3 py-2 rounded mt-1 text-sm md:text-base">
+                            <option value="">-- Laden... --</option>
+                        </select>
+                        <p id="errorPerceel" class="text-red-500 text-xs md:text-sm mt-1 hidden"></p>
+                    </div>
 
-                    
+
 
 
                     <!-- Foto upload -->
@@ -193,8 +193,7 @@
 
 
     <!-- 🔹 Algemene Upload Progress Popup -->
-    <div id="uploadProgressPopup"
-        class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div id="uploadProgressPopup" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
         <div class="bg-white rounded-lg p-6 shadow-xl w-80 text-center">
             <h2 class="text-lg font-semibold mb-4">Bezig met uploaden...</h2>
             <div class="w-full bg-gray-200 rounded-full h-3 mb-3">
@@ -257,49 +256,49 @@
                 }
             }
 
-           let safetyTimer = null; // Timer om loader automatisch te sluiten bij vastloper
+            let safetyTimer = null; // Timer om loader automatisch te sluiten bij vastloper
 
-        if (navigator.serviceWorker) {
-            navigator.serviceWorker.addEventListener("message", (event) => {
-                const msg = event.data;
-                if (!msg) return;
+            if (navigator.serviceWorker) {
+                navigator.serviceWorker.addEventListener("message", (event) => {
+                    const msg = event.data;
+                    if (!msg) return;
 
-                // Reset de veiligheidstimer bij elk teken van leven
-                if (overlay) {
-                    clearTimeout(safetyTimer);
-                    // Als we 10 seconden niks horen, sluit de loader automatisch
-                    safetyTimer = setTimeout(() => {
-                        console.warn("⚠️ Geen activiteit meer van SW, loader sluiten...");
+                    // Reset de veiligheidstimer bij elk teken van leven
+                    if (overlay) {
+                        clearTimeout(safetyTimer);
+                        // Als we 10 seconden niks horen, sluit de loader automatisch
+                        safetyTimer = setTimeout(() => {
+                            console.warn("⚠️ Geen activiteit meer van SW, loader sluiten...");
+                            hideGlobalUploadProgress();
+                            isSaving = false; // Slot vrijgeven
+                        }, 30000);
+                    }
+
+                    if (msg.type === "QUEUED") {
+                        console.log(`📥 In wachtrij: ${msg.file}`);
+                    }
+
+                    if (msg.type === "PROGRESS") {
+                        // Update de loader met de nieuwe, correcte totalen (bijv 3/6)
+                        showGlobalUploadProgress(msg.current, msg.total, msg.name);
+                    }
+
+                    if (msg.type === "UPLOADED") {
+                        console.log(`☁️ R2 Upload OK: ${msg.name}`);
+                    }
+
+                    if (msg.type === "COMPLETE") {
+                        // Alles klaar! Timer stoppen en sluiten.
+                        clearTimeout(safetyTimer);
                         hideGlobalUploadProgress();
-                        isSaving = false; // Slot vrijgeven
-                    }, 30000);
-                }
 
-                if (msg.type === "QUEUED") {
-                    console.log(`📥 In wachtrij: ${msg.file}`);
-                }
+                        // Slot vrijgeven (belangrijk!)
+                        isSaving = false;
 
-                if (msg.type === "PROGRESS") {
-                    // Update de loader met de nieuwe, correcte totalen (bijv 3/6)
-                    showGlobalUploadProgress(msg.current, msg.total, msg.name);
-                }
-
-                if (msg.type === "UPLOADED") {
-                    console.log(`☁️ R2 Upload OK: ${msg.name}`);
-                }
-                
-                if (msg.type === "COMPLETE") {
-                    // Alles klaar! Timer stoppen en sluiten.
-                    clearTimeout(safetyTimer);
-                    hideGlobalUploadProgress();
-                    
-                    // Slot vrijgeven (belangrijk!)
-                    isSaving = false;
-                    
-                    showToast("✨ Server update: Alle foto's zijn veilig aangekomen!", 5000);
-                }
-            });
-        }
+                        showToast("✨ Server update: Alle foto's zijn veilig aangekomen!", 5000);
+                    }
+                });
+            }
 
 
 
@@ -344,550 +343,576 @@
 
             // In x-layouts.dashboard (of je blade file)
 
-window.addEventListener("online", () => {
-    console.log("📶 Verbinding hersteld! Directe sync forceren...");
+            window.addEventListener("online", () => {
+                console.log("📶 Verbinding hersteld! Directe sync forceren...");
 
-    // 1. Stuur een DIRECT commando naar de SW (Dit is de snelle fix)
-    sendToSW({ type: "FORCE_PROCESS" });
+                // 1. Stuur een DIRECT commando naar de SW (Dit is de snelle fix)
+                sendToSW({
+                    type: "FORCE_PROCESS"
+                });
 
-    // 2. Als backup: registreer ook de background sync (voor als je tabblad net sluit)
-    navigator.serviceWorker.ready.then(reg => {
-        if(reg.sync) {
-            reg.sync.register("sync-r2-uploads").catch(console.warn);
-        }
-    });
-});
+                // 2. Als backup: registreer ook de background sync (voor als je tabblad net sluit)
+                navigator.serviceWorker.ready.then(reg => {
+                    if (reg.sync) {
+                        reg.sync.register("sync-r2-uploads").catch(console.warn);
+                    }
+                });
+            });
 
-document.addEventListener("visibilitychange", async () => {
-        if (document.visibilityState === "visible") {
-            console.log("👀 App is weer zichtbaar! Checken op hangende uploads...");
-            
-            // Wacht heel even zodat de browser op adem kan komen
-            await new Promise(r => setTimeout(r, 500));
-            
-            // Schop de Service Worker wakker
-            if(window.sendToSW) {
-                window.sendToSW({ type: "FORCE_PROCESS" });
-            }
-            
-            // Herstel de progress bar als die weg was maar er nog taken zijn
-            // (Optioneel, maar handig voor UX)
-        }
-    });
+            document.addEventListener("visibilitychange", async () => {
+                if (document.visibilityState === "visible") {
+                    console.log("👀 App is weer zichtbaar! Checken op hangende uploads...");
+
+                    // Wacht heel even zodat de browser op adem kan komen
+                    await new Promise(r => setTimeout(r, 500));
+
+                    // Schop de Service Worker wakker
+                    if (window.sendToSW) {
+                        window.sendToSW({
+                            type: "FORCE_PROCESS"
+                        });
+                    }
+
+                    // Herstel de progress bar als die weg was maar er nog taken zijn
+                    // (Optioneel, maar handig voor UX)
+                }
+            });
         </script>
     @endpush
 
 
- <script type="module">
-    import imageCompression from "https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/+esm";
+    <script type="module">
+        import imageCompression from "https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/+esm";
 
-    let isSaving = false;
+        let isSaving = false;
 
-window.addEventListener("beforeunload", (e) => {
-    if (isSaving) {
-        e.preventDefault();
-        e.returnValue = "Er worden nog foto's verwerkt. Weet je zeker dat je wilt afsluiten?";
-    }
-});
-    // ============================================================
-    // 1. SERVICE WORKER & COMMUNICATIE
-    // ============================================================
-
-    window.sendToSW = async function(msg) {
-        if (!navigator.serviceWorker) {
-            console.error("❌ Service Workers niet ondersteund.");
-            return;
-        }
-        const reg = await navigator.serviceWorker.ready;
-        if (reg.active) {
-            reg.active.postMessage(msg);
-        } else if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage(msg);
-        } else {
-            window.location.reload();
-        }
-    }
-
-    if ("wakeLock" in navigator) {
-        let wakeLock = null;
-        async function requestWakeLock() {
-            try { wakeLock = await navigator.wakeLock.request("screen"); } 
-            catch (err) { console.warn("Wake Lock failed:", err); }
-        }
-        document.addEventListener("visibilitychange", () => {
-            if (document.visibilityState === "visible" && !wakeLock) requestWakeLock();
+        window.addEventListener("beforeunload", (e) => {
+            if (isSaving) {
+                e.preventDefault();
+                e.returnValue = "Er worden nog foto's verwerkt. Weet je zeker dat je wilt afsluiten?";
+            }
         });
-        requestWakeLock();
-    }
+        // ============================================================
+        // 1. SERVICE WORKER & COMMUNICATIE
+        // ============================================================
 
-    if (navigator.serviceWorker) {
-        navigator.serviceWorker.addEventListener("controllerchange", () => {
-            window.location.reload();
-        });
-    }
+        window.sendToSW = async function(msg) {
+            if (!navigator.serviceWorker) {
+                console.error("❌ Service Workers niet ondersteund.");
+                return;
+            }
+            const reg = await navigator.serviceWorker.ready;
+            if (reg.active) {
+                reg.active.postMessage(msg);
+            } else if (navigator.serviceWorker.controller) {
+                navigator.serviceWorker.controller.postMessage(msg);
+            } else {
+                window.location.reload();
+            }
+        }
 
-    // ============================================================
-    // 2. DATA LADEN (PERCELEN MET FIX VOOR TYPE)
-    // ============================================================
-
-    async function loadPercelen() {
-        try {
-            let res = await fetch("/dropbox/percelen");
-            let data = await res.json();
-            let perceelSelect = document.getElementById("perceelSelect");
-            
-            if(!perceelSelect) return;
-
-            perceelSelect.innerHTML = "<option value=''>-- Kies type werk --</option>";
-
-            data.forEach(p => {
-                let displayName = p.name;
-                
-                if (p.name.toLowerCase().includes("perceel 1")) {
-                    displayName = "Aansluitingen";
-                } else if (p.name.toLowerCase().includes("perceel 2")) {
-                    displayName = "Graafwerk";
+        if ("wakeLock" in navigator) {
+            let wakeLock = null;
+            async function requestWakeLock() {
+                try {
+                    wakeLock = await navigator.wakeLock.request("screen");
+                } catch (err) {
+                    console.warn("Wake Lock failed:", err);
                 }
+            }
+            document.addEventListener("visibilitychange", () => {
+                if (document.visibilityState === "visible" && !wakeLock) requestWakeLock();
+            });
+            requestWakeLock();
+        }
 
-                // ⚠️ FIX: We slaan het TYPE op in een data-attribuut
-                // p.id is bij namespace de ID, bij folder het pad.
-                perceelSelect.innerHTML += `
+        if (navigator.serviceWorker) {
+            navigator.serviceWorker.addEventListener("controllerchange", () => {
+                window.location.reload();
+            });
+        }
+
+        // ============================================================
+        // 2. DATA LADEN (PERCELEN MET FIX VOOR TYPE)
+        // ============================================================
+
+        async function loadPercelen() {
+            try {
+                let res = await fetch("/dropbox/percelen");
+                let data = await res.json();
+                let perceelSelect = document.getElementById("perceelSelect");
+
+                if (!perceelSelect) return;
+
+                perceelSelect.innerHTML = "<option value=''>-- Kies type werk --</option>";
+
+                data.forEach(p => {
+                    let displayName = p.name;
+
+                    if (p.name.toLowerCase().includes("perceel 1")) {
+                        displayName = "Aansluitingen";
+                    } else if (p.name.toLowerCase().includes("perceel 2")) {
+                        displayName = "Graafwerk";
+                    }
+
+                    // ⚠️ FIX: We slaan het TYPE op in een data-attribuut
+                    // p.id is bij namespace de ID, bij folder het pad.
+                    perceelSelect.innerHTML += `
                     <option value="${p.id}" data-type="${p.type}">
                         ${displayName}
                     </option>`;
-            });
-        } catch (error) {
-            console.error("Kon percelen niet laden:", error);
-        }
-    }
-
-    // ============================================================
-    // 3. GLOBALE HELPERS (Validatie & UI)
-    // ============================================================
-
-    function validateForm() {
-        clearErrors();
-
-        let perceelSelect = document.getElementById("perceelSelect");
-        let photoUpload = document.getElementById("photoUpload");
-        let damageNone = document.getElementById("damageNone");
-        let damageYes = document.getElementById("damageYes");
-        let noteField = document.querySelector('#finishForm textarea[name="note"]');
-        let isValid = true;
-
-        if (!perceelSelect.value) {
-            showError("errorPerceel", "Kies een type werk.");
-            isValid = false;
-        }
-        if (photoUpload.files.length === 0) {
-            showError("errorPhoto", "Upload minstens 1 foto.");
-            isValid = false;
-        }
-        if (!damageNone.checked && !damageYes.checked) {
-            showError("errorDamage", "Selecteer of er schade is of niet.");
-            isValid = false;
-        }
-        if (damageYes.checked && !noteField.value.trim()) {
-            showError("errorNote", "Notitie is verplicht bij schade.");
-            isValid = false;
+                });
+            } catch (error) {
+                console.error("Kon percelen niet laden:", error);
+            }
         }
 
-        return isValid;
-    }
+        // ============================================================
+        // 3. GLOBALE HELPERS (Validatie & UI)
+        // ============================================================
 
-    function showError(id, message) {
-        let el = document.getElementById(id);
-        if (el) {
-            el.textContent = message;
-            el.classList.remove("hidden");
+        function validateForm() {
+            clearErrors();
+
+            let perceelSelect = document.getElementById("perceelSelect");
+            let photoUpload = document.getElementById("photoUpload");
+            let damageNone = document.getElementById("damageNone");
+            let damageYes = document.getElementById("damageYes");
+            let noteField = document.querySelector('#finishForm textarea[name="note"]');
+            let isValid = true;
+
+            if (!perceelSelect.value) {
+                showError("errorPerceel", "Kies een type werk.");
+                isValid = false;
+            }
+            if (photoUpload.files.length === 0) {
+                showError("errorPhoto", "Upload minstens 1 foto.");
+                isValid = false;
+            }
+            if (!damageNone.checked && !damageYes.checked) {
+                showError("errorDamage", "Selecteer of er schade is of niet.");
+                isValid = false;
+            }
+            if (damageYes.checked && !noteField.value.trim()) {
+                showError("errorNote", "Notitie is verplicht bij schade.");
+                isValid = false;
+            }
+
+            return isValid;
         }
-    }
 
-    function clearErrors() {
-        ["errorPerceel", "errorPhoto", "errorDamage", "errorNote"].forEach(id => {
+        function showError(id, message) {
             let el = document.getElementById(id);
             if (el) {
-                el.textContent = "";
-                el.classList.add("hidden");
-            }
-        });
-    }
-
-    window.handleFrontendSuccess = function(taskId, form, loader, serverStatus = null) {
-        isSaving = false;
-        const currentStatus = document.querySelector(`tr[data-task-id="${taskId}"]`)?.dataset.status;
-        const damage = form.querySelector('input[name="damage"]:checked')?.value;
-        let newStatus = serverStatus || currentStatus;
-
-        if (!serverStatus) {
-            if (currentStatus === "open") newStatus = "in behandeling";
-            else if (["in behandeling", "reopened"].includes(currentStatus)) {
-                newStatus = (damage === "none") ? "finished" : "in behandeling";
+                el.textContent = message;
+                el.classList.remove("hidden");
             }
         }
-        updateTaskStatusRow(taskId, newStatus);
 
-        const loaderText = document.getElementById("loaderText");
-        if (loaderText) loaderText.textContent = "📦 Foto's in wachtrij geplaatst. Upload draait op achtergrond.";
-
-        window.showToast("📂 Wijzigingen opgeslagen & foto's in wachtrij!", 4000);
-
-        closeTaskForm();
-        setTimeout(() => { removeLoader(loader); }, 1500);
-    }
-
-    function removeLoader(loader) {
-        if (loader) {
-            loader.classList.add("opacity-0");
-            setTimeout(() => loader.remove(), 300);
-        }
-    }
-
-    window.showToast = function(message, duration = 4000) {
-        const toast = document.createElement("div");
-        toast.textContent = message;
-        toast.className = "fixed bottom-5 right-5 bg-gray-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm transition-opacity animate-fadeIn z-50";
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), duration);
-    }
-
-    function updateTaskStatusRow(taskId, newStatus) {
-        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
-        if (!row) return;
-        row.dataset.status = newStatus;
-        const span = row.querySelector("td:nth-child(3) span");
-        if (span) {
-            span.textContent = newStatus;
-            span.className = "px-2 py-1 rounded text-sm font-semibold " + 
-                (newStatus === "finished" ? "bg-green-200 text-green-800" :
-                 newStatus === "in behandeling" ? "bg-yellow-200 text-yellow-800" :
-                 "bg-gray-200 text-gray-800");
-        }
-    }
-
-    function clearPreviews() {
-        const container = document.getElementById("photoPreview");
-        if (!container) return;
-        const images = container.querySelectorAll("img");
-        images.forEach(img => {
-            if (img.src.startsWith("blob:")) URL.revokeObjectURL(img.src);
-        });
-        container.innerHTML = "";
-    }
-
-    // ============================================================
-    // 4. FORMULIER LOGICA
-    // ============================================================
-
-    window.openTaskForm = function(taskId, address, time, status, note) {
-        const panel = document.getElementById('taskFormPanel');
-        panel.classList.remove('hidden');
-
-        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
-        if (!row) return;
-
-        document.getElementById('taskAddressTitle').textContent = row.dataset.address;
-        document.getElementById('taskZipCity').textContent = row.dataset.zipcode + " " + row.dataset.city;
-        document.getElementById('taskTimeTitle').textContent = time;
-        document.getElementById('taskStatus').textContent = status;
-
-        let form = document.getElementById('finishForm');
-        let finishButton = document.getElementById('finishButton');
-        let noteWrapper = document.getElementById('noteWrapper');
-        let noteField = document.querySelector('#finishForm textarea[name="note"]');
-        let damageNone = document.getElementById('damageNone');
-        let damageYes = document.getElementById('damageYes');
-
-        form.reset();
-        document.getElementById("photoUpload").value = "";
-        clearPreviews();
-        noteWrapper.classList.add('hidden');
-        noteField.value = '';
-
-        if (status === 'finished') {
-            form.action = "";
-            finishButton.classList.add('hidden');
-            damageNone.disabled = true;
-            damageYes.disabled = true;
-            noteField.setAttribute('readonly', true);
-            
-            if (note) {
-                damageYes.checked = true;
-                noteWrapper.classList.remove('hidden');
-                noteField.value = note;
-            } else {
-                damageNone.checked = true;
-            }
-        } else {
-            form.action = `/tasks/${taskId}/finish`;
-            finishButton.classList.remove('hidden');
-            finishButton.disabled = false;
-            finishButton.textContent = "Voltooien";
-            damageNone.disabled = false;
-            damageYes.disabled = false;
-            noteField.removeAttribute('readonly');
-            
-            if (note) {
-                damageYes.checked = true;
-                noteWrapper.classList.remove('hidden');
-                noteField.value = note;
-            }
-        }
-    }
-
-    window.closeTaskForm = function() {
-        const panel = document.getElementById("taskFormPanel");
-        const form = document.getElementById("finishForm");
-        form.reset();
-        document.getElementById("photoUpload").value = "";
-        clearPreviews();
-        clearErrors();
-        panel.classList.add("hidden");
-    }
-
-    // ============================================================
-    // 5. COMPRESSIE
-    // ============================================================
-
-    async function compressInBatches(files, options, batchSize = 2) {
-        const compressed = [];
-        for (let i = 0; i < files.length; i += batchSize) {
-            const batch = files.slice(i, i + batchSize);
-            const results = await Promise.all(
-                batch.map(async (file) => {
-                    try {
-                        return await imageCompression(file, options);
-                    } catch {
-                        return file;
-                    }
-                })
-            );
-            compressed.push(...results);
-            await new Promise((r) => setTimeout(r, 25));
-        }
-        return compressed;
-    }
-
-    // ============================================================
-    // 6. DOM EVENTS (STARTPUNT)
-    // ============================================================
-
-    document.addEventListener("DOMContentLoaded", () => {
-        
-        loadPercelen();
-
-        document.querySelectorAll("tbody tr").forEach(row => {
-            row.addEventListener("click", function() {
-                openTaskForm(
-                    this.dataset.taskId,
-                    this.dataset.address,
-                    this.dataset.time,
-                    this.dataset.status,
-                    this.dataset.note
-                );
-            });
-        });
-
-        const damageNone = document.getElementById('damageNone');
-        const damageYes = document.getElementById('damageYes');
-        const noteWrapper = document.getElementById('noteWrapper');
-        const noteField = document.querySelector('#finishForm textarea[name="note"]');
-
-        if (damageNone && damageYes) {
-            damageNone.addEventListener('change', () => {
-                if (damageNone.checked) {
-                    noteWrapper.classList.add('hidden');
-                    noteField.value = '';
+        function clearErrors() {
+            ["errorPerceel", "errorPhoto", "errorDamage", "errorNote"].forEach(id => {
+                let el = document.getElementById(id);
+                if (el) {
+                    el.textContent = "";
+                    el.classList.add("hidden");
                 }
             });
-            damageYes.addEventListener('change', () => {
-                if (damageYes.checked) {
+        }
+
+        window.handleFrontendSuccess = function(taskId, form, loader, serverStatus = null) {
+            isSaving = false;
+            const currentStatus = document.querySelector(`tr[data-task-id="${taskId}"]`)?.dataset.status;
+            const damage = form.querySelector('input[name="damage"]:checked')?.value;
+            let newStatus = serverStatus || currentStatus;
+
+            if (!serverStatus) {
+                if (currentStatus === "open") newStatus = "in behandeling";
+                else if (["in behandeling", "reopened"].includes(currentStatus)) {
+                    newStatus = (damage === "none") ? "finished" : "in behandeling";
+                }
+            }
+            updateTaskStatusRow(taskId, newStatus);
+
+            const loaderText = document.getElementById("loaderText");
+            if (loaderText) loaderText.textContent = "📦 Foto's in wachtrij geplaatst. Upload draait op achtergrond.";
+
+            window.showToast("📂 Wijzigingen opgeslagen & foto's in wachtrij!", 4000);
+
+            closeTaskForm();
+            setTimeout(() => {
+                removeLoader(loader);
+            }, 1500);
+        }
+
+        function removeLoader(loader) {
+            if (loader) {
+                loader.classList.add("opacity-0");
+                setTimeout(() => loader.remove(), 300);
+            }
+        }
+
+        window.showToast = function(message, duration = 4000) {
+            const toast = document.createElement("div");
+            toast.textContent = message;
+            toast.className =
+                "fixed bottom-5 right-5 bg-gray-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm transition-opacity animate-fadeIn z-50";
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), duration);
+        }
+
+        function updateTaskStatusRow(taskId, newStatus) {
+            const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+            if (!row) return;
+            row.dataset.status = newStatus;
+            const span = row.querySelector("td:nth-child(3) span");
+            if (span) {
+                span.textContent = newStatus;
+                span.className = "px-2 py-1 rounded text-sm font-semibold " +
+                    (newStatus === "finished" ? "bg-green-200 text-green-800" :
+                        newStatus === "in behandeling" ? "bg-yellow-200 text-yellow-800" :
+                        "bg-gray-200 text-gray-800");
+            }
+        }
+
+        function clearPreviews() {
+            const container = document.getElementById("photoPreview");
+            if (!container) return;
+            const images = container.querySelectorAll("img");
+            images.forEach(img => {
+                if (img.src.startsWith("blob:")) URL.revokeObjectURL(img.src);
+            });
+            container.innerHTML = "";
+        }
+
+        // ============================================================
+        // 4. FORMULIER LOGICA
+        // ============================================================
+
+        window.openTaskForm = function(taskId, address, time, status, note) {
+            const panel = document.getElementById('taskFormPanel');
+            panel.classList.remove('hidden');
+
+            const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+            if (!row) return;
+
+            document.getElementById('taskAddressTitle').textContent = row.dataset.address;
+            document.getElementById('taskZipCity').textContent = row.dataset.zipcode + " " + row.dataset.city;
+            document.getElementById('taskTimeTitle').textContent = time;
+            document.getElementById('taskStatus').textContent = status;
+
+            let form = document.getElementById('finishForm');
+            let finishButton = document.getElementById('finishButton');
+            let noteWrapper = document.getElementById('noteWrapper');
+            let noteField = document.querySelector('#finishForm textarea[name="note"]');
+            let damageNone = document.getElementById('damageNone');
+            let damageYes = document.getElementById('damageYes');
+
+            form.reset();
+            document.getElementById("photoUpload").value = "";
+            clearPreviews();
+            noteWrapper.classList.add('hidden');
+            noteField.value = '';
+
+            if (status === 'finished') {
+                form.action = "";
+                finishButton.classList.add('hidden');
+                damageNone.disabled = true;
+                damageYes.disabled = true;
+                noteField.setAttribute('readonly', true);
+
+                if (note) {
+                    damageYes.checked = true;
                     noteWrapper.classList.remove('hidden');
-                    setTimeout(() => noteField.focus(), 100);
+                    noteField.value = note;
+                } else {
+                    damageNone.checked = true;
                 }
-            });
+            } else {
+                form.action = `/tasks/${taskId}/finish`;
+                finishButton.classList.remove('hidden');
+                finishButton.disabled = false;
+                finishButton.textContent = "Voltooien";
+                damageNone.disabled = false;
+                damageYes.disabled = false;
+                noteField.removeAttribute('readonly');
+
+                if (note) {
+                    damageYes.checked = true;
+                    noteWrapper.classList.remove('hidden');
+                    noteField.value = note;
+                }
+            }
         }
 
-        const photoUpload = document.getElementById("photoUpload");
-        const previewContainer = document.getElementById("photoPreview");
+        window.closeTaskForm = function() {
+            const panel = document.getElementById("taskFormPanel");
+            const form = document.getElementById("finishForm");
+            form.reset();
+            document.getElementById("photoUpload").value = "";
+            clearPreviews();
+            clearErrors();
+            panel.classList.add("hidden");
+        }
 
-        if (photoUpload) {
-            photoUpload.addEventListener("change", (e) => {
-                clearPreviews();
-                let files = [...e.target.files];
-                if (files.length > 30) {
-                    alert("Je mag maximaal 30 foto's uploaden.");
-                    files = files.slice(0, 30);
-                }
-                files.forEach(file => {
-                    const objectUrl = URL.createObjectURL(file);
-                    let img = document.createElement("img");
-                    img.src = objectUrl;
-                    img.className = "preview-img h-16 w-16 object-cover rounded cursor-pointer hover:opacity-80 transition border border-gray-300";
-                    previewContainer.appendChild(img);
+        // ============================================================
+        // 5. COMPRESSIE
+        // ============================================================
+
+        async function compressInBatches(files, options, batchSize = 2) {
+            const compressed = [];
+            for (let i = 0; i < files.length; i += batchSize) {
+                const batch = files.slice(i, i + batchSize);
+                const results = await Promise.all(
+                    batch.map(async (file) => {
+                        try {
+                            return await imageCompression(file, options);
+                        } catch {
+                            return file;
+                        }
+                    })
+                );
+                compressed.push(...results);
+                await new Promise((r) => setTimeout(r, 25));
+            }
+            return compressed;
+        }
+
+        // ============================================================
+        // 6. DOM EVENTS (STARTPUNT)
+        // ============================================================
+
+        document.addEventListener("DOMContentLoaded", () => {
+
+            loadPercelen();
+
+            document.querySelectorAll("tbody tr").forEach(row => {
+                row.addEventListener("click", function() {
+                    openTaskForm(
+                        this.dataset.taskId,
+                        this.dataset.address,
+                        this.dataset.time,
+                        this.dataset.status,
+                        this.dataset.note
+                    );
                 });
             });
-        }
 
-        const lightbox = document.getElementById("photoLightbox");
-        const lightboxImg = document.getElementById("lightboxImage");
-        const closeLightbox = document.getElementById("closeLightbox");
-        const prevPhoto = document.getElementById("prevPhoto");
-        const nextPhoto = document.getElementById("nextPhoto");
-        let currentIndex = 0;
+            const damageNone = document.getElementById('damageNone');
+            const damageYes = document.getElementById('damageYes');
+            const noteWrapper = document.getElementById('noteWrapper');
+            const noteField = document.querySelector('#finishForm textarea[name="note"]');
 
-        function showImage(index) {
-            let images = [...document.querySelectorAll("#photoPreview img")];
-            if (images.length === 0) return;
-            if (index < 0) index = images.length - 1;
-            if (index >= images.length) index = 0;
-            currentIndex = index;
-            lightboxImg.src = images[currentIndex].src;
-            lightbox.classList.remove("hidden");
-            lightbox.classList.add("flex");
-        }
-
-        function hideLightbox() {
-            if (!lightbox) return;
-            lightbox.classList.add("hidden");
-            lightbox.classList.remove("flex");
-            lightboxImg.src = "";
-        }
-
-        if (previewContainer) {
-            previewContainer.addEventListener("click", (e) => {
-                if (e.target.tagName === "IMG") {
-                    let images = [...document.querySelectorAll("#photoPreview img")];
-                    currentIndex = images.indexOf(e.target);
-                    showImage(currentIndex);
-                }
-            });
-        }
-
-        if (prevPhoto) prevPhoto.addEventListener("click", (e) => { e.stopPropagation(); showImage(currentIndex - 1); });
-        if (nextPhoto) nextPhoto.addEventListener("click", (e) => { e.stopPropagation(); showImage(currentIndex + 1); });
-        if (closeLightbox) closeLightbox.addEventListener("click", hideLightbox);
-        if (lightbox) lightbox.addEventListener("click", (e) => { if (e.target === lightbox) hideLightbox(); });
-
-        document.addEventListener("keydown", (e) => {
-            if (lightbox && !lightbox.classList.contains("hidden")) {
-                if (e.key === "ArrowLeft") showImage(currentIndex - 1);
-                if (e.key === "ArrowRight") showImage(currentIndex + 1);
-                if (e.key === "Escape") hideLightbox();
+            if (damageNone && damageYes) {
+                damageNone.addEventListener('change', () => {
+                    if (damageNone.checked) {
+                        noteWrapper.classList.add('hidden');
+                        noteField.value = '';
+                    }
+                });
+                damageYes.addEventListener('change', () => {
+                    if (damageYes.checked) {
+                        noteWrapper.classList.remove('hidden');
+                        setTimeout(() => noteField.focus(), 100);
+                    }
+                });
             }
-        });
 
-        // E. SUBMIT HANDLER (MET FIX VOOR PERCEEL 2)
-        const finishForm = document.getElementById("finishForm");
-        if (finishForm) {
-            finishForm.addEventListener("submit", async (e) => {
-                e.preventDefault();
-                if (!validateForm()) return;
-                isSaving = true;
+            const photoUpload = document.getElementById("photoUpload");
+            const previewContainer = document.getElementById("photoPreview");
 
-                const form = e.target;
-                const taskId = form.action.match(/tasks\/(\d+)/)?.[1];
-                const files = [...document.getElementById("photoUpload").files].slice(0, 30);
-                
-                // 👇 HIER IS DE BELANGRIJKE WIJZIGING 👇
-                const perceelSelect = document.getElementById("perceelSelect");
-                const selectedOption = perceelSelect.options[perceelSelect.selectedIndex];
-                
-                const type = selectedOption.dataset.type; // 'namespace' of 'folder'
-                const rawValue = selectedOption.value;    // ID of Pad
-
-                let finalNamespaceId = "";
-                let finalRootPath = "";
-
-                if (type === 'namespace') {
-                    // PERCEEL 1 (Aansluitingen)
-                    finalNamespaceId = rawValue;
-                    finalRootPath = ""; 
-                } else {
-                    // PERCEEL 2 (Graafwerk) -> Geen namespace ID sturen!
-                    finalNamespaceId = ""; 
-                    // We plakken 'Webapp uploads' achter het pad van Perceel 2
-                    // rawValue is hier bijv: "/Fluvius Aansluitingen/PERCEEL 2"
-                    finalRootPath = rawValue + "/Webapp uploads";
-                }
-               
-                
-                // Pad is leeg, want backend maakt: "Straatnaam... (ID)"
-                const adresPath = "";   
-
-                const finishButton = document.getElementById("finishButton");
-                finishButton.disabled = true;
-                finishButton.textContent = "Verwerken...";
-
-                const loader = document.createElement("div");
-                loader.className = "fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50 transition-opacity duration-300";
-                loader.innerHTML = `
-                    <div class="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
-                        <svg class="animate-spin h-8 w-8 text-[#B51D2D] mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                        </svg>
-                        <p id="loaderText" class="text-gray-700 text-sm font-medium">Foto's klaarmaken voor verzending...</p>
-                    </div>`;
-                document.body.appendChild(loader);
-
-                try {
-                    if (files.length > 0) {
-                        const compressOptions = { maxSizeMB: 0.45, maxWidthOrHeight: 1280, useWebWorker: true, initialQuality: 0.65 };
-                        const compressedFiles = await compressInBatches(files, compressOptions, 2);
-                        const csrf = document.querySelector('meta[name="csrf-token"]').content;
-
-                        for (let i = 0; i < compressedFiles.length; i++) {
-                            await sendToSW({
-                                type: "ADD_UPLOAD",
-                                name: compressedFiles[i].name,
-                                blob: compressedFiles[i],
-                                fileType: compressedFiles[i].type,
-                                task_id: taskId,
-                                
-                                // 👇 Stuur de nieuwe variabelen mee
-                                namespace_id: finalNamespaceId, 
-                                root_path: finalRootPath,
-                                adres_path: adresPath,
-                                
-                                csrf: csrf
-                            });
-                        }
+            if (photoUpload) {
+                photoUpload.addEventListener("change", (e) => {
+                    clearPreviews();
+                    let files = [...e.target.files];
+                    if (files.length > 30) {
+                        alert("Je mag maximaal 30 foto's uploaden.");
+                        files = files.slice(0, 30);
                     }
+                    files.forEach(file => {
+                        const objectUrl = URL.createObjectURL(file);
+                        let img = document.createElement("img");
+                        img.src = objectUrl;
+                        img.className =
+                            "preview-img h-16 w-16 object-cover rounded cursor-pointer hover:opacity-80 transition border border-gray-300";
+                        previewContainer.appendChild(img);
+                    });
+                });
+            }
 
-                    const finishUrl = `/tasks/${taskId}/finish`;
-                    const statusData = new FormData();
-                    statusData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
-                    statusData.append("damage", form.querySelector('input[name="damage"]:checked')?.value || "");
-                    statusData.append("note", form.querySelector('textarea[name="note"]').value || "");
+            const lightbox = document.getElementById("photoLightbox");
+            const lightboxImg = document.getElementById("lightboxImage");
+            const closeLightbox = document.getElementById("closeLightbox");
+            const prevPhoto = document.getElementById("prevPhoto");
+            const nextPhoto = document.getElementById("nextPhoto");
+            let currentIndex = 0;
 
-                    if (navigator.sendBeacon) {
-                        navigator.sendBeacon(finishUrl, statusData);
-                        handleFrontendSuccess(taskId, form, loader);
-                    } else {
-                        const res = await fetch(finishUrl, {
-                            method: "POST", headers: { "Accept": "application/json" }, body: statusData
-                        });
-                        if (res.ok) {
-                            const json = await res.json();
-                            handleFrontendSuccess(taskId, form, loader, json.status);
-                        } else {
-                            removeLoader(loader);
-                        }
+            function showImage(index) {
+                let images = [...document.querySelectorAll("#photoPreview img")];
+                if (images.length === 0) return;
+                if (index < 0) index = images.length - 1;
+                if (index >= images.length) index = 0;
+                currentIndex = index;
+                lightboxImg.src = images[currentIndex].src;
+                lightbox.classList.remove("hidden");
+                lightbox.classList.add("flex");
+            }
+
+            function hideLightbox() {
+                if (!lightbox) return;
+                lightbox.classList.add("hidden");
+                lightbox.classList.remove("flex");
+                lightboxImg.src = "";
+            }
+
+            if (previewContainer) {
+                previewContainer.addEventListener("click", (e) => {
+                    if (e.target.tagName === "IMG") {
+                        let images = [...document.querySelectorAll("#photoPreview img")];
+                        currentIndex = images.indexOf(e.target);
+                        showImage(currentIndex);
                     }
-                } catch (err) {
-                    console.error("Fout in submit flow:", err);
-                    showToast("⚠️ Er ging iets mis. Probeer opnieuw.");
+                });
+            }
 
-                    isSaving = false;
-                    removeLoader(loader);
-                } finally {
-                    finishButton.disabled = false;
-                    finishButton.textContent = "Voltooien";
+            if (prevPhoto) prevPhoto.addEventListener("click", (e) => {
+                e.stopPropagation();
+                showImage(currentIndex - 1);
+            });
+            if (nextPhoto) nextPhoto.addEventListener("click", (e) => {
+                e.stopPropagation();
+                showImage(currentIndex + 1);
+            });
+            if (closeLightbox) closeLightbox.addEventListener("click", hideLightbox);
+            if (lightbox) lightbox.addEventListener("click", (e) => {
+                if (e.target === lightbox) hideLightbox();
+            });
+
+            document.addEventListener("keydown", (e) => {
+                if (lightbox && !lightbox.classList.contains("hidden")) {
+                    if (e.key === "ArrowLeft") showImage(currentIndex - 1);
+                    if (e.key === "ArrowRight") showImage(currentIndex + 1);
+                    if (e.key === "Escape") hideLightbox();
                 }
             });
+
+            // E. SUBMIT HANDLER (MET FIX VOOR PERCEEL 1 & 2)
+const finishForm = document.getElementById("finishForm");
+if (finishForm) {
+    finishForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!validateForm()) return;
+        isSaving = true;
+
+        const form = e.target;
+        const taskId = form.action.match(/tasks\/(\d+)/)?.[1];
+        const files = [...document.getElementById("photoUpload").files].slice(0, 30);
+
+        // 👇 START AANGEPASTE LOGICA
+        const perceelSelect = document.getElementById("perceelSelect");
+        const selectedOption = perceelSelect.options[perceelSelect.selectedIndex];
+
+        const type = selectedOption.dataset.type; // 'namespace' of 'folder'
+        const rawValue = selectedOption.value;    // ID (voor namespace) of Pad (voor folder)
+
+        let finalNamespaceId = "";
+        let finalRootPath = "";
+
+        if (type === 'namespace') {
+            // ============================================================
+            // PERCEEL 1 (Aansluitingen)
+            // ============================================================
+            finalNamespaceId = rawValue;
+            
+            // ✅ DE FIX: Voeg "/PERCEEL 1" toe aan het pad!
+            // Controleer op je Dropbox of de map "PERCEEL 1" of "Perceel 1" heet (hoofdletters maken uit!)
+            finalRootPath = "/PERCEEL 1/Webapp uploads"; 
+
+        } else {
+            // ============================================================
+            // PERCEEL 2 (Graafwerk)
+            // ============================================================
+            finalNamespaceId = "";
+            let basePath = rawValue ? rawValue.replace(/\/$/, "") : "";
+            finalRootPath = basePath + "/Webapp uploads";
+        }
+
+        console.log(`📤 Upload config: Type=${type}, Namespace=${finalNamespaceId}, Path=${finalRootPath}`);
+
+        const adresPath = "";
+        // 👆 EINDE AANGEPASTE LOGICA
+
+        const finishButton = document.getElementById("finishButton");
+        finishButton.disabled = true;
+        finishButton.textContent = "Verwerken...";
+
+        const loader = document.createElement("div");
+        loader.className = "fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50 transition-opacity duration-300";
+        loader.innerHTML = `
+            <div class="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
+                <svg class="animate-spin h-8 w-8 text-[#B51D2D] mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <p id="loaderText" class="text-gray-700 text-sm font-medium">Foto's klaarmaken voor verzending...</p>
+            </div>`;
+        document.body.appendChild(loader);
+
+        try {
+            if (files.length > 0) {
+                const compressOptions = { maxSizeMB: 0.45, maxWidthOrHeight: 1280, useWebWorker: true, initialQuality: 0.65 };
+                const compressedFiles = await compressInBatches(files, compressOptions, 2);
+                const csrf = document.querySelector('meta[name="csrf-token"]').content;
+
+                for (let i = 0; i < compressedFiles.length; i++) {
+                    await sendToSW({
+                        type: "ADD_UPLOAD",
+                        name: compressedFiles[i].name,
+                        blob: compressedFiles[i],
+                        fileType: compressedFiles[i].type,
+                        task_id: taskId,
+                        
+                        // 👇 Stuur de nieuwe variabelen mee
+                        namespace_id: finalNamespaceId, 
+                        root_path: finalRootPath, 
+                        adres_path: adresPath,
+                        
+                        csrf: csrf
+                    });
+                }
+            }
+
+            const finishUrl = `/tasks/${taskId}/finish`;
+            const statusData = new FormData();
+            statusData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
+            statusData.append("damage", form.querySelector('input[name="damage"]:checked')?.value || "");
+            statusData.append("note", form.querySelector('textarea[name="note"]').value || "");
+
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(finishUrl, statusData);
+                handleFrontendSuccess(taskId, form, loader);
+            } else {
+                const res = await fetch(finishUrl, {
+                    method: "POST", headers: { "Accept": "application/json" }, body: statusData
+                });
+                if (res.ok) {
+                    const json = await res.json();
+                    handleFrontendSuccess(taskId, form, loader, json.status);
+                } else {
+                    removeLoader(loader);
+                }
+            }
+        } catch (err) {
+            console.error("Fout in submit flow:", err);
+            showToast("⚠️ Er ging iets mis. Probeer opnieuw."); // Zorg dat showToast gedefinieerd is in je script!
+            isSaving = false;
+            removeLoader(loader);
+        } finally {
+            finishButton.disabled = false;
+            finishButton.textContent = "Voltooien";
         }
     });
-</script>
+}
+        });
+    </script>
 
 </x-layouts.dashboard>
