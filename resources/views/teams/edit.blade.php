@@ -32,6 +32,7 @@
             <label class="block text-sm font-medium">Rol</label>
             <select name="role" class="w-full border px-3 py-2 rounded">
                 <option value="team" {{ $team->role === 'team' ? 'selected' : '' }}>team</option>
+                <option value="warehouseman" {{ $team->role === 'warehouseman' ? 'selected' : '' }}>warehouseman</option>
                 <option value="admin" {{ $team->role === 'admin' ? 'selected' : '' }}>admin</option>
             </select>
         </div>

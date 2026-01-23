@@ -92,7 +92,7 @@ class TeamController extends Controller
             'employee_number' => 'nullable|string',
             'subcontractor' => 'nullable|string',
             'password' => 'nullable|string|min:6',
-            'role' => 'required|in:admin,team',
+            'role' => 'required|in:admin,team,warehouseman',
             'members' => 'nullable|string',
         ]);
 

@@ -8,6 +8,9 @@ use App\Models\Team;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail; // 👈 Import
+use App\Mail\NewOrderMail; // 👈 Import
+use Illuminate\Support\Facades\Log;
 
 use App\Notifications\NewOrderReceived;
 
@@ -74,24 +77,25 @@ class ShopController extends Controller
         return redirect()->back()->with('success', 'Item verwijderd.');
     }
 
-    public function checkout(Request $request)
+   public function checkout(Request $request)
     {
         $user = Auth::user();
         // 🕒 FIX: Haal de tijd expliciet op in Brussel tijdzone
-    $nowInBelgium = now()->timezone('Europe/Brussels');
+        $nowInBelgium = now()->timezone('Europe/Brussels');
 
-    if (in_array($user->role, ['admin', 'warehouseman'])) {
-        $dateRule = 'today';
-    } else {
-        // Gebruik de Belgische tijd om het uur te checken
-        $dateRule = $nowInBelgium->hour >= 13 ? 'tomorrow' : 'today';
-    }
-        // 1. Validatie uitgebreid met 'quantities'
+        if (in_array($user->role, ['admin', 'warehouseman'])) {
+            $dateRule = 'today';
+        } else {
+            // Gebruik de Belgische tijd om het uur te checken
+            $dateRule = $nowInBelgium->hour >= 13 ? 'tomorrow' : 'today';
+        }
+        
+        // 1. Validatie
         $request->validate([
             'pickup_date'   => 'required|date|after_or_equal:' . $dateRule,
             'license_plate' => 'required|string',
-            'quantities'    => 'required|array', // We verwachten een lijst met aantallen
-            'quantities.*'  => 'required|integer|min:1', // Elk aantal moet min. 1 zijn
+            'quantities'    => 'required|array',
+            'quantities.*'  => 'required|integer|min:1',
         ]);
 
         $cart = session()->get('cart');
@@ -100,20 +104,19 @@ class ShopController extends Controller
             return redirect()->back()->with('error', 'Je winkelmand is leeg!');
         }
 
-        // 2. UPDATE LOGICA: Werk de sessie bij met de nieuwe aantallen uit het formulier
+        // 2. Sessie updaten met nieuwe aantallen
         foreach ($request->quantities as $id => $quantity) {
             if (isset($cart[$id])) {
                 $cart[$id]['quantity'] = $quantity;
             }
         }
-        session()->put('cart', $cart); // Sla de nieuwe aantallen op
-
+        session()->put('cart', $cart);
 
         $teamId = $user->id;
 
+        // 3. Order opslaan in database
         $order = DB::transaction(function () use ($request, $cart, $teamId) {
-
-            // A. Maak de Order aan
+            // A. Maak de Order
             $order = Order::create([
                 'team_id'       => $teamId,
                 'pickup_date'   => $request->pickup_date,
@@ -121,7 +124,7 @@ class ShopController extends Controller
                 'status'        => 'pending'
             ]);
 
-            // B. Koppel de materialen (Nu met de geüpdatete aantallen uit $cart)
+            // B. Koppel materialen
             foreach ($cart as $id => $details) {
                 $order->materials()->attach($id, [
                     'quantity' => $details['quantity'],
@@ -132,14 +135,30 @@ class ShopController extends Controller
             return $order;
         });
 
+        // 4. In-App Notificatie naar Magazijniers
         $warehouseUsers = Team::whereIn('role', ['warehouseman', 'admin'])->get();
 
-        // 2. Stuur de notificatie
         if ($warehouseUsers->count() > 0) {
-            // We sturen de $order mee die net is aangemaakt
             Notification::send($warehouseUsers, new NewOrderReceived($order));
         }
 
+        // ---------------------------------------------------------
+        // 📧 5. NIEUW: MAIL NAAR MAGAZIJNIER
+        // ---------------------------------------------------------
+        $magazijnEmail = 'magazijn2@msinfra.be'; // 👈 Pas aan naar het juiste adres!
+
+        try {
+            // We laden de materialen en het team in zodat de mail deze info kent
+            $order->load(['materials', 'team']); 
+
+            Mail::to($magazijnEmail)->send(new NewOrderMail($order));
+        } catch (\Exception $e) {
+            // We loggen de fout, maar laten de gebruiker wel doorgaan naar het succes scherm
+            Log::error('Bestelmail kon niet verzonden worden: ' . $e->getMessage());
+        }
+        // ---------------------------------------------------------
+
+        // 6. Winkelmand legen en afronden
         session()->forget('cart');
 
         return redirect()->route('shop.success', $order->id);
