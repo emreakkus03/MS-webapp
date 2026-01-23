@@ -166,7 +166,7 @@ class LeaveRequestController extends Controller
         // 📧 NIEUW: MAIL NAAR HR BIJ GOEDKEURING
         // ---------------------------------------------------------
         if ($validated['status'] === 'approved') {
-            $hrEmail = 'emreakkus003@gmail.com'; // 👈 Pas dit aan naar het echte HR adres!
+            $hrEmail = ['sedef.savas@msinfra.be', 'meliha.akkus@msinfra.be'];
             
             try {
                 Mail::to($hrEmail)
