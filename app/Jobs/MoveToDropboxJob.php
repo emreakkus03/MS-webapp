@@ -35,7 +35,7 @@ class MoveToDropboxJob implements ShouldQueue
         $this->rootPath = $rootPath; // Standaard P1, maar wordt overschreven door controller
     }
 
-    public function handle(): void
+  public function handle(): void
     {
         $dropbox = app(DropboxService::class);
         $task = Task::find($this->taskId);
@@ -47,17 +47,9 @@ class MoveToDropboxJob implements ShouldQueue
         }
 
         // 1. Bepaal de juiste Namespace & Pad
-        // Als de rootPath begint met /Webapp uploads -> Perceel 1 (Namespace modus)
-        // Anders (bijv /Fluvius/Perceel 2...) -> Perceel 2 (Folder modus, default NS)
-        
         $isPerceel1 = str_starts_with($this->rootPath, '/Webapp uploads');
         
-        // Als het Perceel 1 is, gebruiken we de meegeleverde namespace.
-        // Als het Perceel 2 is, forceren we de Fluvius namespace (want P2 is een gewone map daarin).
         $targetNamespace = $isPerceel1 ? $this->namespaceId : $fluviusNamespaceId;
-
-        // Bouw het volledige pad: Root + Submap (Straatnaam)
-        // rtrim/ltrim zorgt dat we geen dubbele slashes // krijgen
         $finalUploadPath = rtrim($this->rootPath, '/') . '/' . ltrim($this->adresPath, '/');
 
         Log::info('🚀 Start Dropbox Job', [
@@ -68,12 +60,11 @@ class MoveToDropboxJob implements ShouldQueue
         ]);
 
         // 2. Upload in batches
-        $chunks = array_chunk($this->photos, 5); // Kleinere batches voor stabiliteit
+        $chunks = array_chunk($this->photos, 5);
         
         foreach ($chunks as $batchIndex => $batchPhotos) {
             foreach ($batchPhotos as $photo) {
                 try {
-                    // Check of file bestaat op R2
                     if (!Storage::disk('r2')->exists($photo)) {
                         Log::warning("⚠️ Bestand weg op R2: {$photo}");
                         continue;
@@ -82,7 +73,7 @@ class MoveToDropboxJob implements ShouldQueue
                     $r2Stream = Storage::disk('r2')->readStream($photo);
                     $filename = basename($photo);
                     
-                    // Volledige pad voor dit bestand
+                    // Dit is het TECHNISCHE pad voor de Dropbox API
                     $fileDestPath = "{$finalUploadPath}/{$filename}";
 
                     $client = new HttpClient();
@@ -102,7 +93,6 @@ class MoveToDropboxJob implements ShouldQueue
                                 '.tag' => 'namespace_id',
                                 'namespace_id' => $targetNamespace,
                             ]),
-                            // User Select header alleen als je een Team Member ID hebt
                             'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'), 
                         ],
                         'body' => $r2Stream,
@@ -118,14 +108,23 @@ class MoveToDropboxJob implements ShouldQueue
                         Storage::disk('r2')->delete($photo);
                         \App\Models\R2PendingUpload::where('r2_path', $photo)->delete();
 
-                        // Opslaan in database (pad updaten)
-                        $this->updateTaskPhoto($task, $fileDestPath);
+                        // 👇 🔥 FIX: VISUEEL PAD VOOR DE DATABASE
+                        // We maken een apart pad aan voor de database opslag
+                        if ($isPerceel1) {
+                            // Plak "/PERCEEL 1" ervoor voor de database
+                            $dbPath = "/PERCEEL 1" . $fileDestPath;
+                        } else {
+                            // Perceel 2 is al goed
+                            $dbPath = $fileDestPath;
+                        }
+
+                        // Opslaan in database met het VISUELE pad
+                        $this->updateTaskPhoto($task, $dbPath);
 
                     } else {
                         Log::error("⚠️ Upload mislukt: {$response->getStatusCode()}");
                     }
 
-                    // Korte pauze voor API rate limits
                     usleep(500000); 
 
                 } catch (\Throwable $e) {
@@ -133,7 +132,7 @@ class MoveToDropboxJob implements ShouldQueue
                     \App\Models\R2PendingUpload::where('r2_path', $photo)->update(['status' => 'failed']);
                 }
             }
-            sleep(1); // Rust tussen batches
+            sleep(1); 
         }
     }
 
