@@ -1,15 +1,15 @@
-const SW_VERSION = 'v8-lock-fix'; // 👈 Versie omhoog
+const SW_VERSION = 'v9-timeout-fix'; // 👈 Versie omhoog om update te forceren
 const API = self.location.origin;
 
 const DB_NAME = "R2UploadDB";
 const STORE = "pending";
 
-// 🛑 LOCKING MECHANISME (Tegen dubbele uploads)
+// 🛑 LOCKING MECHANISME
 let queueRunningPromise = null;
 
 // --- IndexedDB Helpers ---
 function openDB() {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, 1);
         req.onupgradeneeded = (e) => {
             const db = e.target.result;
@@ -18,28 +18,37 @@ function openDB() {
             }
         };
         req.onsuccess = (e) => resolve(e.target.result);
+        req.onerror = (e) => reject(e);
     });
 }
 
 async function getAll() {
-    const db = await openDB();
-    return new Promise((resolve) => {
-        const req = db.transaction(STORE).objectStore(STORE).getAll();
-        req.onsuccess = () => resolve(req.result);
-    });
+    try {
+        const db = await openDB();
+        return new Promise((resolve) => {
+            const req = db.transaction(STORE).objectStore(STORE).getAll();
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => resolve([]); // Fallback leeg array
+        });
+    } catch (e) {
+        return [];
+    }
 }
 
 async function deleteItem(id) {
-    const db = await openDB();
-    db.transaction(STORE, "readwrite").objectStore(STORE).delete(id);
+    try {
+        const db = await openDB();
+        db.transaction(STORE, "readwrite").objectStore(STORE).delete(id);
+    } catch (e) { console.error("DB Delete error", e); }
 }
 
 async function addItem(data) {
     const currentItems = await getAll();
     const exists = currentItems.find(item => item.name === data.name);
-    if (exists) return; // Deduplicatie bij toevoegen
+    if (exists) return; 
 
     const db = await openDB();
+    // Blob check voor Safari/iOS quirks
     let blobData = (data.blob instanceof Blob) ? await data.blob.arrayBuffer() : data.blob;
 
     const clean = {
@@ -63,25 +72,35 @@ async function addItem(data) {
 
 // --- Lifecycle ---
 self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+
+// 👇 FIX 1: Auto-start bij activeren (na refresh)
+self.addEventListener("activate", (event) => {
+    event.waitUntil(
+        Promise.all([
+            self.clients.claim(),
+            processQueue() // Direct checken of er nog iets ligt!
+        ])
+    );
+});
 
 // --- Message Handler ---
 self.addEventListener("message", async (event) => {
     if (event.origin !== self.location.origin) return;
     
-    // Bij 'FORCE_PROCESS' (zodra internet terug is), gebruiken we nu de veilige functie
     if (event.data?.type === "FORCE_PROCESS") {
-        console.log("⚡ Force Process: Queue starten...");
+        console.log("⚡ Force Process commando ontvangen");
+        // We roepen hem gewoon aan. De lock functie handelt dubbel werk af.
         await processQueue();
     }
     
     if (event.data?.type === "ADD_UPLOAD") {
         await addItem(event.data);
+        // Probeer sync, anders direct verwerken
         if ("sync" in self.registration) {
             try { await self.registration.sync.register("sync-r2-uploads"); } 
-            catch (e) { console.warn("Sync error", e); }
+            catch (e) { processQueue(); }
         } else {
-            processQueue(); // Fallback
+            processQueue();
         }
         sendToClients({ type: "QUEUED", file: event.data.name });
     }
@@ -96,36 +115,36 @@ self.addEventListener("sync", async (event) => {
     if (event.tag === "sync-r2-uploads") await processQueue();
 });
 
-// --- SAFE QUEUE PROCESSOR (Met Progress Fix) ---
+// --- SAFE QUEUE PROCESSOR (Met Timeout Fix) ---
 async function processQueue() {
+    // Check of we al draaien
     if (queueRunningPromise) {
-        console.log("SW: 🔒 Queue draait al. Verzoek genegeerd.");
+        console.log("SW: 🔒 Queue draait al (Lock actief).");
         return queueRunningPromise;
     }
 
     queueRunningPromise = (async () => {
-        console.log("SW: 🚀 Start verwerking...");
-        let done = 0; // Lokale teller voor deze sessie
+        console.log("SW: 🚀 Start verwerking queue...");
+        let done = 0; 
         
         while (true) {
-            const items = await getAll();
-            if (items.length === 0) break; 
-
+            // Check internet
             if (!self.navigator.onLine) {
                 console.log("SW: 📵 Offline. Pauze.");
                 break; 
             }
 
+            const items = await getAll();
+            if (items.length === 0) break; // Klaar!
+
             const item = items[0]; 
             
-            // 👇 FIX: Bereken totaal dynamisch (wat we al deden + wat er nog ligt)
-            // Zo blijft de teller kloppen: 1/6, 2/6, etc.
+            // Progressie berekening
             const totalInQueue = items.length;
             const realTotal = done + totalInQueue;
             const currentNum = done + 1;
 
             try {
-                // Stuur progressie naar frontend
                 sendToClients({ 
                     type: "PROGRESS", 
                     current: currentNum, 
@@ -142,6 +161,12 @@ async function processQueue() {
                 const uploadUrl = new URL(`${API}/tasks/${item.task_id}/upload-temp`);
                 uploadUrl.searchParams.append("sw_bypass", "true");
 
+                // 👇 FIX 2: TIMEOUT TOEVOEGEN
+                // Als de server na 60 seconden niet antwoordt, breken we af.
+                // Dit voorkomt dat de lock 'voor altijd' blijft hangen.
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 60000); 
+
                 const res = await fetch(uploadUrl.toString(), {
                     method: "POST",
                     headers: { 
@@ -150,8 +175,11 @@ async function processQueue() {
                         "Accept": "application/json"
                     },
                     credentials: 'include',
-                    body: form
+                    body: form,
+                    signal: controller.signal // Koppel de abort controller
                 });
+
+                clearTimeout(timeoutId); // Timeout wissen als het gelukt is
 
                 if (res.status === 429) throw new Error("RATE_LIMIT");
 
@@ -165,32 +193,39 @@ async function processQueue() {
                 console.log(`SW: ✅ Upload OK: ${item.name}`);
                 await deleteItem(item.id);
                 
-                done++; // Teller omhoog
-                
-                // Stuur bevestiging van deze specifieke file
+                done++;
                 sendToClients({ type: "UPLOADED", name: item.name });
                 
-                await new Promise(r => setTimeout(r, 500)); 
+                await new Promise(r => setTimeout(r, 200)); // Korte adempauze
 
             } catch (err) {
                 console.warn(`SW: ❌ Fout bij '${item.name}':`, err.message);
-                if (["RATE_LIMIT", "Failed to fetch", "NetworkError"].some(s => err.message.includes(s)) || !self.navigator.onLine) {
-                    console.log("SW: 🛑 Pauze door netwerkfout.");
-                    break;
+                
+                // Bij een abort (timeout) of netwerkfout -> pauzeer even
+                if (err.name === 'AbortError' || ["RATE_LIMIT", "Failed to fetch", "NetworkError"].some(s => err.message.includes(s)) || !self.navigator.onLine) {
+                    console.log("SW: 🛑 Pauze door netwerkfout of timeout.");
+                    break; // Breek de loop, de lock gaat eraf, volgende keer beter.
                 }
+                
+                // Bij een 'harde' fout (bijv. 500 error) wachten we iets langer en proberen opnieuw
                 await new Promise(r => setTimeout(r, 2000));
             }
         }
         
-        console.log("SW: 🏁 Queue klaar.");
+        console.log("SW: 🏁 Queue loop gestopt.");
         
-        // 👇 FIX: Stuur het COMPLETE bericht direct hier, zodat het zeker aankomt
-        sendToClients({ type: "COMPLETE" });
+        // Als alles op is, stuur complete
+        const remaining = await getAll();
+        if (remaining.length === 0) {
+            sendToClients({ type: "COMPLETE" });
+        }
         
     })();
 
+    // Wacht tot de promise klaar is en geef de lock vrij
     await queueRunningPromise;
     queueRunningPromise = null;
+    console.log("SW: 🔓 Lock vrijgegeven.");
 }
 
 // --- Fetch Interceptor ---
@@ -206,7 +241,6 @@ self.addEventListener("fetch", (event) => {
 async function saveToQueueAndRespond(request) {
     try {
         const formData = await request.clone().formData();
-        // Frontend stuurt 'photos[]', dus dat moeten we ophalen
         const file = formData.get("photos[]") || formData.get("file"); 
 
         await addItem({
@@ -219,8 +253,9 @@ async function saveToQueueAndRespond(request) {
             csrf: formData.get("_token")
         });
 
+        // Trigger queue direct
         if ("sync" in self.registration) {
-            self.registration.sync.register("sync-r2-uploads").catch(console.warn);
+            self.registration.sync.register("sync-r2-uploads").catch(() => processQueue());
         } else {
             processQueue();
         }
