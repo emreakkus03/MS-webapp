@@ -332,36 +332,14 @@ class TaskController extends Controller
     public function uploadPhoto(Request $request, DropboxService $dropbox, $taskId)
     {
         $request->validate([
-            'namespace_id' => 'nullable|string',
-            // 'path' => 'required|string', // ❌ VERWIJDERD: Dit wordt nu automatisch gegenereerd
+            'namespace_id' => 'required|string',
+            'path'         => 'required|string',
             'photos'       => 'required',
         ]);
 
-        // Zorg dat namespace_id optioneel is of een default waarde krijgt
-$namespaceId = $request->input('namespace_id') ?: $dropbox->getFluviusNamespaceId();
-        
-        // 🔹 1. Haal taak op met relaties
-        $task = Task::with(['address', 'team'])->findOrFail($taskId);
-
-        // 🔹 2. Genereer de mapnaam: Straat Nr Postcode Stad Ploegnaam - Datum (Taak ID)
-        // Zorg dat de datum geformatteerd is (bijv. d-m-Y)
-        $dateString = $task->time instanceof \Carbon\Carbon 
-            ? $task->time->format('d-m-Y') 
-            : date('d-m-Y', strtotime($task->time));
-
-        $folderName = sprintf(
-            '%s %s %s %s %s - %s (%s)',
-            $task->address->street,
-            $task->address->number,
-            $task->address->zipcode,
-            $task->address->city,
-            $task->team->name,
-            $dateString,
-            $task->id
-        );
-
-        // 🔹 3. Sanitize: Verwijder illegale tekens voor mapnamen (zoals / \ : * ? " < > |)
-        $adresPath = preg_replace('/[\\/\\\\:*?"<>|]/', '', $folderName);
+        $namespaceId = $request->input('namespace_id');
+        $adresPath   = trim($request->input('path'), '/');
+        $task        = Task::findOrFail($taskId);
 
         // 🔍 Detecteer perceeltype via namespace_id
         $isPerceel1 = $namespaceId !== $dropbox->getFluviusNamespaceId();
@@ -373,31 +351,34 @@ $namespaceId = $request->input('namespace_id') ?: $dropbox->getFluviusNamespaceI
             $fullDropboxPath = "Fluvius Aansluitingen/PERCEEL 2/Webapp uploads/{$adresPath}";
         }
 
-        // 💾 Sla tijdelijk R2-paden op
+        // 💾 Sla tijdelijk R2-paden op zodat frontend ziet dat upload ok is
         $photos = $task->photo ? explode(',', $task->photo) : [];
         foreach ((array)$request->input('photos') as $photoPath) {
             $photos[] = $photoPath;
         }
 
-        Log::info("📸 Tijdelijke R2 upload ontvangen (Auto Path)", [
-            'task_id'      => $taskId,
-            'adresPath'    => $adresPath, // De nieuwe gegenereerde naam
+        // 📸 Tijdelijke opslag enkel voor logging (niet in DB)
+        Log::info("📸 Tijdelijke R2 upload ontvangen", [
+            'task_id' => $taskId,
+            'photos'  => $request->input('photos'),
+            'adresPath' => $adresPath,
             'namespace_id' => $namespaceId,
         ]);
 
         foreach ($request->input('photos') as $path) {
-            $fullTargetPath = "{$fullDropboxPath}/" . basename($path);
 
-            R2PendingUpload::create([
-                'task_id'             => $taskId,
-                'r2_path'             => $path,
-                'namespace_id'        => $namespaceId,
-                'perceel'             => $isPerceel1 ? '1' : '2',
-                'regio_path'          => null, // ⚠️ Niet meer relevant aangezien we direct de mapnaam genereren
-                'adres_path'          => $adresPath,
-                'target_dropbox_path' => $fullTargetPath,
-            ]);
-        }
+    $fullTargetPath = "{$fullDropboxPath}/" . basename($path);
+
+    R2PendingUpload::create([
+        'task_id' => $taskId,
+        'r2_path' => $path,
+        'namespace_id' => $namespaceId,
+        'perceel' => $isPerceel1 ? '1' : '2',
+        'regio_path' => $request->input('path'),
+        'adres_path' => $adresPath,
+        'target_dropbox_path' => $fullTargetPath,
+    ]);
+}
 
         dispatch(new MoveToDropboxJob(
             $request->input('photos'),
@@ -406,11 +387,11 @@ $namespaceId = $request->input('namespace_id') ?: $dropbox->getFluviusNamespaceI
             $taskId
         ))->onQueue('uploads');
 
+
         return response()->json([
             'success' => true,
             'queued'  => true,
             'message' => '📦 Foto’s via R2 geüpload en worden op achtergrond verplaatst naar Dropbox.',
-            'generated_path' => $adresPath // Handig voor debugging in frontend
         ]);
     }
 
@@ -474,107 +455,35 @@ $namespaceId = $request->input('namespace_id') ?: $dropbox->getFluviusNamespaceI
             ], 500);
         }
     }
- // In App\Http\Controllers\TaskController.php
-
-public function uploadTemp(Request $request, $taskId, DropboxService $dropbox)
+    public function uploadTemp(Request $request, $taskId)
     {
-        $task = Task::with(['address', 'team'])->findOrFail($taskId);
-        
-        // Laravel pakt 'photos[]' automatisch op als 'photos'
-        $files = $request->file('photos'); 
-        if (!is_array($files)) $files = [$files];
-
-        // 1. Data uit request halen
+        $task = Task::findOrFail($taskId);
+        $files = $request->file('photos', []);
+        $adresPath = $request->input('path');
         $namespaceId = $request->input('namespace_id');
-        $rootPath = $request->input('root_path');
 
-        // 2. Bepaal het BASISPAD & NAMESPACE
-        // ---------------------------------------------------------
-        // FIX: We gebruiken env() in plaats van API calls om cURL errors te voorkomen!
-        
-        // Scenario A: P1 (Namespace modus) -> rootPath is leeg
-        if (empty($rootPath)) {
-            $rootPath = "/Webapp uploads";
-            // Fallback: als namespace leeg is, pak Fluvius uit ENV
-            if (empty($namespaceId)) {
-                $namespaceId = env('DROPBOX_FLUVIUS_NAMESPACE_ID');
-            }
-        } 
-        // Scenario B: P2 (Folder modus) -> rootPath is gevuld
-        else {
-            // Forceer Fluvius ID uit ENV (geen internet nodig)
-            if (empty($namespaceId)) {
-                $namespaceId = env('DROPBOX_FLUVIUS_NAMESPACE_ID');
-            }
-        }
+        // ✅ Beperk tot max 30 foto’s
+        $files = array_slice($files, 0, 30);
 
-        // NOODOPLOSSING: Als .env leeg is, probeer toch API (maar dit mag eigenlijk niet gebeuren)
-        if (empty($namespaceId)) {
-            try {
-                $namespaceId = $dropbox->getFluviusNamespaceId();
-            } catch (\Throwable $e) {
-                // Als we hier zijn, is er én geen .env én geen internet.
-                // We zetten een placeholder zodat R2 upload TOCH doorgaat. De Job fixt het later wel.
-                Log::error("Namespace ID onbekend tijdens upload: " . $e->getMessage());
-                $namespaceId = "OFFLINE_PENDING";
-            }
-        }
-        // ---------------------------------------------------------
-
-        // 3. Genereer mapnaam
-        $dateString = $task->time instanceof \Carbon\Carbon 
-            ? $task->time->format('d-m-Y') 
-            : date('d-m-Y', strtotime($task->time));
-
-        $folderName = sprintf(
-            '%s %s %s %s %s - %s (%s)',
-            $task->address->street, $task->address->number, $task->address->zipcode,
-            $task->address->city, $task->team->name, $dateString, $task->id
-        );
-        $adresPath = preg_replace('/[\\/\\\\:*?"<>|]/', '', $folderName);
-
-        // 4. Volledig pad
-        $fullDropboxPath = rtrim($rootPath, '/') . '/' . $adresPath;
-
-        $uploadedPaths = [];
-
-        // 5. Uploaden naar R2
+        // ✅ Parallel dispatchen (batch-queue)
+        $batch = [];
         foreach ($files as $file) {
-            $r2Path = $file->store('uploads', 'r2'); 
-            $uploadedPaths[] = $r2Path;
-            
-            $fullTargetPath = "{$fullDropboxPath}/" . basename($r2Path);
-
-            // Bepaal P1/P2 voor database log
-            $isPerceel1 = $namespaceId !== env('DROPBOX_FLUVIUS_NAMESPACE_ID') && $namespaceId !== "OFFLINE_PENDING";
-
-            R2PendingUpload::create([
-                'task_id'             => $taskId,
-                'r2_path'             => $r2Path,
-                'namespace_id'        => $namespaceId,
-                'perceel'             => $isPerceel1 ? '1' : '2',
-                'regio_path'          => $rootPath,
-                'adres_path'          => $adresPath,
-                'target_dropbox_path' => $fullTargetPath,
-            ]);
+            $path = $file->store('temp/uploads', 'local');
+            $batch[] = new UploadToDropboxJob($taskId, $path, $adresPath, $namespaceId);
         }
 
-        // 6. Job starten
-        if (count($uploadedPaths) > 0) {
-            dispatch(new MoveToDropboxJob(
-                $uploadedPaths,
-                $adresPath,   
-                $namespaceId, 
-                $taskId,
-                $rootPath     
-            ))->onQueue('uploads');
+        // Laravel’s bus batch → meerdere jobs tegelijk dispatchen
+        if (count($batch)) {
+            Bus::batch($batch)
+                ->name("UploadToDropboxBatch-task-{$taskId}")
+                ->onQueue('uploads')
+                ->dispatch();
         }
 
         return response()->json([
             'status' => 'queued',
             'count'  => count($files),
-            'path'   => $fullDropboxPath,
-            'message' => 'Upload gestart'
+            'message' => 'Bestanden in wachtrij geplaatst voor Dropbox-upload'
         ]);
     }
 }
