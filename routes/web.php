@@ -32,23 +32,20 @@ use App\Http\Controllers\DocumentController;
 use App\Imports\MaterialsImport;
 use Maatwebsite\Excel\Facades\Excel;
 
+Route::middleware(['auth'])->group(function () { 
+    Route::get('/run-import', function () {
+        try {
+            
+            Excel::import(new MaterialsImport, storage_path('app/materials.xlsx'));
+    
+            return 'Import succesvol voltooid! Check je database.';
+        } catch (\Exception $e) {
+            return 'Er ging iets mis: ' . $e->getMessage();
+        }
+    });
 
-Route::get('/run-import', function () {
-    try {
-        
-        Excel::import(new MaterialsImport, storage_path('app/materials.xlsx'));
+});
 
-        return 'Import succesvol voltooid! Check je database.';
-    } catch (\Exception $e) {
-        return 'Er ging iets mis: ' . $e->getMessage();
-    }
-});
-Route::get('/3f73e6bc076b1cb056e072cc30dc485b.txt', function () {
-    return Response::make('', 200, ['Content-Type' => 'text/plain']);
-});
-Route::get('/ping', function () {
-    return response('pong', 200);
-});
 
 Route::middleware(['auth'])->group(function () {
     Route::post('/r2/presigned-url', function (Request $request) {
