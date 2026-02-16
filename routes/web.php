@@ -25,6 +25,8 @@ use Illuminate\Support\Facades\Mail;
 use App\Mail\RepairTasksMail;
 use Illuminate\Support\Facades\Response;
 use Aws\Credentials\Credentials;
+use App\Http\Controllers\ApplicationController;
+use App\Http\Controllers\DocumentController;
 
 
 use App\Imports\MaterialsImport;
@@ -33,10 +35,9 @@ use Maatwebsite\Excel\Facades\Excel;
 
 Route::get('/run-import', function () {
     try {
-        // GEWIJZIGD: We gebruiken nu storage_path('app/materials.xlsx')
-        // Dit vertelt Laravel: "Kijk in de map storage/app naar materials.xlsx"
-        Excel::import(new MaterialsImport, storage_path('app/materials.xlsx'));
         
+        Excel::import(new MaterialsImport, storage_path('app/materials.xlsx'));
+
         return 'Import succesvol voltooid! Check je database.';
     } catch (\Exception $e) {
         return 'Er ging iets mis: ' . $e->getMessage();
@@ -78,51 +79,49 @@ Route::middleware(['auth'])->group(function () {
         }
     })->name('r2.presigned');
 
-   Route::post('/r2/upload-urls', function (Request $request) {
+    Route::post('/r2/upload-urls', function (Request $request) {
 
-    $credentials = new Credentials(
-        env('R2_ACCESS_KEY_ID'),
-        env('R2_SECRET_ACCESS_KEY')
-    );
+        $credentials = new Credentials(
+            env('R2_ACCESS_KEY_ID'),
+            env('R2_SECRET_ACCESS_KEY')
+        );
 
-  $s3 = new S3Client([
-    'region' => 'auto',
-    'version' => 'latest',
-    'endpoint' => env('R2_ENDPOINT'),
-    'use_path_style_endpoint' => true,
-    'bucket_endpoint' => true,
-    'signature_version' => 'v4',
-    'credentials' => new Credentials(
-        env('R2_ACCESS_KEY_ID'),
-        env('R2_SECRET_ACCESS_KEY')
-    ),
-]);
+        $s3 = new S3Client([
+            'region' => 'auto',
+            'version' => 'latest',
+            'endpoint' => env('R2_ENDPOINT'),
+            'use_path_style_endpoint' => true,
+            'bucket_endpoint' => true,
+            'signature_version' => 'v4',
+            'credentials' => new Credentials(
+                env('R2_ACCESS_KEY_ID'),
+                env('R2_SECRET_ACCESS_KEY')
+            ),
+        ]);
 
-    $files = $request->input('files', []);
-    $bucket = env('R2_BUCKET'); // uploads
+        $files = $request->input('files', []);
+        $bucket = env('R2_BUCKET'); // uploads
 
-    $urls = collect($files)->map(function ($name) use ($s3, $bucket) {
+        $urls = collect($files)->map(function ($name) use ($s3, $bucket) {
 
-       $path = uniqid() . '_' . $name;
+            $path = uniqid() . '_' . $name;
 
 
-   $cmd = $s3->getCommand('PutObject', [
-    'Bucket' => env('R2_BUCKET'),
-    'Key'    => $path,
-]);
+            $cmd = $s3->getCommand('PutObject', [
+                'Bucket' => env('R2_BUCKET'),
+                'Key'    => $path,
+            ]);
 
-$request = $s3->createPresignedRequest($cmd, '+5 minutes');
+            $request = $s3->createPresignedRequest($cmd, '+5 minutes');
 
-return [
-    'url' => (string) $request->getUri(), // dit is nu laravel.cloud
-    'path' => $path,
-];
+            return [
+                'url' => (string) $request->getUri(), // dit is nu laravel.cloud
+                'path' => $path,
+            ];
+        });
+
+        return response()->json(['urls' => $urls]);
     });
-
-    return response()->json(['urls' => $urls]);
-});
-
-
 });
 
 Route::get('/r2/test', function () {
@@ -228,12 +227,12 @@ Route::middleware(['auth', 'can:view-logs'])->group(function () {
 Route::middleware(['auth'])->group(function () {
     // 1. Overzicht
     Route::get('/files', [DropboxViewerController::class, 'index'])->name('dossiers.index');
-    
+
     // 🛑 BELANGRIJK: Deze moeten BOVEN de {id} route staan!
-    
+
     // 2. Preview (De viewer pagina)
     Route::get('/files/view', [DropboxViewerController::class, 'preview'])->name('dossiers.view');
-    
+
     // 3. Stream (De data zelf)
     Route::get('/files/stream', [DropboxViewerController::class, 'stream'])->name('dossiers.stream');
 
@@ -279,9 +278,6 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('/r2/register-upload', [R2Controller::class, 'registerUpload'])->name('r2.register');
     Route::get('/r2/check-file', [R2Controller::class, 'checkFile'])->name('r2.check');
-
-
-
 });
 
 Route::middleware(['auth'])->group(function () {
@@ -315,35 +311,47 @@ Route::get('/test-repair-mail', function () {
     return '✅ RepairTasksMail sent successfully. Check your inbox.';
 });
 
-Route::post('/r2/upload', [R2Controller::class, 'uploadFromSW'])->name('r2.upload');
 
 Route::middleware(['auth'])->group(function () {
-    // De Shop Pagina (Lijst met materialen)
-    Route::get('/shop', [ShopController::class, 'index'])->name('shop.index');
+    Route::post('/r2/upload', [R2Controller::class, 'uploadFromSW'])->name('r2.upload');
+});
+
+Route::middleware(['auth'])->group(function () {
+
+    // --- 1. SPECIFIEKE PAGINA'S (Moeten bovenaan staan!) ---
+    
+    // Geschiedenis en Success (geen categorie nodig)
+    Route::get('/shop/{category}/history', [ShopController::class, 'history'])->name('shop.history');
     Route::get('/shop/order-received/{order}', [ShopController::class, 'orderSuccess'])->name('shop.success');
+
+    // Beheer acties (Create/Store/Edit/Update/Destroy)
     Route::get('/shop/create', [ShopController::class, 'create'])->name('shop.create');
     Route::post('/shop', [ShopController::class, 'store'])->name('shop.store');
-    
     Route::get('/shop/{id}/edit', [ShopController::class, 'edit'])->name('shop.edit');
     Route::put('/shop/{id}', [ShopController::class, 'update'])->name('shop.update');
-    
     Route::delete('/shop/{id}', [ShopController::class, 'destroy'])->name('shop.destroy');
-    
-    // Acties voor winkelmandje
+
+    // Winkelwagen acties (Toevoegen/Verwijderen/Update)
     Route::post('/cart/add/{id}', [ShopController::class, 'addToCart'])->name('cart.add');
     Route::post('/cart/update/{id}', [ShopController::class, 'updateCart'])->name('cart.update');
-    Route::get('/cart', [ShopController::class, 'viewCart'])->name('cart.view');
     Route::post('/cart/remove/{id}', [ShopController::class, 'removeFromCart'])->name('cart.remove');
-    
-    // De finale bestelling plaatsen
-    Route::post('/checkout', [ShopController::class, 'checkout'])->name('shop.checkout');
 
-    Route::get('/my-orders', [ShopController::class, 'history'])->name('shop.history');
+
+    // --- 2. DYNAMISCHE SHOP PAGINA'S (Met {category}) ---
+
+    // De Shop bekijken (bv. /shop/fluvius of /shop/handgereedschap)
+    Route::get('/shop/{category}', [ShopController::class, 'index'])->name('shop.index');
+
+    // Winkelmand bekijken van die specifieke shop
+    Route::get('/cart/{category}', [ShopController::class, 'viewCart'])->name('cart.view');
+
+    // Afrekenen voor die specifieke shop
+    Route::post('/checkout/{category}', [ShopController::class, 'checkout'])->name('shop.checkout');
 });
 
 // Je kunt hier later 'mid/tasksdleware' => ['auth', 'role:magazijnier'] aan toevoegen
 Route::prefix('warehouse')->middleware(['auth'])->group(function () {
-    
+
     // Dashboard: Overzicht van alle bestellingen
     Route::get('/', [WarehouseController::class, 'index'])->name('warehouse.index');
 
@@ -352,5 +360,4 @@ Route::prefix('warehouse')->middleware(['auth'])->group(function () {
 
     // Actie 2: Klaar melden (Zet status op 'ready')
     Route::post('/orders/{id}/complete', [WarehouseController::class, 'markAsReady'])->name('warehouse.complete');
-   
 });

@@ -2,9 +2,14 @@
 <div class="container mx-auto px-4 max-w-4xl">
     
     <div class="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
-        <h1 class="text-2xl font-bold text-gray-800">Mijn Bestelhistoriek 📋</h1>
-        <a href="{{ route('shop.index') }}" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition">
-            ← Nieuwe Bestelling
+        {{-- DYNAMISCHE TITEL --}}
+        <h1 class="text-2xl font-bold text-gray-800">
+            {{ ucfirst($category) }} Bestelhistoriek 📋
+        </h1>
+        
+        {{-- KNOP TERUG NAAR DE JUISTE SHOP --}}
+        <a href="{{ route('shop.index', $category) }}" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition">
+            ← Terug naar {{ ucfirst($category) }} Shop
         </a>
     </div>
 
@@ -12,15 +17,22 @@
         <div class="bg-white rounded-lg shadow p-10 text-center">
             <div class="text-5xl mb-4">📭</div>
             <h3 class="text-lg font-semibold text-gray-700">Nog geen bestellingen</h3>
-            <p class="text-gray-500 mb-6">Je hebt nog niets besteld met dit account.</p>
-            <a href="{{ route('shop.index') }}" class="text-[#2ea5d7] hover:underline">Ga naar de shop</a>
+            <p class="text-gray-500 mb-6">Je hebt nog geen {{ $category }} materialen besteld.</p>
+            
+            {{-- LINK NAAR DE JUISTE SHOP --}}
+            <a href="{{ route('shop.index', $category) }}" class="text-[#2ea5d7] hover:underline">
+                Ga naar de {{ ucfirst($category) }} shop
+            </a>
         </div>
     @else
         <div class="space-y-6">
             @foreach($orders as $order)
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                     
-                    <div class="bg-gray-50 px-6 py-4 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    {{-- HEADER VAN DE KAART: KLEUR ACCENT OP BASIS VAN CATEGORIE --}}
+                    <div class="bg-gray-50 px-6 py-4 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 
+                        {{ $category == 'fluvius' ? 'border-l-4 border-l-blue-500' : 'border-l-4 border-l-red-600' }}">
+                        
                         <div>
                             <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Bestelling #{{ $order->id }}</span>
                             <div class="font-bold text-lg text-gray-800">
@@ -56,7 +68,7 @@
                         </div>
                         <div>
                             <span class="block text-xs text-gray-500 uppercase">Voertuig (Nummerplaat)</span>
-                            <span class="font-medium">{{ $order->license_plate }}</span>
+                            <span class="font-medium uppercase">{{ $order->license_plate }}</span>
                         </div>
                     </div>
 

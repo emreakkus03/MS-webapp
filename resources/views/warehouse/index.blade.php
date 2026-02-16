@@ -68,6 +68,7 @@
             <thead>
                 <tr class="bg-gray-200">
                     <th class="border border-gray-300 p-2 text-left">Order #</th>
+                    <th class="border border-gray-300 p-2 text-left">Category</th>
                     <th class="border border-gray-300 p-2 text-left">Aanvraagdatum</th>
                     <th class="border border-gray-300 p-2 text-left">Ploeg </th>
                     <th class="border border-gray-300 p-2 text-left">Afhaaldatum</th>
@@ -80,6 +81,24 @@
                 @forelse($orders as $order)
                 <tr>
                     <td class="border border-gray-300 p-2">{{ $order->id }}</td>
+                    <td class="border border-gray-300 p-2">
+            @php
+                
+                $cat = $order->materials->first()->category ?? 'onbekend';
+            @endphp
+
+            @if(strtolower($cat) == 'fluvius')
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                    ⚡ Fluvius
+                </span>
+            @elseif(strtolower($cat) == 'handgereedschap')
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
+                    🔨 Handgereedschap
+                </span>
+            @else
+                <span class="text-gray-500 text-sm">{{ ucfirst($cat) }}</span>
+            @endif
+        </td>
                     <td class="border border-gray-300 p-2">{{ $order->created_at->format('d-m-Y') }}</td>
                     <td class="border border-gray-300 p-2">{{ $order->team->name ?? 'Ploeg ' . $order->team_id }}</td> 
                     

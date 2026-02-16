@@ -13,7 +13,8 @@ class Material extends Model
         'sap_number',
         'description',
         'unit',
-        'packaging'
+        'packaging',
+        'category',
     ];
 
     /**

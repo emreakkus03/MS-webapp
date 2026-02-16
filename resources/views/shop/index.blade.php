@@ -1,15 +1,16 @@
 <x-layouts.dashboard>
 <div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-8 px-4 sm:px-6 lg:px-8">
     <div class="max-w-7xl mx-auto">
-        <!-- Header -->
         <div class="mb-8">
-            <h1 class="text-4xl font-bold text-slate-900 mb-2">Magazijn Shop 🛠️</h1>
+            {{-- AANPASSING 1: Titel laat nu zien welke shop het is (eerste letter hoofdletter) --}}
+            <h1 class="text-4xl font-bold text-slate-900 mb-2">{{ ucfirst($category) }} Shop 🛠️</h1>
             <p class="text-slate-600">Beheer en bestel materialen uit onze magazijn</p>
         </div>
 
-        <!-- Search & Navigation -->
         <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <form action="{{ route('shop.index') }}" method="GET" class="mb-6">
+            
+            {{-- AANPASSING 2: De categorie meegeven aan de route --}}
+            <form action="{{ route('shop.index', $category) }}" method="GET" class="mb-6">
                 <div class="flex flex-col sm:flex-row gap-3">
                     <input 
                         type="text" 
@@ -29,34 +30,46 @@
 
             <div class="flex flex-col sm:flex-row gap-3">
                 <a 
-                    href="{{ route('shop.history') }}" 
+                    href="{{ route('shop.history', $category) }}"
                     class="flex-1 sm:flex-none bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-center"
                 >
                     📋 Mijn Historiek
                 </a>
-                <a 
-                    href="{{ route('cart.view') }}" 
-                    class="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-center"
-                >
-                    🛒 Winkelmand ({{ count(session('cart', [])) }})
-                </a>
+                
+                @php
+    $sessionKey = 'cart_' . strtolower(trim($category));
+@endphp
+
+<a 
+    href="{{ route('cart.view', $category) }}" 
+    class="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-center"
+>
+    {{-- Nu kijken we zeker naar dezelfde sleutel als de controller --}}
+    🛒 Winkelmand ({{ count(session($sessionKey, [])) }})
+</a>
+                
                 @if(auth()->user()->role === 'admin')
-                    <a href="{{ route('shop.create') }}" class="flex-1 sm:flex-none bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-center">
+                    <a href="{{ route('shop.create', ['category' => $category]) }}" class="flex-1 sm:flex-none bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-center">
                         + Nieuw Materiaal
                     </a>
                 @endif
             </div>
         </div>
 
-        <!-- Materials Table -->
         <div class="bg-white rounded-lg shadow-md overflow-hidden">
             <div class="overflow-x-auto">
+                @php
+    
+    $showPackagingColumn = $materials->pluck('packaging')->filter()->isNotEmpty();
+@endphp
                 <table class="w-full">
                     <thead class="bg-slate-800 text-white">
                         <tr>
                             <th class="px-6 py-4 text-left font-semibold">SAP</th>
                             <th class="px-6 py-4 text-left font-semibold">Omschrijving</th>
-                            <th class="px-6 py-4 text-left font-semibold">Verpakking</th>
+                           @if($showPackagingColumn)
+            <th class="px-6 py-4 text-left font-semibold">Verpakking</th>
+        @endif
                             <th class="px-6 py-4 text-left font-semibold">Actie</th>
                         </tr>
                     </thead>
@@ -65,7 +78,11 @@
                         <tr class="hover:bg-slate-50 transition-colors duration-150">
                             <td class="px-6 py-4 text-slate-900 font-mono font-semibold">{{ $material->sap_number }}</td>
                             <td class="px-6 py-4 text-slate-700">{{ $material->description }}</td>
-                            <td class="px-6 py-4 text-slate-600">{{ $material->packaging }}</td>
+                           @if($showPackagingColumn)
+            <td class="px-6 py-4 text-slate-600">
+                {{ $material->packaging ?? '-' }}
+            </td>
+        @endif
                             <td class="px-6 py-4">
                                 <div class="flex flex-col gap-2">
                                     <form action="{{ route('cart.add', $material->id) }}" method="POST" class="flex items-center gap-2">
@@ -107,7 +124,7 @@
                         @empty
                         <tr>
                             <td colspan="4" class="px-6 py-8 text-center text-slate-600">
-                                Geen materialen gevonden
+                                Geen materialen gevonden in {{ $category }}
                             </td>
                         </tr>
                         @endforelse
@@ -115,9 +132,9 @@
                 </table>
             </div>
 
-            <!-- Pagination -->
             <div class="px-6 py-4 border-t border-slate-200 bg-slate-50">
-                {{ $materials->links() }}
+                {{-- Laravel onthoudt automatisch de query parameters bij links(), maar check even of dit werkt. --}}
+                {{ $materials->appends(['search' => request('search')])->links() }}
             </div>
         </div>
     </div>

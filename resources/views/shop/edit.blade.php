@@ -3,7 +3,8 @@
 
         <div class="flex items-center justify-between mb-6">
             <h1 class="text-2xl font-bold text-gray-800">Materiaal Bewerken</h1>
-            <a href="{{ route('shop.index') }}" class="text-gray-600 hover:text-gray-900 flex items-center gap-1">
+            {{-- Dynamische terugknop naar de juiste shop categorie --}}
+            <a href="{{ route('shop.index', $material->category) }}" class="text-gray-600 hover:text-gray-900 flex items-center gap-1">
                 &larr; Terug naar overzicht
             </a>
         </div>
@@ -11,8 +12,11 @@
         <div class="bg-white rounded-xl shadow p-6">
             <form action="{{ route('shop.update', $material->id) }}" method="POST">
                 @csrf
-                @method('PUT') <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                @method('PUT') 
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     
+                    {{-- 1. BESCHRIJVING --}}
                     <div class="col-span-2">
                         <label for="description" class="block text-sm font-medium text-gray-700">Omschrijving / Naam</label>
                         <input type="text" name="description" id="description" 
@@ -21,7 +25,19 @@
                         @error('description') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
 
-                    <div>
+                    {{-- 2. CATEGORIE (NIEUW!) --}}
+                    <div class="col-span-2 md:col-span-1">
+                        <label for="category" class="block text-sm font-medium text-gray-700">Categorie / Shop</label>
+                        <select name="category" id="category" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#B51D2D] focus:ring-[#B51D2D] sm:text-sm" required>
+                            {{-- We checken of de oude input OF de database waarde gelijk is aan de optie --}}
+                            <option value="fluvius" {{ old('category', $material->category) == 'fluvius' ? 'selected' : '' }}>Fluvius</option>
+                            <option value="handgereedschap" {{ old('category', $material->category) == 'handgereedschap' ? 'selected' : '' }}>Handgereedschap</option>
+                        </select>
+                        @error('category') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+
+                    {{-- 3. SAP NUMMER --}}
+                    <div class="col-span-2 md:col-span-1">
                         <label for="sap_number" class="block text-sm font-medium text-gray-700">SAP Nummer</label>
                         <input type="text" name="sap_number" id="sap_number" 
                                value="{{ old('sap_number', $material->sap_number) }}" 
@@ -29,6 +45,7 @@
                         @error('sap_number') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
 
+                    {{-- 4. VERPAKKING --}}
                     <div>
                         <label for="packaging" class="block text-sm font-medium text-gray-700">Verpakking (Optioneel)</label>
                         <input type="text" name="packaging" id="packaging" 
@@ -37,6 +54,7 @@
                         @error('packaging') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
 
+                    {{-- 5. EENHEID --}}
                     <div>
                         <label for="unit" class="block text-sm font-medium text-gray-700">Eenheid</label>
                         <input type="text" name="unit" id="unit" 
@@ -50,10 +68,10 @@
 
                 <div class="mt-8 flex justify-between items-center">
                     
-                    </div>
+                </div>
                     
                 <div class="flex justify-end gap-3 mt-6">
-                     <a href="{{ route('shop.index') }}" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">
+                     <a href="{{ route('shop.index', $material->category) }}" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium">
                         Annuleren
                     </a>
                     <button type="submit" class="px-4 py-2 bg-[#B51D2D] text-white rounded-lg hover:bg-red-800 text-sm font-medium shadow-sm">

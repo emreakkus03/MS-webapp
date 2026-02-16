@@ -34,6 +34,7 @@ class MaterialsImport implements ToModel, WithStartRow, WithUpserts
             'description' => $row[1], // Kolom B
             'unit'        => $row[2], // Kolom C
             'packaging'   => $row[3], // Kolom D
+            'category'    => $row[4],
         ]);
     }
 

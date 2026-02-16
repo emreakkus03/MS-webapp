@@ -207,16 +207,25 @@
                             </li>
                         @endif
 
-                        <li>
-                            <a href="{{ route('shop.index') }}"
-                                class="flex items-center gap-3 px-4 py-2 rounded-md transition
-           {{ request()->routeIs('shop.*') ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
+                      <li>
+    <a href="{{ route('shop.index', 'fluvius') }}"
+       class="flex items-center gap-3 px-4 py-2 rounded-md transition
+       {{ request()->route('category') == 'fluvius' ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
 
-                                <img src="{{ asset('images/icon/shopping-bag.svg') }}" alt="Logo"
-                                    class="w-7 h-7 text-gray-500">
-                                Bestellen
-                            </a>
-                        </li>
+        <img src="{{ asset('images/icon/shopping-bag.svg') }}" alt="Logo" class="w-7 h-7 text-gray-500">
+        Bestellen Fluvius
+    </a>
+</li>
+
+<li>
+    <a href="{{ route('shop.index', 'handgereedschap') }}"
+       class="flex items-center gap-3 px-4 py-2 rounded-md transition
+       {{ request()->route('category') == 'handgereedschap' ? 'bg-gray-100 text-[#B51D2D] font-bold' : 'text-gray-700 hover:bg-gray-100' }}">
+
+        <img src="{{ asset('images/icon/shopping-bag.svg') }}" alt="Logo" class="w-7 h-7 text-gray-500">
+        Bestellen Handgereedschap
+    </a>
+</li>
 
 
                         @if (Auth::user()->role === 'warehouseman' || Auth::user()->role === 'admin')
@@ -277,7 +286,7 @@
         document.addEventListener("DOMContentLoaded", () => {
             if (window.Echo) {
                 console.log("Echo is ready...");
-const userId = "{{ auth()->id() }}";
+                const userId = "{{ auth()->id() }}";
 
                 // ===========================================================
                 // ✅ NIEUW: IEDEREEN LUISTERT NAAR ZIJN EIGEN TEAM KANAAL
@@ -288,7 +297,7 @@ const userId = "{{ auth()->id() }}";
                         console.log("🔔 Persoonlijke melding (OrderReady):", notification);
                         updateNotifications(notification.message, notification.url);
                     });
-                
+
 
                 @if (auth()->user()->role === 'warehouseman')
                     console.log("📦 Luisteren naar magazijn bestellingen...");

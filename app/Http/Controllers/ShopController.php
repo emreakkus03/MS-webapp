@@ -8,41 +8,58 @@ use App\Models\Team;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail; // 👈 Import
-use App\Mail\NewOrderMail; // 👈 Import
+use Illuminate\Support\Facades\Mail;
+use App\Mail\NewOrderMail;
 use Illuminate\Support\Facades\Log;
-
 use App\Notifications\NewOrderReceived;
-
 use Illuminate\Support\Facades\Notification;
 use App\Models\User;
 
 class ShopController extends Controller
 {
-    // 1. Toon de lijst met materialen (met zoekfunctie!)
-    public function index(Request $request)
+    // 1. Toon de lijst (Gefilterd op categorie: fluvius of handgereedschap)
+    public function index(Request $request, $category)
     {
-        $query = Material::query();
+        // Check voor de zekerheid of de categorie geldig is (optioneel, maar netjes)
+        if (!in_array($category, ['fluvius', 'handgereedschap'])) {
+            // Als iemand een onzin categorie typt, stuur ze naar fluvius (of geef 404)
+            return redirect()->route('shop.index', 'fluvius');
+        }
+
+        $query = Material::where('category', $category);
 
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where('description', 'like', "%$search%")
-                ->orWhere('sap_number', 'like', "%$search%");
+            $query->where(function($q) use ($search) {
+                $q->where('description', 'like', "%$search%")
+                  ->orWhere('sap_number', 'like', "%$search%");
+            });
         }
-
-        // We pagineren per 20 items, anders wordt de pagina te traag
+session(['last_shop_category' => $category]);
         $materials = $query->paginate(20);
 
-        return view('shop.index', compact('materials'));
+        // We geven $category mee zodat de view weet waar we zijn
+        return view('shop.index', compact('materials', 'category'));
     }
 
-    // 2. Voeg item toe aan de sessie (niet database)
+  // 2. Voeg item toe aan de JUISTE sessie
     public function addToCart(Request $request, $id)
     {
         $material = Material::findOrFail($id);
-        $cart = session()->get('cart', []);
+        
+        // BEVEILIGING: Check of het materiaal wel een categorie heeft
+        if (empty($material->category)) {
+            return redirect()->back()->with('error', 'Fout: Dit materiaal heeft geen categorie in de database!');
+        }
 
-        // Als product al in mandje zit, tel aantal op. Anders nieuw toevoegen.
+        // We maken alles kleine letters en halen spaties weg voor de zekerheid
+        $cleanCategory = strtolower(trim($material->category));
+        
+        // De sessie sleutel wordt bv: 'cart_fluvius'
+        $cartKey = 'cart_' . $cleanCategory;
+
+        $cart = session()->get($cartKey, []);
+
         if (isset($cart[$id])) {
             $cart[$id]['quantity'] += $request->quantity;
         } else {
@@ -51,46 +68,74 @@ class ShopController extends Controller
                 'sap' => $material->sap_number,
                 'packaging' => $material->packaging,
                 'unit' => $material->unit,
-                'quantity' => $request->quantity
+                'quantity' => $request->quantity,
+                'category' => $cleanCategory // Sla ook de schone versie op
             ];
         }
 
-        session()->put('cart', $cart);
-        return redirect()->back()->with('success', 'Product toegevoegd aan winkelmand!');
+        session()->put($cartKey, $cart);
+        
+        // Debug regel: haal deze weg als het werkt!
+        // dd(session()->all()); 
+        
+        return redirect()->back()->with('success', 'Product toegevoegd aan ' . ucfirst($cleanCategory) . ' winkelmand!');
     }
 
-    // 3. Bekijk de winkelmand (Checkout pagina)
-    public function viewCart()
+    // 3. Bekijk de winkelmand (Specifiek voor de shop waar je bent)
+    public function viewCart($category)
     {
-        $cart = session()->get('cart', []);
-        return view('shop.cart', compact('cart'));
+        $cartKey = 'cart_' . $category;
+        $cart = session()->get($cartKey, []);
+        
+        return view('shop.cart', compact('cart', 'category'));
     }
 
-    // 4. Verwijder item uit mandje
+    // 4. Verwijder item uit de juiste mand
     public function removeFromCart($id)
     {
-        $cart = session()->get('cart');
+        $material = Material::findOrFail($id);
+        $cartKey = 'cart_' . $material->category;
+
+        $cart = session()->get($cartKey);
         if (isset($cart[$id])) {
             unset($cart[$id]);
-            session()->put('cart', $cart);
+            session()->put($cartKey, $cart);
         }
         return redirect()->back()->with('success', 'Item verwijderd.');
     }
 
-   public function checkout(Request $request)
+    // 5. Update aantallen in de mand
+    public function updateCart(Request $request, $id)
+    {
+        // We moeten even weten in welke mand dit item zit
+        // Omdat we hier geen category in de URL hebben (POST request),
+        // zoeken we het materiaal even op.
+        $material = Material::findOrFail($id);
+        $cartKey = 'cart_' . $material->category;
+
+        $cart = session()->get($cartKey);
+
+        if (isset($cart[$id])) {
+            $cart[$id]['quantity'] = $request->quantity;
+            session()->put($cartKey, $cart);
+            return redirect()->back()->with('success', 'Aantal bijgewerkt!');
+        }
+
+        return redirect()->back()->with('error', 'Product niet gevonden.');
+    }
+
+    // 6. CHECKOUT (Specifiek per shop)
+    public function checkout(Request $request, $category)
     {
         $user = Auth::user();
-        // 🕒 FIX: Haal de tijd expliciet op in Brussel tijdzone
         $nowInBelgium = now()->timezone('Europe/Brussels');
 
         if (in_array($user->role, ['admin', 'warehouseman'])) {
             $dateRule = 'today';
         } else {
-            // Gebruik de Belgische tijd om het uur te checken
             $dateRule = $nowInBelgium->hour >= 13 ? 'tomorrow' : 'today';
         }
         
-        // 1. Validatie
         $request->validate([
             'pickup_date'   => 'required|date|after_or_equal:' . $dateRule,
             'license_plate' => 'required|string',
@@ -98,25 +143,26 @@ class ShopController extends Controller
             'quantities.*'  => 'required|integer|min:1',
         ]);
 
-        $cart = session()->get('cart');
+        // Haal de juiste sessie op
+        $cartKey = 'cart_' . $category;
+        $cart = session()->get($cartKey);
 
         if (!$cart) {
             return redirect()->back()->with('error', 'Je winkelmand is leeg!');
         }
 
-        // 2. Sessie updaten met nieuwe aantallen
+        // Update sessie met laatste aantallen uit formulier
         foreach ($request->quantities as $id => $quantity) {
             if (isset($cart[$id])) {
                 $cart[$id]['quantity'] = $quantity;
             }
         }
-        session()->put('cart', $cart);
+        session()->put($cartKey, $cart);
 
         $teamId = $user->id;
 
-        // 3. Order opslaan in database
+        // DB Transactie
         $order = DB::transaction(function () use ($request, $cart, $teamId) {
-            // A. Maak de Order
             $order = Order::create([
                 'team_id'       => $teamId,
                 'pickup_date'   => $request->pickup_date,
@@ -124,170 +170,128 @@ class ShopController extends Controller
                 'status'        => 'pending'
             ]);
 
-            // B. Koppel materialen
             foreach ($cart as $id => $details) {
                 $order->materials()->attach($id, [
                     'quantity' => $details['quantity'],
                     'ready' => false
                 ]);
             }
-
             return $order;
         });
 
-        // 4. In-App Notificatie naar Magazijniers
+        // Notificaties
         $warehouseUsers = Team::whereIn('role', ['warehouseman', 'admin'])->get();
-
         if ($warehouseUsers->count() > 0) {
             Notification::send($warehouseUsers, new NewOrderReceived($order));
         }
 
-        // ---------------------------------------------------------
-        // 📧 5. NIEUW: MAIL NAAR MAGAZIJNIER
-        // ---------------------------------------------------------
-        $magazijnEmail = 'magazijn2@msinfra.be'; // 👈 Pas aan naar het juiste adres!
+        // Mail sturen
+        // Wil je dat ALLES naar hetzelfde adres gaat? Of apart?
+        // Nu gaat alles naar magazijn2. Als je apart wil, kan ik hier een if-je zetten.
+        $magazijnEmail = 'magazijn2@msinfra.be'; 
 
         try {
-            // We laden de materialen en het team in zodat de mail deze info kent
             $order->load(['materials', 'team']); 
-
             Mail::to($magazijnEmail)->send(new NewOrderMail($order));
         } catch (\Exception $e) {
-            // We loggen de fout, maar laten de gebruiker wel doorgaan naar het succes scherm
-            Log::error('Bestelmail kon niet verzonden worden: ' . $e->getMessage());
+            Log::error('Bestelmail fout: ' . $e->getMessage());
         }
-        // ---------------------------------------------------------
 
-        // 6. Winkelmand legen en afronden
-        session()->forget('cart');
+        // Alleen DEZE mand legen
+        session()->forget($cartKey);
 
         return redirect()->route('shop.success', $order->id);
     }
+
+    // Success pagina
     public function orderSuccess(Order $order)
     {
-        // Check voor de zekerheid of de order wel van dit team is (veiligheid)
         if (Auth::user()->id !== $order->team_id && Auth::user()->role !== 'admin') {
             abort(403);
         }
-
         return view('shop.success', compact('order'));
     }
-    // Voeg deze functie toe in je ShopController class
-    public function updateCart(Request $request, $id)
-    {
-        $cart = session()->get('cart');
 
-        if (isset($cart[$id])) {
-            // Update het aantal met de nieuwe waarde uit de input
-            $cart[$id]['quantity'] = $request->quantity;
-
-            session()->put('cart', $cart);
-            return redirect()->back()->with('success', 'Aantal bijgewerkt!');
-        }
-
-        return redirect()->back()->with('error', 'Product niet gevonden in mandje.');
-    }
-
-    public function history()
+    // History
+    public function history($category)
     {
         $user = Auth::user();
 
-        // Haal orders op waar team_id gelijk is aan de user id
-        // We laden meteen de 'materials' mee om N+1 problemen te voorkomen (sneller)
+        // Check op geldige categorie (veiligheid)
+        if (!in_array($category, ['fluvius', 'handgereedschap'])) {
+            return redirect()->route('shop.index', 'fluvius');
+        }
+
         $orders = Order::where('team_id', $user->id)
+            // HIER IS DE MAGIE: Filter orders op basis van de materialen die erin zitten
+            ->whereHas('materials', function ($query) use ($category) {
+                $query->where('category', $category);
+            })
             ->with('materials')
-            ->orderBy('created_at', 'desc') // Nieuwste bovenaan
+            ->orderBy('created_at', 'desc')
             ->get();
 
-        return view('shop.history', compact('orders'));
+        // We sturen de category mee naar de view
+        return view('shop.history', compact('orders', 'category'));
     }
+
+    // --- ADMIN CRUD ---
 
     public function create()
     {
-        // BEVEILIGING: Alleen admins mogen hierin
-        if (Auth::user()->role !== 'admin') {
-            abort(403, 'Alleen beheerders mogen materialen toevoegen.');
-        }
-
+        if (Auth::user()->role !== 'admin') abort(403);
         return view('shop.create');
     }
 
-    // 2. Sla het nieuwe materiaal op in de database (POST)
     public function store(Request $request)
     {
-        if (Auth::user()->role !== 'admin') {
-            abort(403);
-        }
+        if (Auth::user()->role !== 'admin') abort(403);
 
-        // Validatie: zorg dat alles is ingevuld en het SAP nummer uniek is
         $request->validate([
             'description' => 'required|string|max:255',
             'sap_number'  => 'required|string|unique:materials,sap_number',
-            'unit'        => 'required|string|max:10', // bijv. stuks, kg, doos
-            'packaging'   => 'nullable|string|max:50', // bijv. per 10 verpakt
-            'image'       => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Optioneel: foto upload
+            'unit'        => 'required|string|max:10',
+            // Zorg dat je in je formulier een select menu hebt voor category: fluvius of handgereedschap
+            'category'    => 'required|string', 
         ]);
 
-        // Opslaan
-        Material::create([
-            'description' => $request->description,
-            'sap_number'  => $request->sap_number,
-            'unit'        => $request->unit,
-            'packaging'   => $request->packaging,
-            // Als je images hebt, zou je hier de path opslaan, anders null
-        ]);
+        Material::create($request->all());
 
-        return redirect()->route('shop.index')->with('success', 'Nieuw materiaal succesvol toegevoegd!');
+        // Redirect naar de juiste shop index
+        return redirect()->route('shop.index', $request->category)->with('success', 'Materiaal toegevoegd!');
     }
 
-    // 3. Toon het formulier om te wijzigen
     public function edit($id)
     {
-        if (Auth::user()->role !== 'admin') {
-            abort(403);
-        }
-
+        if (Auth::user()->role !== 'admin') abort(403);
         $material = Material::findOrFail($id);
         return view('shop.edit', compact('material'));
     }
 
-    // 4. Update de wijzigingen in de database (PUT/PATCH)
     public function update(Request $request, $id)
     {
-        if (Auth::user()->role !== 'admin') {
-            abort(403);
-        }
-
+        if (Auth::user()->role !== 'admin') abort(403);
         $material = Material::findOrFail($id);
 
         $request->validate([
             'description' => 'required|string|max:255',
-            // Bij update: check uniek SAP nummer, maar negeer het huidige ID van dit materiaal
             'sap_number'  => 'required|string|unique:materials,sap_number,' . $material->id,
             'unit'        => 'required|string',
-            'packaging'   => 'nullable|string',
+            'category'    => 'required|string',
         ]);
 
-        $material->update([
-            'description' => $request->description,
-            'sap_number'  => $request->sap_number,
-            'unit'        => $request->unit,
-            'packaging'   => $request->packaging,
-        ]);
+        $material->update($request->all());
 
-        return redirect()->route('shop.index')->with('success', 'Materiaal is bijgewerkt.');
+        return redirect()->route('shop.index', $request->category)->with('success', 'Materiaal bijgewerkt.');
     }
 
-    // 5. Verwijder materiaal uit de database (DELETE)
     public function destroy($id)
     {
-        if (Auth::user()->role !== 'admin') {
-            abort(403);
-        }
-
+        if (Auth::user()->role !== 'admin') abort(403);
         $material = Material::findOrFail($id);
+        $cat = $material->category; // Onthouden voor redirect
         $material->delete();
 
-        return redirect()->route('shop.index')->with('success', 'Materiaal is verwijderd.');
+        return redirect()->route('shop.index', $cat)->with('success', 'Materiaal verwijderd.');
     }
 }
