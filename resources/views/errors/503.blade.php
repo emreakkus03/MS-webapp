@@ -66,11 +66,9 @@
         <div class="icon">🔧</div>
         <h1>Even geduld a.u.b.</h1>
         <p>We voeren een korte update uit om de app te verbeteren.</p>
-        <p>Dit duurt maximaal <strong>5 minuten</strong>.</p>
+        <p>Dit duurt maximaal <strong>1 uur</strong>.</p>
 
-        <div class="timer">
-            ⏱️ <span id="countdown">5:00</span>
-        </div>
+        
 
         <p class="subtitle">
             De pagina herlaadt automatisch wanneer de update klaar is.

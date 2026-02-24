@@ -32,6 +32,12 @@ use App\Http\Controllers\DocumentController;
 use App\Imports\MaterialsImport;
 use Maatwebsite\Excel\Facades\Excel;
 
+Route::middleware(['auth'])->group(function () {
+    Route::get('/csrf-token', function () {
+        return response()->json(['token' => csrf_token()]);
+    })->name('csrf.token');
+});
+
 Route::middleware(['auth'])->group(function () { 
     Route::get('/run-import', function () {
         try {

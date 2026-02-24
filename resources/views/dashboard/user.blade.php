@@ -250,981 +250,781 @@
             class="max-h-[90%] max-w-[90%] rounded shadow-lg border-4 border-white transition-transform duration-300" />
     </div>
 
-    @push('scripts')
-        <script>
-            let overlay = null;
 
-            function showGlobalUploadProgress(current, total, filename) {
-                if (!overlay) {
-                    overlay = document.createElement("div");
-                    overlay.className = "fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center";
-                    overlay.innerHTML = `
-            <div class="bg-white p-5 rounded-xl shadow-xl text-center">
-                <h3 class="text-lg font-bold mb-2">Foto's worden geüpload...</h3>
-                <p id="uploadStatus" class="text-sm text-gray-600 mb-2"></p>
-                <div class="w-64 bg-gray-300 rounded h-3">
-                    <div id="uploadBar" class="h-3 bg-green-500 rounded" style="width: 0%"></div>
-                </div>
-            </div>`;
-                    document.body.appendChild(overlay);
-                }
+{{-- 
+    ============================================================
+    VERVANG ALLES TUSSEN @push('scripts') ... @endpush 
+    EN het <script type="module"> blok met onderstaande code
+    ============================================================
+--}}
 
-                const percent = Math.floor((current / total) * 100);
-                document.getElementById("uploadStatus").textContent =
-                    `${current}/${total} • ${filename}`;
-                document.getElementById("uploadBar").style.width = percent + "%";
-            }
+@push('scripts')
+<script>
+    // ============================================================
+    // 🔹 GLOBALE VARIABELEN (beschikbaar in ALLE scripts)
+    // ============================================================
+    let overlay = null;
 
-            function hideGlobalUploadProgress() {
-                if (overlay) {
-                    overlay.remove();
-                    overlay = null;
-                }
-            }
+    // 👇 FIX: showToast als globale functie (was dubbel gedefinieerd)
+    window.showToast = function(message, duration = 4000) {
+        const toast = document.createElement("div");
+        toast.textContent = message;
+        toast.className = "fixed bottom-5 right-5 bg-gray-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm z-50";
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), duration);
+    };
 
-            if (navigator.serviceWorker) {
-                navigator.serviceWorker.addEventListener("message", (event) => {
-                    const msg = event.data;
-                    if (!msg) return;
-
-                    if (msg.type === "QUEUED") {
-                        console.log(`📥 In wachtrij geplaatst: ${msg.file}`);
-                    }
-
-                    if (msg.type === "PROGRESS") {
-                        showGlobalUploadProgress(msg.current, msg.total, msg.name);
-                    }
-
-                    if (msg.type === "UPLOADED") {
-                        console.log(`☁️ Geüpload naar R2: ${msg.name}`);
-                    }
-
-                    if (msg.type === "COMPLETE") {
-                        hideGlobalUploadProgress();
-                        showToast("✨ Server update: Alle foto's zijn veilig aangekomen!", 5000);
-                    }
-                });
-            }
-
-
-
-
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(reg => {
-                        console.log("SW geregistreerd:", reg.scope);
-
-                        // 👇 DIT IS DE TOEVOEGING
-                        // Check direct bij het openen van de app of er nog iets in de wachtrij staat
-                        if (reg.sync) {
-                            // We registreren de sync opnieuw. Als er niets in de queue zit, doet dit niks (veilig).
-                            // Als er wél iets zit, wordt het nu direct geüpload.
-                            reg.sync.register("sync-r2-uploads")
-                                .catch(err => console.warn("Kon sync niet triggeren bij start:", err));
-                        }
-                        // 👆 EINDE TOEVOEGING
-
-                        // ... hier staat je updatefound code ...
-
-                        // Als een nieuwe SW klaar is om te activeren
-                        reg.addEventListener('updatefound', () => {
-                            const newSW = reg.installing;
-
-                            newSW.addEventListener('statechange', () => {
-                                if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                                    console.log("Nieuwe service worker beschikbaar — herladen...");
-                                    window.location.reload();
-                                }
-                            });
-                        });
-
-                        // Als de service worker actief wordt en control krijgt
-                        navigator.serviceWorker.addEventListener('controllerchange', () => {
-                            console.log("🔥 SW heeft nu control over de pagina");
-                            window.location.reload();
-                        });
-                    });
-            }
-
-
-            // In x-layouts.dashboard (of je blade file)
-
-window.addEventListener("online", () => {
-    console.log("📶 Verbinding hersteld! Directe sync forceren...");
-
-    // 1. Stuur een DIRECT commando naar de SW (Dit is de snelle fix)
-    sendToSW({ type: "FORCE_PROCESS" });
-
-    // 2. Als backup: registreer ook de background sync (voor als je tabblad net sluit)
-    navigator.serviceWorker.ready.then(reg => {
-        if(reg.sync) {
-            reg.sync.register("sync-r2-uploads").catch(console.warn);
+    // 👇 FIX: sendToSW als globale functie (was alleen in module scope)
+    window.sendToSW = async function(msg) {
+        if (!navigator.serviceWorker) {
+            console.error("❌ Service Workers niet ondersteund.");
+            return;
         }
-    });
-});
-        </script>
-    @endpush
+        const reg = await navigator.serviceWorker.ready;
+        if (reg.active) {
+            reg.active.postMessage(msg);
+        } else if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage(msg);
+        } else {
+            console.warn("⚠️ Geen SW controller gevonden.");
+        }
+    };
 
+    // ============================================================
+    // 🔹 IndexedDB functies (ZELFDE als in SW — shared logic)
+    //    Dit is FIX 1: Main thread schrijft DIRECT naar IndexedDB
+    // ============================================================
+    const DB_NAME = "R2UploadDB";
+    const STORE = "pending";
 
-    <script type="module">
-        navigator.serviceWorker.addEventListener("controllerchange", () => {
-            console.log("🔥 SW heeft nu control → opnieuw laden");
-            window.location.reload();
+    window.openUploadDB = function() {
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(DB_NAME, 2);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE)) {
+                    const store = db.createObjectStore(STORE, { keyPath: "id", autoIncrement: true });
+                    store.createIndex("by_task_name", ["task_id", "name", "adres_path"], { unique: false });
+                }
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = (e) => reject(e.target.error);
+        });
+    };
+
+    window.addToUploadQueue = async function(data) {
+        const db = await openUploadDB();
+
+        // Deduplicatie check
+        const allItems = await new Promise((resolve) => {
+            const tx = db.transaction(STORE, "readonly");
+            const req = tx.objectStore(STORE).getAll();
+            req.onsuccess = () => resolve(req.result);
         });
 
+        const exists = allItems.find(item =>
+            item.name === data.name &&
+            item.task_id === data.task_id &&
+            item.adres_path === data.adres_path
+        );
 
-        window.showToast = function(message, duration = 4000) {
-            const toast = document.createElement("div");
-            toast.textContent = message;
-            toast.className =
-                "fixed bottom-5 right-5 bg-gray-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm";
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), duration);
+        if (exists) {
+            console.log(`⚠️ Main: Dubbel genegeerd: '${data.name}' voor task ${data.task_id}`);
+            return false;
+        }
+
+        // Blob naar ArrayBuffer converteren voor opslag
+        let blobData;
+        if (data.blob instanceof Blob) {
+            blobData = await data.blob.arrayBuffer();
+        } else {
+            blobData = data.blob;
+        }
+
+        const clean = {
+            name: data.name,
+            fileType: data.fileType,
+            task_id: data.task_id,
+            namespace_id: data.namespace_id,
+            adres_path: data.adres_path,
+            blob: blobData,
+            addedAt: Date.now()
         };
-        /**
-         * 🛠️ Stuurt een bericht naar de Service Worker (SW).
-         * Wacht netjes als de SW nog aan het opstarten is.
-         */
-        async function sendToSW(msg) {
-            if (!navigator.serviceWorker) {
-                console.error("❌ Service Workers worden niet ondersteund in deze browser.");
+
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE, "readwrite");
+            const store = tx.objectStore(STORE);
+            const req = store.add(clean);
+            req.onsuccess = () => {
+                console.log(`✅ Main: '${data.name}' opgeslagen in IndexedDB`);
+                resolve(true);
+            };
+            req.onerror = (e) => {
+                console.error(`❌ Main: Kon '${data.name}' niet opslaan:`, e);
+                reject(e);
+            };
+        });
+    };
+
+    window.getUploadQueueCount = async function() {
+        const db = await openUploadDB();
+        return new Promise((resolve) => {
+            const tx = db.transaction(STORE, "readonly");
+            const req = tx.objectStore(STORE).count();
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => resolve(0);
+        });
+    };
+
+    // ============================================================
+    // 🔹 Upload Progress UI
+    // ============================================================
+    function showGlobalUploadProgress(current, total, filename) {
+        if (!overlay) {
+            overlay = document.createElement("div");
+            overlay.className = "fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center";
+            overlay.innerHTML = `
+                <div class="bg-white p-5 rounded-xl shadow-xl text-center">
+                    <h3 class="text-lg font-bold mb-2">Foto's worden geüpload...</h3>
+                    <p id="uploadStatus" class="text-sm text-gray-600 mb-2"></p>
+                    <div class="w-64 bg-gray-300 rounded h-3">
+                        <div id="uploadBar" class="h-3 bg-green-500 rounded" style="width: 0%"></div>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+        }
+        const percent = Math.floor((current / total) * 100);
+        document.getElementById("uploadStatus").textContent = `${current}/${total} • ${filename}`;
+        document.getElementById("uploadBar").style.width = percent + "%";
+    }
+
+    function hideGlobalUploadProgress() {
+        if (overlay) {
+            overlay.remove();
+            overlay = null;
+        }
+    }
+
+    // ============================================================
+    // 🔹 Service Worker berichten ontvangen
+    // ============================================================
+    if (navigator.serviceWorker) {
+        navigator.serviceWorker.addEventListener("message", (event) => {
+            const msg = event.data;
+            if (!msg) return;
+
+            if (msg.type === "QUEUED") {
+                console.log(`📥 In wachtrij: ${msg.file}`);
+            }
+            if (msg.type === "PROGRESS") {
+                showGlobalUploadProgress(msg.current, msg.total, msg.name);
+            }
+            if (msg.type === "UPLOADED") {
+                console.log(`☁️ Geüpload: ${msg.name}`);
+            }
+            if (msg.type === "UPLOAD_PARTIAL") {
+                console.warn(`⚠️ Deels geüpload: ${msg.name} — ${msg.reason}`);
+            }
+            if (msg.type === "COMPLETE") {
+                hideGlobalUploadProgress();
+                if (msg.remaining > 0) {
+                    showToast(`📦 ${msg.uploaded} geüpload, ${msg.remaining} wachten nog...`, 5000);
+                } else {
+                    showToast("✅ Alle foto's zijn geüpload!", 5000);
+                }
+            }
+        });
+    }
+
+    // ============================================================
+    // 🔹 Service Worker registratie (FIX 5: geen auto-reload)
+    // ============================================================
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .then(reg => {
+                console.log("SW geregistreerd:", reg.scope);
+
+                // Check of er nog uploads in de queue staan
+                if (reg.sync) {
+                    reg.sync.register("sync-r2-uploads").catch(console.warn);
+                }
+
+                // 👇 FIX 5: GEEN automatische reload meer
+                reg.addEventListener('updatefound', () => {
+                    const newSW = reg.installing;
+                    newSW.addEventListener('statechange', () => {
+                        if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                            // Toon melding in plaats van te reloaden
+                            showToast("🔄 Update beschikbaar. Herlaad wanneer je klaar bent.", 8000);
+                        }
+                    });
+                });
+            });
+    }
+
+    // ============================================================
+    // 🔹 Online herstel (FIX: sendToSW is nu globaal beschikbaar)
+    // ============================================================
+    window.addEventListener("online", async () => {
+        console.log("📶 Verbinding hersteld!");
+
+        // Check of er items in de queue staan
+        const count = await getUploadQueueCount();
+        if (count > 0) {
+            console.log(`📦 ${count} items in queue, forceer verwerking...`);
+            showToast(`📶 Online! ${count} foto's worden nu geüpload...`, 4000);
+            sendToSW({ type: "FORCE_PROCESS" });
+        }
+
+        // Backup: background sync
+        navigator.serviceWorker.ready.then(reg => {
+            if (reg.sync) {
+                reg.sync.register("sync-r2-uploads").catch(console.warn);
+            }
+        });
+    });
+
+    // ============================================================
+    // 🔹 Periodieke check: als er items in IDB staan, trigger SW
+    // ============================================================
+    setInterval(async () => {
+        const count = await getUploadQueueCount();
+        if (count > 0 && navigator.onLine) {
+            console.log(`⏰ Periodieke check: ${count} items wachten, trigger SW...`);
+            sendToSW({ type: "PROCESS_QUEUE" });
+        }
+    }, 60000); // Elke minuut checken
+</script>
+@endpush
+
+<script type="module">
+    // ============================================================
+    // Module-scoped code (imports etc.)
+    // ============================================================
+
+    import imageCompression from "https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/+esm";
+
+    // Wake Lock
+    if ("wakeLock" in navigator) {
+        let wakeLock = null;
+        async function requestWakeLock() {
+            try {
+                wakeLock = await navigator.wakeLock.request("screen");
+                console.log("🔋 Wake Lock actief");
+                wakeLock.addEventListener("release", () => console.log("💤 Wake Lock vrijgegeven"));
+            } catch (err) {
+                console.warn("⚠️ Wake Lock niet toegestaan:", err);
+            }
+        }
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible" && !wakeLock) requestWakeLock();
+        });
+        requestWakeLock();
+    }
+
+    // ============================================================
+    // Tijdelijke adresmap check
+    // ============================================================
+    function checkTempAdres() {
+        const data = localStorage.getItem("tempAdresFolder");
+        if (!data) return;
+        try {
+            const temp = JSON.parse(data);
+            if (Date.now() > temp.expiresAt) {
+                localStorage.removeItem("tempAdresFolder");
                 return;
             }
-
-            // 1. Wacht tot de SW 'ready' is (geïnstalleerd & actief)
-            const reg = await navigator.serviceWorker.ready;
-
-            // 2. Check of er een controller is
-            if (reg.active) {
-                // Gebruik reg.active.postMessage in plaats van navigator.serviceWorker.controller
-                // Dit is veiliger omdat reg.active altijd de actieve worker van deze scope is.
-                reg.active.postMessage(msg);
-            } else if (navigator.serviceWorker.controller) {
-                // Fallback
-                navigator.serviceWorker.controller.postMessage(msg);
-            } else {
-                // 3. Noodgeval: forceer reload als er echt geen controller is na 'ready'
-                console.warn("⚠️ Wel SW ready, maar geen controller. Pagina wordt herladen...");
-                window.location.reload();
-            }
+            const input = document.getElementById("adresComboInput");
+            const select = document.getElementById("adresSelect");
+            input.value = temp.name;
+            select.innerHTML = `<option value="${temp.path}" data-namespace="${temp.namespace}" selected>${temp.name}</option>`;
+            select.disabled = false;
+        } catch (err) {
+            localStorage.removeItem("tempAdresFolder");
         }
+    }
+    document.addEventListener("DOMContentLoaded", checkTempAdres);
 
-        import imageCompression from "https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/+esm";
+    // ============================================================
+    // Dropbox cascade loaders (ongewijzigd)
+    // ============================================================
+    async function loadPercelen() {
+        let res = await fetch("/dropbox/percelen");
+        let data = await res.json();
+        let perceelSelect = document.getElementById("perceelSelect");
+        perceelSelect.innerHTML = "<option value=''>-- Kies type werk --</option>";
+        data.forEach(p => {
+            let displayName = p.name;
+            if (p.name.toLowerCase().includes("perceel 1")) displayName = "Aansluitingen";
+            else if (p.name.toLowerCase().includes("perceel 2")) displayName = "Graafwerk";
+            perceelSelect.innerHTML += `<option value="${p.id}" data-type="${p.type}" data-original="${p.name}">${displayName}</option>`;
+        });
+    }
 
-        // 💤 Voorkom dat uploads pauzeren als scherm uitgaat (Android wake lock)
-        if ("wakeLock" in navigator) {
-            let wakeLock = null;
-
-            async function requestWakeLock() {
-                try {
-                    wakeLock = await navigator.wakeLock.request("screen");
-                    console.log("🔋 Wake Lock actief — scherm blijft aan tijdens upload");
-                    wakeLock.addEventListener("release", () => {
-                        console.log("💤 Wake Lock vrijgegeven");
-                    });
-                } catch (err) {
-                    console.warn("⚠️ Wake Lock niet toegestaan:", err);
-                }
-            }
-
-            // Automatisch activeren bij uploadstart of focus
-            document.addEventListener("visibilitychange", () => {
-                if (document.visibilityState === "visible" && !wakeLock) {
-                    requestWakeLock();
-                }
+    async function loadRegios(id, type) {
+        let res = await fetch(`/dropbox/regios?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}`);
+        let data = await res.json();
+        let regioSelect = document.getElementById("regioSelect");
+        regioSelect.innerHTML = "<option value=''>-- Kies map --</option>";
+        let webappOnly = data.filter(r => r.name && r.name.toLowerCase().includes("webapp uploads"));
+        if (webappOnly.length > 0) {
+            webappOnly.forEach(r => {
+                regioSelect.innerHTML += `<option value="${r.path}" data-namespace="${r.namespace}">${r.name}</option>`;
             });
-
-            // Initieel aanvragen
-            requestWakeLock();
+            regioSelect.disabled = false;
+            regioSelect.value = webappOnly[0].path;
+        } else {
+            regioSelect.innerHTML = "<option value=''>Geen 'Webapp uploads' map gevonden</option>";
+            regioSelect.disabled = true;
         }
+    }
 
+    // --- Adressen laden ---
+    let currentAdresCursor = null;
+    let currentNamespaceId = null;
+    let currentRegioPath = null;
+    let allAdressen = [];
 
-        // ===============================================
-        // 🔹 Tijdelijke adresmap: checken en herstellen
-        // ===============================================
-        function checkTempAdres() {
-            const data = localStorage.getItem("tempAdresFolder");
-            if (!data) return;
+    async function loadAdressen(namespaceId, regioPath, cursor = null, search = "") {
+        let url = `/dropbox/adressen?namespace_id=${encodeURIComponent(namespaceId)}&path=${encodeURIComponent(regioPath)}`;
+        if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        let res = await fetch(url);
+        let data = await res.json();
+        if (!cursor) allAdressen = [];
+        allAdressen = allAdressen.concat(data.entries);
+        renderAdresDropdown(allAdressen);
+        document.getElementById("adresComboInput").disabled = false;
+        currentAdresCursor = data.cursor;
+        currentNamespaceId = namespaceId;
+        currentRegioPath = regioPath;
+        let loadMoreBtn = document.getElementById("loadMoreAdressenBtn");
+        loadMoreBtn.classList.toggle("hidden", !data.has_more);
+    }
 
-            try {
-                const temp = JSON.parse(data);
+    function renderAdresDropdown(adressen) {
+        let dropdown = document.getElementById("adresDropdown");
+        dropdown.innerHTML = "";
+        adressen.forEach(a => {
+            let div = document.createElement("div");
+            div.className = "px-3 py-2 hover:bg-gray-100 cursor-pointer";
+            div.textContent = a.name;
+            div.dataset.path = a.path;
+            div.dataset.namespace = a.namespace;
+            div.addEventListener("click", () => {
+                document.getElementById("adresComboInput").value = a.name;
+                let select = document.getElementById("adresSelect");
+                select.innerHTML = `<option value="${a.path}" data-namespace="${a.namespace}" selected>${a.name}</option>`;
+                dropdown.classList.add("hidden");
+            });
+            dropdown.appendChild(div);
+        });
+    }
 
-                // ✅ Check of map nog geldig is (10 minuten)
-                if (Date.now() > temp.expiresAt) {
-                    console.log("🕒 Tijdelijke map verlopen — verwijderen");
-                    localStorage.removeItem("tempAdresFolder");
-                    return;
-                }
+    document.getElementById("adresComboInput").addEventListener("input", (e) => {
+        let term = e.target.value.trim();
+        if (currentNamespaceId && currentRegioPath) loadAdressen(currentNamespaceId, currentRegioPath, null, term);
+        document.getElementById("adresDropdown").classList.remove("hidden");
+    });
+    document.getElementById("adresComboInput").addEventListener("focus", () => {
+        document.getElementById("adresDropdown").classList.remove("hidden");
+    });
+    document.addEventListener("click", (e) => {
+        if (!e.target.closest("#adresDropdown") && e.target.id !== "adresComboInput") {
+            document.getElementById("adresDropdown").classList.add("hidden");
+        }
+    });
+    document.getElementById("loadMoreAdressenBtn").addEventListener("click", () => {
+        if (currentAdresCursor) loadAdressen(currentNamespaceId, currentRegioPath, currentAdresCursor);
+    });
+    document.getElementById("perceelSelect").addEventListener("change", (e) => {
+        let opt = e.target.options[e.target.selectedIndex];
+        if (opt.value && opt.dataset.type) loadRegios(opt.value, opt.dataset.type);
+    });
 
-                // 🔹 Nog geldig → toon deze map in dropdown
+    // Regio → laad adressen
+    document.getElementById("regioSelect").addEventListener("change", (e) => {
+        let opt = e.target.options[e.target.selectedIndex];
+        if (opt.value && opt.dataset.namespace) {
+            loadAdressen(opt.dataset.namespace, opt.value);
+        }
+    });
+
+    // Nieuwe adresmap
+    document.getElementById("newAdresBtn").addEventListener("click", async () => {
+        const regioSelect = document.getElementById("regioSelect");
+        const webappOption = [...regioSelect.options].find(opt => opt.textContent.toLowerCase().includes("webapp uploads"));
+        if (!webappOption) { alert("Map 'Webapp uploads' niet gevonden."); return; }
+
+        const regioPath = webappOption.value;
+        const namespaceId = webappOption.dataset.namespace;
+        const name = prompt("Naam nieuwe adresmap:");
+        if (!name) return;
+
+        let safeName = name.replace(/,/g, '').replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, ' ').trim();
+        if (!safeName) { alert("Ongeldige mapnaam."); return; }
+
+        try {
+            const res = await fetch("{{ route('dropbox.create_adres') }}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({ namespace_id: namespaceId, path: regioPath, adres: safeName })
+            });
+            const json = await res.json();
+            if (res.status === 201 && json.success) {
+                alert(json.message || "Adresmap aangemaakt.");
                 const input = document.getElementById("adresComboInput");
                 const select = document.getElementById("adresSelect");
-
-                input.value = temp.name;
-                select.innerHTML = `
-            <option value="${temp.path}" data-namespace="${temp.namespace}" selected>
-                ${temp.name}
-            </option>`;
+                input.value = json.folder.name;
+                select.innerHTML = `<option value="${json.folder.path}" data-namespace="${json.folder.namespace}" selected>${json.folder.name}</option>`;
                 select.disabled = false;
-            } catch (err) {
-                console.error("❌ Fout bij lezen tijdelijke map:", err);
-                localStorage.removeItem("tempAdresFolder");
-            }
-        }
-
-        // 🔸 Controleer tijdelijke map bij pagina-load
-        document.addEventListener("DOMContentLoaded", checkTempAdres);
-
-        async function loadPercelen() {
-            let res = await fetch("/dropbox/percelen");
-            let data = await res.json();
-            let perceelSelect = document.getElementById("perceelSelect");
-            perceelSelect.innerHTML = "<option value=''>-- Kies type werk --</option>";
-
-            data.forEach(p => {
-                let displayName = p.name;
-                if (p.name.toLowerCase().includes("perceel 1")) {
-                    displayName = "Aansluitingen";
-                } else if (p.name.toLowerCase().includes("perceel 2")) {
-                    displayName = "Graafwerk";
-                }
-
-                perceelSelect.innerHTML +=
-                    `<option value="${p.id}" data-type="${p.type}" data-original="${p.name}">${displayName}</option>`;
-
-            });
-        }
-
-        async function loadRegios(id, type) {
-            let res = await fetch(`/dropbox/regios?id=${encodeURIComponent(id)}&type=${encodeURIComponent(type)}`);
-            let data = await res.json();
-            let regioSelect = document.getElementById("regioSelect");
-            regioSelect.innerHTML = "<option value=''>-- Kies map --</option>";
-
-            // 🔹 Zoek expliciet naar "Webapp uploads"
-            let webappOnly = data.filter(r =>
-                r.name && r.name.toLowerCase().includes("webapp uploads")
-            );
-
-            if (webappOnly.length > 0) {
-                // ✅ Toon alleen Webapp uploads
-                webappOnly.forEach(r => {
-                    regioSelect.innerHTML +=
-                        `<option value="${r.path}" data-namespace="${r.namespace}">${r.name}</option>`;
-                });
-
-                regioSelect.disabled = false;
-
-                // ✅ Automatisch selecteren
-                regioSelect.value = webappOnly[0].path;
-            } else {
-                // ❌ Geen Webapp uploads → zet melding in de dropdown
-                regioSelect.innerHTML = "<option value=''>Geen 'Webapp uploads' map gevonden</option>";
-                regioSelect.disabled = true;
-            }
-        }
-
-
-
-        // --- Adressen laden ---
-        let currentAdresCursor = null;
-        let currentNamespaceId = null;
-        let currentRegioPath = null;
-        let allAdressen = [];
-
-        async function loadAdressen(namespaceId, regioPath, cursor = null, search = "") {
-            let url =
-                `/dropbox/adressen?namespace_id=${encodeURIComponent(namespaceId)}&path=${encodeURIComponent(regioPath)}`;
-            if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
-            if (search) url += `&search=${encodeURIComponent(search)}`;
-
-            let res = await fetch(url);
-            let data = await res.json();
-
-            if (!cursor) allAdressen = [];
-            allAdressen = allAdressen.concat(data.entries);
-
-            renderAdresDropdown(allAdressen);
-
-            document.getElementById("adresComboInput").disabled = false;
-
-            currentAdresCursor = data.cursor;
-            currentNamespaceId = namespaceId;
-            currentRegioPath = regioPath;
-
-            // "meer laden" knop tonen/verbergen
-            let loadMoreBtn = document.getElementById("loadMoreAdressenBtn");
-            if (data.has_more) {
-                loadMoreBtn.classList.remove("hidden");
-            } else {
-                loadMoreBtn.classList.add("hidden");
-            }
-        }
-
-        function renderAdresDropdown(adressen) {
-            let dropdown = document.getElementById("adresDropdown");
-            dropdown.innerHTML = "";
-
-            adressen.forEach(a => {
-                let div = document.createElement("div");
-                div.className = "px-3 py-2 hover:bg-gray-100 cursor-pointer";
-                div.textContent = a.name;
-                div.dataset.path = a.path;
-                div.dataset.namespace = a.namespace;
-                div.addEventListener("click", () => {
-                    document.getElementById("adresComboInput").value = a.name;
-
-                    let select = document.getElementById("adresSelect");
-                    select.innerHTML =
-                        `<option value="${a.path}" data-namespace="${a.namespace}" selected>${a.name}</option>`;
-
-                    dropdown.classList.add("hidden");
-                });
-                dropdown.appendChild(div);
-            });
-        }
-
-        // Typen in combobox → zoekadressen
-        document.getElementById("adresComboInput").addEventListener("input", (e) => {
-            let term = e.target.value.trim();
-            if (currentNamespaceId && currentRegioPath) {
-                loadAdressen(currentNamespaceId, currentRegioPath, null, term);
-            }
-            document.getElementById("adresDropdown").classList.remove("hidden");
-        });
-
-        // Focus en klik buiten → dropdown sluiten
-        document.getElementById("adresComboInput").addEventListener("focus", () => {
-            document.getElementById("adresDropdown").classList.remove("hidden");
-        });
-        document.addEventListener("click", (e) => {
-            if (!e.target.closest("#adresDropdown") && e.target.id !== "adresComboInput") {
                 document.getElementById("adresDropdown").classList.add("hidden");
-            }
-        });
-
-        // Meer adressen
-        document.getElementById("loadMoreAdressenBtn").addEventListener("click", () => {
-            if (currentAdresCursor) {
-                loadAdressen(currentNamespaceId, currentRegioPath, currentAdresCursor);
-            }
-        });
-
-        // Perceel → laad regio's
-        document.getElementById("perceelSelect").addEventListener("change", (e) => {
-            let opt = e.target.options[e.target.selectedIndex];
-            let id = opt.value;
-            let type = opt.dataset.type;
-            if (id && type) {
-                loadRegios(id, type);
-            }
-        });
-
-
-
-        // Nieuwe adresmap
-        document.getElementById("newAdresBtn").addEventListener("click", async () => {
-            const regioSelect = document.getElementById("regioSelect");
-
-            // Altijd Webapp uploads forceren
-            const webappOption = [...regioSelect.options].find(opt =>
-                opt.textContent.toLowerCase().includes("webapp uploads")
-            );
-
-            if (!webappOption) {
-                alert("Map 'Webapp uploads' niet gevonden. Kies eerst perceel 1 of 2.");
-                return;
-            }
-
-            const regioPath = webappOption.value;
-            const namespaceId = webappOption.dataset.namespace;
-
-            const name = prompt("Naam nieuwe adresmap:");
-            if (!name) return;
-
-            let safeName = name
-                .replace(/,/g, '') // verwijder komma’s
-                .replace(/[^a-zA-Z0-9 _-]/g, '') // verwijder rare tekens
-                .replace(/\s+/g, ' ') // dubbele spaties → 1 spatie
-                .trim(); // spaties begin/eind weg
-
-            if (!safeName) {
-                alert("Ongeldige mapnaam. Gebruik enkel letters en cijfers.");
-                return;
-            }
-            try {
-                const res = await fetch("{{ route('dropbox.create_adres') }}", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRF-TOKEN": document.querySelector('meta[name=\"csrf-token\"]').content
-                    },
-                    body: JSON.stringify({
-                        namespace_id: namespaceId,
-                        path: regioPath,
-                        adres: safeName
-                    })
-                });
-
-                const json = await res.json();
-
-                if (res.status === 201 && json.success) {
-                    alert(json.message || "Adresmap aangemaakt in Webapp uploads.");
-
-                    // ✅ Alleen de nieuw gemaakte map tonen
-                    const input = document.getElementById("adresComboInput");
-                    const select = document.getElementById("adresSelect");
-                    const drop = document.getElementById("adresDropdown");
-
-                    input.value = json.folder.name;
-                    select.innerHTML = `
-                <option value="${json.folder.path}" data-namespace="${json.folder.namespace}" selected>
-                    ${json.folder.name}
-                </option>`;
-                    select.disabled = false;
-                    drop.classList.add("hidden");
-
-                    // 🕒 10 minuten geldig (tijdelijke opslag)
-                    const expiresAt = Date.now() + (10 * 60 * 1000);
-                    localStorage.setItem("tempAdresFolder", JSON.stringify({
-                        path: json.folder.path,
-                        namespace: json.folder.namespace,
-                        name: json.folder.name,
-                        expiresAt
-                    }));
-
-                    console.log("💾 Tijdelijke map opgeslagen (vervalt over 10 minuten)");
-                } else {
-                    alert(json.message || "Kon adresmap niet maken.");
-                }
-            } catch (err) {
-                console.error(err);
-                alert("Serverfout bij map maken.");
-            }
-        });
-
-
-
-        // ✅ Progressbar element toevoegen
-        const progressWrapper = document.createElement("div");
-        progressWrapper.className = "w-full bg-gray-200 rounded h-3 mt-2 hidden";
-        const progressBar = document.createElement("div");
-        progressBar.className = "bg-green-500 h-3 rounded w-0";
-        progressWrapper.appendChild(progressBar);
-        document.getElementById("photoPreview").after(progressWrapper);
-document.addEventListener("DOMContentLoaded", () => {
-    // === 1. VARIABELEN & SELECTORS ===
-    const photoUpload = document.getElementById("photoUpload");
-    const previewContainer = document.getElementById("photoPreview");
-    const lightbox = document.getElementById("photoLightbox");
-    const lightboxImg = document.getElementById("lightboxImage");
-    const closeLightbox = document.getElementById("closeLightbox");
-    const prevPhoto = document.getElementById("prevPhoto");
-    const nextPhoto = document.getElementById("nextPhoto");
-    
-    // Zorg dat deze bestaat in je HTML, anders geeft dit een error!
-    const progressWrapper = document.getElementById("progressWrapper"); 
-
-    let previewImages = [];
-    let currentIndex = 0;
-
-    // === 2. UPLOAD LOGICA (Alleen previews maken) ===
-    photoUpload.addEventListener("change", (e) => {
-        let files = [...e.target.files];
-        previewContainer.innerHTML = ""; // Oude previews wissen
-
-        if (files.length > 30) {
-            alert("Je mag maximaal 30 foto's uploaden.");
-            files = files.slice(0, 30);
-        }
-
-        files.forEach(file => {
-            if (file.size > 30 * 1024 * 1024) {
-                alert(`Bestand ${file.name} is groter dan 30MB.`);
-                return;
-            }
-
-            const objectUrl = URL.createObjectURL(file);
-            let img = document.createElement("img");
-            img.src = objectUrl;
-            img.className = "h-16 w-16 object-cover rounded cursor-pointer hover:opacity-80 transition";
-            
-            // ⚠️ BELANGRIJK: We revoken de URL NIET direct, 
-            // anders werkt de lightbox niet.
-            
-            previewContainer.appendChild(img);
-        });
-
-        // Verberg loader indien aanwezig
-        if (progressWrapper) progressWrapper.classList.add("hidden");
-    });
-
-    // === 3. LIGHTBOX LOGICA (Staat nu BUITEN de upload loop) ===
-    
-    // Functie om beeld te tonen
-    function showImage(index) {
-        // Update de lijst met huidige afbeeldingen (voor het geval er opnieuw geüpload is)
-        previewImages = [...document.querySelectorAll("#photoPreview img")];
-        
-        if (previewImages.length === 0) return;
-
-        // Loop logica (einde naar begin en andersom)
-        if (index < 0) index = previewImages.length - 1;
-        if (index >= previewImages.length) index = 0;
-
-        currentIndex = index;
-        
-        // Zet de src van de grote foto gelijk aan de thumbnail src
-        lightboxImg.src = previewImages[currentIndex].src;
-        
-        lightbox.classList.remove("hidden");
-        lightbox.classList.add("flex");
-    }
-
-    // Openen via klik op thumbnail
-    previewContainer.addEventListener("click", (e) => {
-        if (e.target.tagName === "IMG") {
-            const allImages = [...document.querySelectorAll("#photoPreview img")];
-            currentIndex = allImages.indexOf(e.target);
-            showImage(currentIndex);
-        }
-    });
-
-    // Navigatie knoppen
-    prevPhoto.addEventListener("click", (e) => {
-        e.stopPropagation();
-        showImage(currentIndex - 1);
-    });
-
-    nextPhoto.addEventListener("click", (e) => {
-        e.stopPropagation();
-        showImage(currentIndex + 1);
-    });
-
-    // Sluiten
-    function hideLightbox() {
-        lightbox.classList.add("hidden");
-        lightbox.classList.remove("flex");
-        lightboxImg.src = ""; // Leegmaken
-    }
-
-    closeLightbox.addEventListener("click", hideLightbox);
-
-    // Sluiten door naast de foto te klikken
-    lightbox.addEventListener("click", (e) => {
-        if (e.target === lightbox) hideLightbox();
-    });
-
-    // Toetsenbord bediening
-    document.addEventListener("keydown", (e) => {
-        if (lightbox.classList.contains("hidden")) return;
-        
-        if (e.key === "ArrowLeft") showImage(currentIndex - 1);
-        if (e.key === "ArrowRight") showImage(currentIndex + 1);
-        if (e.key === "Escape") hideLightbox();
-    });
-});
-
-        function showError(id, message) {
-            let el = document.getElementById(id);
-            if (el) {
-                el.textContent = message;
-                el.classList.remove("hidden");
-            }
-        }
-
-        function clearErrors() {
-            ["errorPerceel", "errorRegio", "errorAdres", "errorPhoto", "errorDamage", "errorNote"]
-            .forEach(id => {
-                let el = document.getElementById(id);
-                if (el) {
-                    el.textContent = "";
-                    el.classList.add("hidden");
-                }
-            });
-        }
-
-        function validateForm() {
-            clearErrors();
-
-            let perceelSelect = document.getElementById("perceelSelect");
-            let regioSelect = document.getElementById("regioSelect");
-            let adresSelect = document.getElementById("adresSelect");
-
-            let photoUpload = document.getElementById("photoUpload");
-            let damageNone = document.getElementById("damageNone");
-            let damageYes = document.getElementById("damageYes");
-            let noteField = document.querySelector('#finishForm textarea[name="note"]');
-
-            let isValid = true;
-
-            if (!perceelSelect.value) {
-                showError("errorPerceel", "Kies een perceel.");
-                isValid = false;
-            }
-
-            if (!regioSelect.value) {
-                showError("errorRegio", "Kies een regio (Webapp uploads).");
-                isValid = false;
-            }
-
-            if (!adresSelect.value) {
-                showError("errorAdres", "Kies of maak een adresmap.");
-                isValid = false;
-            }
-
-            if (photoUpload.files.length === 0) {
-                showError("errorPhoto", "Upload minstens 1 foto.");
-                isValid = false;
-            }
-
-            if (!damageNone.checked && !damageYes.checked) {
-                showError("errorDamage", "Selecteer of er schade is of niet.");
-                isValid = false;
-            }
-
-            if (damageYes.checked && !noteField.value.trim()) {
-                showError("errorNote", "Notitie is verplicht bij schade.");
-                isValid = false;
-            }
-
-            return isValid;
-        }
-
-        // ===============================================
-        // 🔹 Compressie & Upload helpers
-        // ===============================================
-
-        // 1️⃣ Comprimeer foto's voor upload
-        /* ——— 3. Snelle compressie instellingen ——— */
-        async function compressImages(files) {
-            const options = {
-                maxSizeMB: 0.25, // 250 KB max
-                maxWidthOrHeight: 800, // kleiner
-                useWebWorker: true,
-                initialQuality: 0.6
-            };
-
-            const compressed = [];
-            for (const file of files) {
-                try {
-                    const comp = await imageCompression(file, options);
-                    compressed.push(comp);
-                } catch (err) {
-                    console.error("Compressie mislukt:", file.name);
-                    compressed.push(file);
-                }
-            }
-            return compressed;
-        }
-
-
-
-        async function uploadInBatches(files, taskId, namespaceId, adresPath) {
-            const batchSize = 5;
-            for (let i = 0; i < files.length; i += batchSize) {
-                const batch = files.slice(i, i + batchSize);
-                await Promise.all(batch.map(f => {
-                    const fd = new FormData();
-                    fd.append("photos[]", f);
-                    fd.append("namespace_id", namespaceId);
-                    fd.append("path", adresPath);
-                    return fetch(`/tasks/${taskId}/upload-temp`, {
-                        method: "POST",
-                        headers: {
-                            "X-CSRF-TOKEN": document.querySelector(
-                                'meta[name="csrf-token"]').content
-                        },
-                        body: fd
-                    });
+                localStorage.setItem("tempAdresFolder", JSON.stringify({
+                    path: json.folder.path, namespace: json.folder.namespace,
+                    name: json.folder.name, expiresAt: Date.now() + (10 * 60 * 1000)
                 }));
+            } else {
+                alert(json.message || "Kon adresmap niet maken.");
             }
+        } catch (err) { alert("Serverfout bij map maken."); }
+    });
+
+    // ============================================================
+    // Photo preview & lightbox (ongewijzigd)
+    // ============================================================
+    const progressWrapper = document.createElement("div");
+    progressWrapper.className = "w-full bg-gray-200 rounded h-3 mt-2 hidden";
+    const progressBar = document.createElement("div");
+    progressBar.className = "bg-green-500 h-3 rounded w-0";
+    progressWrapper.appendChild(progressBar);
+    document.getElementById("photoPreview").after(progressWrapper);
+
+    document.addEventListener("DOMContentLoaded", () => {
+        const photoUpload = document.getElementById("photoUpload");
+        const previewContainer = document.getElementById("photoPreview");
+        const lightbox = document.getElementById("photoLightbox");
+        const lightboxImg = document.getElementById("lightboxImage");
+        const closeLightbox = document.getElementById("closeLightbox");
+        const prevPhoto = document.getElementById("prevPhoto");
+        const nextPhoto = document.getElementById("nextPhoto");
+        let previewImages = [];
+        let currentIndex = 0;
+
+        photoUpload.addEventListener("change", (e) => {
+            let files = [...e.target.files];
+            previewContainer.innerHTML = "";
+            if (files.length > 30) { alert("Max 30 foto's."); files = files.slice(0, 30); }
+            files.forEach(file => {
+                if (file.size > 30 * 1024 * 1024) { alert(`${file.name} > 30MB.`); return; }
+                const url = URL.createObjectURL(file);
+                let img = document.createElement("img");
+                img.src = url;
+                img.className = "h-16 w-16 object-cover rounded cursor-pointer hover:opacity-80 transition";
+                previewContainer.appendChild(img);
+            });
+        });
+
+        function showImage(index) {
+            previewImages = [...document.querySelectorAll("#photoPreview img")];
+            if (previewImages.length === 0) return;
+            if (index < 0) index = previewImages.length - 1;
+            if (index >= previewImages.length) index = 0;
+            currentIndex = index;
+            lightboxImg.src = previewImages[currentIndex].src;
+            lightbox.classList.remove("hidden");
+            lightbox.classList.add("flex");
         }
 
-
-
-
-
-        // 🔹 Geoptimaliseerde compressie voor Android Chrome (stabieler)
-        async function compressInBatches(files, options, batchSize = 2) {
-            const compressed = [];
-            for (let i = 0; i < files.length; i += batchSize) {
-                const batch = files.slice(i, i + batchSize);
-                const results = await Promise.all(
-                    batch.map(async (file) => {
-                        try {
-                            return await imageCompression(file, options);
-                        } catch {
-                            return file;
-                        }
-                    })
-                );
-                compressed.push(...results);
-                await new Promise((r) => setTimeout(r, 25)); // ademruimte voor Chrome
+        previewContainer.addEventListener("click", (e) => {
+            if (e.target.tagName === "IMG") {
+                currentIndex = [...document.querySelectorAll("#photoPreview img")].indexOf(e.target);
+                showImage(currentIndex);
             }
-            return compressed;
+        });
+        prevPhoto.addEventListener("click", (e) => { e.stopPropagation(); showImage(currentIndex - 1); });
+        nextPhoto.addEventListener("click", (e) => { e.stopPropagation(); showImage(currentIndex + 1); });
+
+        function hideLightbox() {
+            lightbox.classList.add("hidden");
+            lightbox.classList.remove("flex");
+            lightboxImg.src = "";
         }
+        closeLightbox.addEventListener("click", hideLightbox);
+        lightbox.addEventListener("click", (e) => { if (e.target === lightbox) hideLightbox(); });
+        document.addEventListener("keydown", (e) => {
+            if (lightbox.classList.contains("hidden")) return;
+            if (e.key === "ArrowLeft") showImage(currentIndex - 1);
+            if (e.key === "ArrowRight") showImage(currentIndex + 1);
+            if (e.key === "Escape") hideLightbox();
+        });
+    });
 
-        // 🔹 Submit handler met eerlijke feedback
-document.getElementById("finishForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!validateForm()) return;
+    // ============================================================
+    // Form validation
+    // ============================================================
+    function showError(id, message) {
+        let el = document.getElementById(id);
+        if (el) { el.textContent = message; el.classList.remove("hidden"); }
+    }
+    function clearErrors() {
+        ["errorPerceel","errorRegio","errorAdres","errorPhoto","errorDamage","errorNote"].forEach(id => {
+            let el = document.getElementById(id);
+            if (el) { el.textContent = ""; el.classList.add("hidden"); }
+        });
+    }
+    function validateForm() {
+        clearErrors();
+        let isValid = true;
+        if (!document.getElementById("perceelSelect").value) { showError("errorPerceel", "Kies een perceel."); isValid = false; }
+        if (!document.getElementById("regioSelect").value) { showError("errorRegio", "Kies een regio."); isValid = false; }
+        if (!document.getElementById("adresSelect").value) { showError("errorAdres", "Kies of maak een adresmap."); isValid = false; }
+        if (document.getElementById("photoUpload").files.length === 0) { showError("errorPhoto", "Upload minstens 1 foto."); isValid = false; }
+        if (!document.getElementById("damageNone").checked && !document.getElementById("damageYes").checked) { showError("errorDamage", "Selecteer schade optie."); isValid = false; }
+        if (document.getElementById("damageYes").checked && !document.querySelector('#finishForm textarea[name="note"]').value.trim()) { showError("errorNote", "Notitie verplicht bij schade."); isValid = false; }
+        return isValid;
+    }
 
-    const form = e.target;
-    const taskId = form.action.match(/tasks\/(\d+)/)?.[1];
-    const formData = new FormData(form);
-    const files = [...document.getElementById("photoUpload").files].slice(0, 30); 
-    const adresSelect = document.getElementById("adresSelect");
-    const namespaceId = adresSelect.options[adresSelect.selectedIndex]?.dataset.namespace;
-    const adresPath = adresSelect.value;
+    // ============================================================
+    // Compression
+    // ============================================================
+    async function compressInBatches(files, options, batchSize = 2) {
+        const compressed = [];
+        for (let i = 0; i < files.length; i += batchSize) {
+            const batch = files.slice(i, i + batchSize);
+            const results = await Promise.all(
+                batch.map(async (file) => {
+                    try { return await imageCompression(file, options); }
+                    catch { return file; }
+                })
+            );
+            compressed.push(...results);
+            await new Promise(r => setTimeout(r, 25));
+        }
+        return compressed;
+    }
 
-    const finishButton = document.getElementById("finishButton");
-    finishButton.disabled = true;
-    finishButton.textContent = "Verwerken...";
+    // ============================================================
+    // 🔹 SUBMIT HANDLER (FIX 1: Schrijf naar IDB vanuit main thread)
+    // ============================================================
+    document.getElementById("finishForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!validateForm()) return;
 
-    // 🔹 Loader tonen
-    const loader = document.createElement("div");
-    loader.className = "fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50 transition-opacity duration-300";
-    loader.innerHTML = `
-        <div class="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
-            <svg class="animate-spin h-8 w-8 text-[#B51D2D] mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-            </svg>
-            <p id="loaderText" class="text-gray-700 text-sm font-medium">Foto's klaarmaken voor verzending...</p>
-        </div>
-    `;
-    document.body.appendChild(loader);
+        const form = e.target;
+        const taskId = form.action.match(/tasks\/(\d+)/)?.[1];
+        const files = [...document.getElementById("photoUpload").files].slice(0, 30);
+        const adresSelect = document.getElementById("adresSelect");
+        const namespaceId = adresSelect.options[adresSelect.selectedIndex]?.dataset.namespace;
+        const adresPath = adresSelect.value;
 
-    try {
-        if (files.length > 0) {
-            const compressOptions = {
-                maxSizeMB: 0.45,
-                maxWidthOrHeight: 1280,
-                useWebWorker: true,
-                initialQuality: 0.65
-            };
+        const finishButton = document.getElementById("finishButton");
+        finishButton.disabled = true;
+        finishButton.textContent = "Verwerken...";
 
-            // Comprimeren
-            const compressedFiles = await compressInBatches(files, compressOptions, 2);
-            const csrf = document.querySelector('meta[name="csrf-token"]').content;
+        // Loader
+        const loader = document.createElement("div");
+        loader.className = "fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50";
+        loader.innerHTML = `
+            <div class="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center">
+                <svg class="animate-spin h-8 w-8 text-[#B51D2D] mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <p id="loaderText" class="text-gray-700 text-sm font-medium">Foto's klaarmaken...</p>
+            </div>`;
+        document.body.appendChild(loader);
 
-            // Naar Service Worker sturen
-            for (let i = 0; i < compressedFiles.length; i++) {
-                await sendToSW({
-                    type: "ADD_UPLOAD",
-                    name: compressedFiles[i].name,
-                    blob: compressedFiles[i],
-                    fileType: compressedFiles[i].type,
-                    task_id: taskId,
-                    namespace_id: namespaceId,
-                    adres_path: adresPath,
-                    csrf: csrf
-                });
+        try {
+            if (files.length > 0) {
+                const compressOptions = {
+                    maxSizeMB: 0.45,
+                    maxWidthOrHeight: 1280,
+                    useWebWorker: true,
+                    initialQuality: 0.65
+                };
+
+                const loaderText = document.getElementById("loaderText");
+
+                // Comprimeren
+                if (loaderText) loaderText.textContent = `Foto's comprimeren (0/${files.length})...`;
+                const compressedFiles = await compressInBatches(files, compressOptions, 2);
+
+                // 👇 FIX 1: Schrijf DIRECT naar IndexedDB vanuit main thread
+                let savedCount = 0;
+                for (let i = 0; i < compressedFiles.length; i++) {
+                    if (loaderText) loaderText.textContent = `Opslaan ${i + 1}/${compressedFiles.length}...`;
+
+                    try {
+                        const added = await window.addToUploadQueue({
+                            name: compressedFiles[i].name,
+                            blob: compressedFiles[i],
+                            fileType: compressedFiles[i].type,
+                            task_id: taskId,
+                            namespace_id: namespaceId,
+                            adres_path: adresPath,
+                        });
+                        if (added) savedCount++;
+                    } catch (err) {
+                        console.error(`❌ Kon foto '${compressedFiles[i].name}' niet opslaan:`, err);
+                    }
+                }
+
+                console.log(`✅ ${savedCount}/${compressedFiles.length} foto's opgeslagen in IndexedDB`);
+
+                // 👇 Vertel de SW dat er werk is (maar data staat al veilig in IDB)
+                window.sendToSW({ type: "PROCESS_QUEUE" });
+
+                if (loaderText) loaderText.textContent = `📦 ${savedCount} foto's in wachtrij!`;
             }
-            
-            console.log(`✅ ${compressedFiles.length} foto's naar wachtrij gestuurd.`);
-        }
 
-        // ✅ Taak afronden (Status update naar backend)
-        const finishUrl = `/tasks/${taskId}/finish`;
-        
-        // Data voor de status update (zonder fotos, die gaan via SW)
-        const statusData = new FormData();
-        statusData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
-        statusData.append("damage", form.querySelector('input[name="damage"]:checked')?.value || "");
-        statusData.append("note", form.querySelector('textarea[name="note"]').value || "");
+            // ✅ FIX 4: Gebruik fetch i.p.v. sendBeacon voor status update
+            const finishUrl = `/tasks/${taskId}/finish`;
+            const statusData = new FormData();
+            statusData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
+            statusData.append("damage", form.querySelector('input[name="damage"]:checked')?.value || "");
+            statusData.append("note", form.querySelector('textarea[name="note"]').value || "");
 
-        // Gebruik sendBeacon indien beschikbaar (robuuster bij afsluiten)
-        if (navigator.sendBeacon) {
-            navigator.sendBeacon(finishUrl, statusData);
-            handleFrontendSuccess(taskId, form, loader);
-        } else {
-            // Fallback fetch
             const res = await fetch(finishUrl, {
                 method: "POST",
                 headers: { "Accept": "application/json" },
                 body: statusData
             });
+
             if (res.ok) {
                 const json = await res.json();
                 handleFrontendSuccess(taskId, form, loader, json.status);
             } else {
+                showToast("⚠️ Status update mislukt. Foto's staan wel in wachtrij.", 5000);
                 removeLoader(loader);
             }
+
+        } catch (err) {
+            console.error("Fout in submit flow:", err);
+            showToast("⚠️ Er ging iets mis. Probeer opnieuw.", 5000);
+            removeLoader(loader);
+        } finally {
+            finishButton.disabled = false;
+            finishButton.textContent = "Voltooien";
         }
+    });
 
-    } catch (err) {
-        console.error("Fout in submit flow:", err);
-        showToast("⚠️ Er ging iets mis. Probeer opnieuw.");
-        removeLoader(loader);
-    } finally {
-        finishButton.disabled = false;
-        finishButton.textContent = "Voltooien";
-    }
-});
-
-// 👇 Nieuwe hulpfunctie om dubbele code te voorkomen en tekst te fixen
-function handleFrontendSuccess(taskId, form, loader, serverStatus = null) {
-    // 1. Update de status in de tabel
-    const currentStatus = document.querySelector(`tr[data-task-id="${taskId}"]`)?.dataset.status;
-    const damage = form.querySelector('input[name="damage"]:checked')?.value;
-    let newStatus = serverStatus || currentStatus;
-    
-    if (!serverStatus) {
-        if (currentStatus === "open") newStatus = "in behandeling";
-        else if (["in behandeling", "reopened"].includes(currentStatus)) {
-            newStatus = (damage === "none") ? "finished" : "in behandeling";
-        }
-    }
-    updateTaskStatusRow(taskId, newStatus);
-
-    // 2. 👇 DE BELANGRIJKSTE WIJZIGING: DE TEKST
-    const loaderText = document.getElementById("loaderText");
-    if (loaderText) {
-        // Zeg NIET "Afgerond", maar "In wachtrij"
-        loaderText.textContent = "📦 Foto's in wachtrij geplaatst. Upload draait op achtergrond.";
-    }
-
-    // 3. Toon eerlijke toast
-    showToast("📂 Wijzigingen opgeslagen & foto's in wachtrij!", 4000);
-
-    // 4. Sluit formulier en verwijder loader na korte pauze
-    closeTaskForm();
-    setTimeout(() => {
-        removeLoader(loader);
-    }, 1500); // Iets langer laten staan zodat ze de tekst kunnen lezen
-}
-
-function removeLoader(loader) {
-    if(loader) {
-        loader.classList.add("opacity-0");
-        setTimeout(() => loader.remove(), 300);
-    }
-}
-
-        // 🔹 Toast helper
-        function showToast(message, duration = 4000) {
-            const toast = document.createElement("div");
-            toast.textContent = message;
-            toast.className =
-                "fixed bottom-5 right-5 bg-gray-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm transition-opacity animate-fadeIn";
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), duration);
-        }
-
-        // 🔹 Status update helper
-        function updateTaskStatusRow(taskId, newStatus) {
-            const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
-            if (!row) return;
-            row.dataset.status = newStatus;
-            const span = row.querySelector("td:nth-child(3) span");
-            span.textContent = newStatus;
-            span.className = "px-2 py-1 rounded text-sm font-semibold";
-            switch (newStatus) {
-                case "finished":
-                    span.classList.add("bg-green-200", "text-green-800");
-                    break;
-                case "in behandeling":
-                    span.classList.add("bg-yellow-200", "text-yellow-800");
-                    break;
-                default:
-                    span.classList.add("bg-gray-200", "text-gray-800");
+    function handleFrontendSuccess(taskId, form, loader, serverStatus = null) {
+        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+        const currentStatus = row?.dataset.status;
+        const damage = form.querySelector('input[name="damage"]:checked')?.value;
+        let newStatus = serverStatus || currentStatus;
+        if (!serverStatus) {
+            if (currentStatus === "open") newStatus = "in behandeling";
+            else if (["in behandeling", "reopened"].includes(currentStatus)) {
+                newStatus = (damage === "none") ? "finished" : "in behandeling";
             }
         }
+        updateTaskStatusRow(taskId, newStatus);
 
-        // 🔹 Form sluiten helper
-        function closeTaskForm() {
-            const panel = document.getElementById("taskFormPanel");
-            const form = document.getElementById("finishForm");
-            form.reset();
-            document.getElementById("photoPreview").innerHTML = "";
-            clearErrors();
-            panel.classList.add("hidden");
+        const loaderText = document.getElementById("loaderText");
+        if (loaderText) loaderText.textContent = "✅ Opgeslagen! Upload draait op achtergrond.";
 
-            document.getElementById('taskStatus').textContent = "";
-            document.getElementById('taskAddressTitle').textContent = "";
-            document.getElementById('taskZipCity').textContent = "";
-            document.getElementById('taskTimeTitle').textContent = "";
+        showToast("📂 Wijzigingen opgeslagen!", 4000);
+        closeTaskForm();
+        setTimeout(() => removeLoader(loader), 1500);
+    }
+
+    function removeLoader(loader) {
+        if (loader) {
+            loader.classList.add("opacity-0");
+            setTimeout(() => loader.remove(), 300);
+        }
+    }
+
+    function updateTaskStatusRow(taskId, newStatus) {
+        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+        if (!row) return;
+        row.dataset.status = newStatus;
+        const span = row.querySelector("td:nth-child(3) span");
+        if (!span) return;
+        span.textContent = newStatus;
+        span.className = "px-2 py-1 rounded text-sm font-semibold";
+        switch (newStatus) {
+            case "finished": span.classList.add("bg-green-200", "text-green-800"); break;
+            case "in behandeling": span.classList.add("bg-yellow-200", "text-yellow-800"); break;
+            default: span.classList.add("bg-gray-200", "text-gray-800");
+        }
+    }
+
+    function closeTaskForm() {
+        const panel = document.getElementById("taskFormPanel");
+        const form = document.getElementById("finishForm");
+        form.reset();
+        document.getElementById("photoPreview").innerHTML = "";
+        clearErrors();
+        panel.classList.add("hidden");
+        document.getElementById('taskStatus').textContent = "";
+        document.getElementById('taskAddressTitle').textContent = "";
+        document.getElementById('taskZipCity').textContent = "";
+        document.getElementById('taskTimeTitle').textContent = "";
+    }
+
+    // ============================================================
+    // Task form openen
+    // ============================================================
+    function openTaskForm(taskId, address, time, status, note) {
+        loadPercelen();
+        document.getElementById("adresSelect").innerHTML = "";
+        document.getElementById("adresComboInput").value = "";
+        document.getElementById("adresSelect").disabled = true;
+        document.getElementById("adresDropdown").classList.add("hidden");
+        localStorage.removeItem("tempAdresFolder");
+
+        document.getElementById('taskFormPanel').classList.remove('hidden');
+
+        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+        document.getElementById('taskAddressTitle').textContent = row.dataset.address;
+        document.getElementById('taskZipCity').textContent = row.dataset.zipcode + " " + row.dataset.city;
+        document.getElementById('taskTimeTitle').textContent = time;
+        document.getElementById('taskStatus').textContent = status;
+
+        let form = document.getElementById('finishForm');
+        let finishButton = document.getElementById('finishButton');
+        let noteWrapper = document.getElementById('noteWrapper');
+        let noteField = document.querySelector('#finishForm textarea[name="note"]');
+        let damageNone = document.getElementById('damageNone');
+        let damageYes = document.getElementById('damageYes');
+
+        damageNone.checked = false;
+        damageYes.checked = false;
+        noteWrapper.classList.add('hidden');
+        noteField.value = '';
+
+        if (status === 'finished') {
+            form.action = "";
+            finishButton.classList.add('hidden');
+            damageNone.disabled = true;
+            damageYes.disabled = true;
+            noteField.setAttribute('readonly', true);
+        } else {
+            form.action = `/tasks/${taskId}/finish`;
+            finishButton.classList.remove('hidden');
+            damageNone.disabled = false;
+            damageYes.disabled = false;
+            noteField.removeAttribute('readonly');
         }
 
-
-
-        // Bij openen taakformulier
-        function openTaskForm(taskId, address, time, status, note) {
-            loadPercelen();
-            document.getElementById("adresSelect").innerHTML = "";
-            document.getElementById("adresComboInput").value = "";
-            document.getElementById("adresSelect").disabled = true;
-            document.getElementById("adresDropdown").classList.add("hidden");
-            localStorage.removeItem("tempAdresFolder");
-
-            const panel = document.getElementById('taskFormPanel');
-            panel.classList.remove('hidden');
-
-            const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
-
-            document.getElementById('taskAddressTitle').textContent = row.dataset.address;
-            document.getElementById('taskZipCity').textContent = row.dataset.zipcode + " " + row.dataset.city;
-            document.getElementById('taskTimeTitle').textContent = time;
-            document.getElementById('taskStatus').textContent = status;
-
-            let form = document.getElementById('finishForm');
-            let finishButton = document.getElementById('finishButton');
-            let noteWrapper = document.getElementById('noteWrapper');
-            let noteField = document.querySelector('#finishForm textarea[name="note"]');
-            let damageNone = document.getElementById('damageNone');
-            let damageYes = document.getElementById('damageYes');
-
-            // ✅ altijd reset
-            damageNone.checked = false;
-            damageYes.checked = false;
-            noteWrapper.classList.add('hidden');
-            noteField.value = '';
-
-            if (status === 'finished') {
-                form.action = "";
-                finishButton.classList.add('hidden');
-                damageNone.disabled = true;
-                damageYes.disabled = true;
-                noteField.setAttribute('readonly', true);
-            } else {
-                form.action = `/tasks/${taskId}/finish`;
-                finishButton.classList.remove('hidden');
-                damageNone.disabled = false;
-                damageYes.disabled = false;
-                noteField.removeAttribute('readonly');
-            }
-
-            // Event listeners (herstel)
-            damageNone.addEventListener('change', () => {
-                if (damageNone.checked) {
-                    noteWrapper.classList.add('hidden');
-                    noteField.value = '';
-                }
-            });
-
-            damageYes.addEventListener('change', () => {
-                if (damageYes.checked) {
-                    noteWrapper.classList.remove('hidden');
-                }
-            });
-        }
-
-        // Openen via rij-klik
-        document.querySelectorAll("tbody tr").forEach(row => {
-            row.addEventListener("click", function() {
-                openTaskForm(
-                    this.dataset.taskId,
-                    this.dataset.address,
-                    this.dataset.time,
-                    this.dataset.status,
-                    this.dataset.note
-                );
-            });
+        damageNone.addEventListener('change', () => {
+            if (damageNone.checked) { noteWrapper.classList.add('hidden'); noteField.value = ''; }
         });
+        damageYes.addEventListener('change', () => {
+            if (damageYes.checked) noteWrapper.classList.remove('hidden');
+        });
+    }
 
-        // 🔁 Herstel uploads als gebruiker weer online komt
-    </script>
+    document.querySelectorAll("tbody tr").forEach(row => {
+        row.addEventListener("click", function() {
+            openTaskForm(this.dataset.taskId, this.dataset.address, this.dataset.time, this.dataset.status, this.dataset.note);
+        });
+    });
+</script>
 
 </x-layouts.dashboard>
