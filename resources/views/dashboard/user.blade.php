@@ -809,6 +809,18 @@
     // ============================================================
     // 🔹 SUBMIT HANDLER (FIX 1: Schrijf naar IDB vanuit main thread)
     // ============================================================
+
+    // 👇 FIX TEST 4: Blokkeer refresh/navigatie tijdens compressie + opslag
+    let isProcessingPhotos = false;
+
+    window.addEventListener("beforeunload", (e) => {
+        if (isProcessingPhotos) {
+            e.preventDefault();
+            e.returnValue = "Foto's worden nog verwerkt. Als je nu herlaadt gaan ze verloren!";
+            return e.returnValue;
+        }
+    });
+
     document.getElementById("finishForm").addEventListener("submit", async (e) => {
         e.preventDefault();
         if (!validateForm()) return;
@@ -824,6 +836,9 @@
         finishButton.disabled = true;
         finishButton.textContent = "Verwerken...";
 
+        // 👇 Activeer refresh-blokkering
+        isProcessingPhotos = true;
+
         // Loader
         const loader = document.createElement("div");
         loader.className = "fixed inset-0 bg-black bg-opacity-60 flex flex-col items-center justify-center z-50";
@@ -834,6 +849,7 @@
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
                 </svg>
                 <p id="loaderText" class="text-gray-700 text-sm font-medium">Foto's klaarmaken...</p>
+                <p class="text-gray-400 text-xs mt-2">Sluit of ververs de pagina niet!</p>
             </div>`;
         document.body.appendChild(loader);
 
@@ -872,6 +888,9 @@
                     }
                 }
 
+                // 👇 Foto's zijn nu veilig in IndexedDB — refresh mag weer
+                isProcessingPhotos = false;
+
                 console.log(`✅ ${savedCount}/${compressedFiles.length} foto's opgeslagen in IndexedDB`);
 
                 // 👇 Vertel de SW dat er werk is (maar data staat al veilig in IDB)
@@ -906,6 +925,7 @@
             showToast("⚠️ Er ging iets mis. Probeer opnieuw.", 5000);
             removeLoader(loader);
         } finally {
+            isProcessingPhotos = false; // 👈 Altijd reset, ook bij errors
             finishButton.disabled = false;
             finishButton.textContent = "Voltooien";
         }
