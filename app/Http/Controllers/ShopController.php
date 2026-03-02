@@ -94,9 +94,10 @@ session(['last_shop_category' => $category]);
     public function removeFromCart($id)
     {
         $material = Material::findOrFail($id);
-        $cartKey = 'cart_' . $material->category;
+        $cleanCategory = strtolower(trim($material->category));
+        $cartKey = 'cart_' . $cleanCategory;
 
-        $cart = session()->get($cartKey);
+        $cart = session()->get($cartKey, []);
         if (isset($cart[$id])) {
             unset($cart[$id]);
             session()->put($cartKey, $cart);
@@ -111,10 +112,10 @@ session(['last_shop_category' => $category]);
         // Omdat we hier geen category in de URL hebben (POST request),
         // zoeken we het materiaal even op.
         $material = Material::findOrFail($id);
-        $cartKey = 'cart_' . $material->category;
+       $cleanCategory = strtolower(trim($material->category));
+        $cartKey = 'cart_' . $cleanCategory;
 
-        $cart = session()->get($cartKey);
-
+        $cart = session()->get($cartKey, []);
         if (isset($cart[$id])) {
             $cart[$id]['quantity'] = $request->quantity;
             session()->put($cartKey, $cart);
