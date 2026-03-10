@@ -18,6 +18,17 @@ use Illuminate\Support\Facades\Bus;
 
 class TaskController extends Controller
 {
+
+ private function checkAdminAccess()
+    {
+        $user = Auth::user();
+
+        // Als er geen user is OF de rol is geen admin -> STOP.
+        if (!$user || $user->role !== 'admin') {
+            abort(403, 'Geen toegang. Alleen voor beheerders.');
+        }
+    }
+
     public function finish(Request $request, Task $task)
     {
         $request->validate([
@@ -95,6 +106,7 @@ class TaskController extends Controller
 
     public function index(Request $request)
     {
+        $this->checkAdminAccess();
         return $this->filter($request);
     }
 
