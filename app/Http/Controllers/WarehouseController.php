@@ -6,12 +6,14 @@ use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Notifications\OrderReady;
-use App\Models\User;
 use App\Models\Team;
-
-use Maatwebsite\Excel\Facades\Excel;
-use App\Exports\FluviusOrderExport;
 use Illuminate\Support\Facades\Log;
+
+use App\Exports\MasterExport;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Services\DropboxService;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\File;
 
 class WarehouseController extends Controller
 {
@@ -69,52 +71,116 @@ class WarehouseController extends Controller
         return view('warehouse.print', compact('order'));
     }
 
-    public function markAsReady(Request $request, $id)
+ public function markAsReady(Request $request, $id, DropboxService $dropboxService)
     {
         $this->checkAdminAndWarehousemanAccess();
-        $order = Order::with('materials')->findOrFail($id);
-
-        // 2. Update status naar 'ready'
-        $order->update(['status' => 'ready']);
-
-        // 3. Notificatie naar team sturen
-        $team = Team::find($order->team_id);
-        if ($team) {
-            $team->notify(new OrderReady($order));
-        }
-
-        // -------------------------------------------------------
-        // 📊 4. EXCEL GENEREREN (Alleen voor Fluvius)
-        // -------------------------------------------------------
         
-        // We pakken het eerste materiaal om te zien welke shop dit is
-        $firstItem = $order->materials->first();
-        // Veiligheid: check of er wel items zijn, anders is category null
-        $category = $firstItem ? strtolower($firstItem->category) : null;
+        // 1. BELANGRIJK: Voeg 'team' toe aan de with() zodat we de teamnaam straks hebben
+        $order = Order::with(['materials', 'team'])->findOrFail($id);
+
+        $order->update(['status' => 'ready']);
+        
+        // Omdat we 'team' hierboven al hebben ingeladen, hoeven we Team::find() niet meer te doen
+        if ($order->team) {
+            $order->team->notify(new OrderReady($order));
+        }
 
         $msg = 'Order is klaar gemeld!';
 
-        // Check: Is het 'fluvius'?
-        if ($category === 'fluvius') {
-            try {
-                // Bestandsnaam: order_123_fluvius.xlsx
-                $fileName = 'order_' . $order->id . '_fluvius.xlsx';
-                
-                // Opslaan in: storage/app/public/fluvius_exports
-                Excel::store(new FluviusOrderExport($order), 'fluvius_exports/' . $fileName, 'public');
+        try {
+            $namespaceId = $dropboxService->getFluviusNamespaceId();
 
-                // Succes bericht uitbreiden
-                $msg .= ' (Excel opgeslagen).';
-                
-                Log::info("Excel aangemaakt voor Order #{$order->id}");
+            $categories = ['fluvius', 'handgereedschap'];
 
-            } catch (\Exception $e) {
-                // Als het mislukt, loggen we de fout, maar crashen we niet
-                Log::error("Excel fout bij Order #{$order->id}: " . $e->getMessage());
-                $msg .= ' (Excel maken mislukt, check logs).';
+            foreach ($categories as $category) {
+                $materialsOfCategory = $order->materials->filter(function ($material) use ($category) {
+                    return strtolower($material->category) === $category;
+                });
+
+                if ($materialsOfCategory->isNotEmpty()) {
+                    // 2. Geef $order mee als laatste parameter aan de functie!
+                    $msg .= $this->appendAndUploadMasterExcel($materialsOfCategory, $category, $dropboxService, $namespaceId, $order);
+                }
             }
+
+        } catch (\Exception $e) {
+            Log::error("Fout bij ophalen MS FLUVIUS namespace: " . $e->getMessage());
+            $msg .= ' (Kon Dropbox verbinding niet maken).';
         }
 
         return back()->with('success', $msg);
     }
+
+    // 3. Update de functie zodat hij $order accepteert
+    private function appendAndUploadMasterExcel($materials, $category, $dropboxService, $namespaceId, $order)
+    {
+        try {
+            $jaar = date('Y'); 
+            $folderName = ucfirst($category); 
+            $fileName = "{$folderName}_Totaal_{$jaar}.xlsx"; 
+            
+            $dropboxPath = "/Magazijn_Bestellingen/{$folderName}/{$fileName}";
+            $localTempPath = "temp/{$fileName}";
+            
+            if (!Storage::disk('local')->exists('temp')) {
+                Storage::disk('local')->makeDirectory('temp');
+            }
+
+            $existingRows = [];
+
+            $fileContent = $dropboxService->download($namespaceId, $dropboxPath);
+
+            if ($fileContent) {
+                Storage::disk('local')->put($localTempPath, $fileContent);
+                $existingData = Excel::toArray(new \stdClass, $localTempPath, 'local');
+                
+                if (!empty($existingData) && isset($existingData[0])) {
+                    $existingRows = array_slice($existingData[0], 1); 
+                }
+            }
+
+            // HIER IS DE NIEUWE LOGICA VOOR DATUM EN TEAM
+            // We pakken de datum van vandaag (bv. '10-03-2026')
+            $datumVandaag = date('d-m-Y'); 
+            
+            // We halen de teamnaam op. (Let op: als jouw kolom in de teams tabel niet 'name' heet maar bv 'naam', pas dit dan even aan!)
+            $teamNaam = $order->team ? $order->team->name : 'Onbekend Team';
+
+            $newRows = [];
+            foreach ($materials as $material) {
+                $newRows[] = [
+                    $teamNaam,                    // Kolom 1: Team
+                    $datumVandaag,                // Kolom 2: Datum Klaargemeld
+                    $material->sap_number,        // Kolom 3: SAP
+                    $material->pivot->quantity,   // Kolom 4: Aantal
+                ];
+            }
+
+            $allRows = array_merge($existingRows, $newRows);
+
+            $saved = Excel::store(new MasterExport($allRows), $localTempPath, 'local');
+
+            if (!$saved) {
+                throw new \Exception("Excel package weigert het bestand te genereren in de temp map!");
+            }
+
+            $absolutePath = Storage::disk('local')->path($localTempPath);
+            
+            if (!file_exists($absolutePath)) {
+                throw new \Exception("Bestand is onvindbaar op schijf: {$absolutePath}");
+            }
+
+            $fileObject = new \Illuminate\Http\File($absolutePath);
+            $dropboxService->uploadOverwrite($namespaceId, $dropboxPath, $fileObject);
+
+            Storage::disk('local')->delete($localTempPath);
+
+            return " Gegevens bijgevuld in {$fileName} en geüpload naar Dropbox!";
+
+        } catch (\Exception $e) {
+            Log::error("Fout bij updaten Master Excel voor {$category} in jaar " . date('Y') . ": " . $e->getMessage());
+            return " (Updaten {$category} Excel mislukt).";
+        }
+    }
+
 }

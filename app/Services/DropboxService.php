@@ -531,4 +531,71 @@ class DropboxService
         return $infra['namespace_id'];
     }
 
+    // 1. Functie om het bestaande bestand te downloaden
+    public function download($namespaceId, $path)
+    {
+        $dropboxPath = '/' . ltrim($path, '/');
+
+        $headers = [
+            'Dropbox-API-Path-Root' => json_encode([
+                '.tag'         => 'namespace_id',
+                'namespace_id' => $namespaceId
+            ]),
+            'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
+            'Dropbox-API-Arg'         => json_encode(['path' => $dropboxPath]),
+        ];
+
+        $response = Http::withToken($this->accessToken) // Let op: gebruikt $this->accessToken
+            ->withHeaders($headers)
+            ->get('https://content.dropboxapi.com/2/files/download');
+
+        if ($response->failed()) {
+            return null; // Bestand bestaat nog niet, dat is prima!
+        }
+
+        return $response->body(); // Geeft de ruwe bestandsdata terug
+    }
+
+    // 2. Functie om specifiek te OVERSCHRIJVEN (in plaats van een (1) erachter te zetten)
+    public function uploadOverwrite($namespaceId, $path, $file)
+    {
+        $accessToken = $this->getMemberAccessToken();
+        $dropboxPath = '/' . ltrim($path, '/');
+
+        $headers = [
+            'Dropbox-API-Path-Root' => json_encode([
+                '.tag'         => 'namespace_id',
+                'namespace_id' => $namespaceId,
+            ]),
+            'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
+            'Content-Type'            => 'application/octet-stream',
+        ];
+
+        $stream = fopen($file->getRealPath(), 'rb');
+
+        try {
+            $res = Http::withToken($accessToken)
+                ->withHeaders(array_merge($headers, [
+                    'Dropbox-API-Arg' => json_encode([
+                        'path'           => $dropboxPath,
+                        'mode'           => 'overwrite', // BELANGRIJK: Overschrijven!
+                        'autorename'     => false,       // Geen (1) of (2) erachter
+                        'mute'           => false,
+                        'strict_conflict'=> false,
+                    ], JSON_UNESCAPED_SLASHES),
+                ]))
+                ->send('POST', 'https://content.dropboxapi.com/2/files/upload', [
+                    'body' => $stream,
+                ]);
+
+            if ($res->failed()) {
+                throw new \Exception("Dropbox overwrite failed: " . $res->body());
+            }
+
+            return $res->json();
+        } finally {
+            fclose($stream);
+        }
+    }
+
 }
