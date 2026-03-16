@@ -81,7 +81,7 @@ class DropboxViewerController extends Controller
      * De Stream Functie (Haalt de data op)
      * Nu met ondersteuning voor ALLE afbeeldingstypes!
      */
-   public function stream(Request $request)
+  public function stream(Request $request)
     {
         // 1. Input ophalen
         $path = $request->input('path');
@@ -92,9 +92,6 @@ class DropboxViewerController extends Controller
         }
 
         // 🛡️ ROBUUSTE SECURITY CHECK
-        // We blokkeren alleen als er '../' of '..\' staat.
-        // Dit betekent dat iemand uit de map probeert te breken.
-        // Gewone namen met rare punten zoals "categorie..pdf" mogen nu WEL door!
         if (str_contains($path, '../') || str_contains($path, '..\\') || str_contains($path, "\0")) {
             abort(403, 'Ongeldig bestandspad gedetecteerd. Hacking poging geblokkeerd.');
         }
@@ -103,10 +100,31 @@ class DropboxViewerController extends Controller
             // 2. Haal de tijdelijke link op bij Dropbox
             $link = $this->dropbox->getTemporaryLink($nsId, $path);
             
-            // 🛡️ EXTRA SECURITY: Check of het wel écht een URL is
+            // 🛡️ EXTRA SECURITY: Check of het wel écht een geldige URL structuur is
             if (!filter_var($link, FILTER_VALIDATE_URL)) {
                 throw new \Exception('Dropbox gaf geen geldige URL terug.');
             }
+
+            // 👇 START SNYK FIX VOOR SSRF EN PATH TRAVERSAL
+            $parsedUrl = parse_url($link);
+            
+            // Fix voor Path Traversal: Dwing af dat het een HTTPS verbinding is.
+            // Snyk is bang dat 'fopen' een lokaal bestand opent (zoals file:///etc/passwd of /var/www/).
+            // Door expliciet te checken op 'https' sluiten we lokale paden 100% uit.
+            if (($parsedUrl['scheme'] ?? '') !== 'https') {
+                throw new \Exception('Security Beveiliging: Alleen beveiligde HTTPS verbindingen zijn toegestaan.');
+            }
+
+            // Fix voor SSRF: Dwing af dat het domein ALTIJD van Dropbox is.
+            // Snyk is bang dat we stiekem een ander IP-adres of domein openen via fopen.
+            $host = $parsedUrl['host'] ?? '';
+            $isDropboxDomain = str_ends_with($host, '.dropboxusercontent.com') || $host === 'dl.dropboxusercontent.com' || str_ends_with($host, '.dropbox.com');
+
+            if (!$isDropboxDomain) {
+                \Illuminate\Support\Facades\Log::alert('Mogelijke SSRF aanval geblokkeerd!', ['url' => $link]);
+                throw new \Exception('Security Beveiliging: Ongeldig domein. Alleen veilige Dropbox links zijn toegestaan.');
+            }
+            // 👆 EINDE SNYK FIX
 
             // 3. Bepaal MIME type
             $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
@@ -123,7 +141,7 @@ class DropboxViewerController extends Controller
             };
 
             // 4. Open de stream veilig
-            // We gebruiken de $link (de URL van Dropbox), niet het lokale $path
+            // We weten nu 100% zeker dat $link een HTTPS link is (geen lokaal pad) én van Dropbox is.
             $fileStream = fopen($link, 'r');
 
             if (!$fileStream) {
@@ -135,7 +153,6 @@ class DropboxViewerController extends Controller
                 fclose($fileStream);
             }, 200, [
                 "Content-Type" => $mimeType,
-                // basename() hieronder zorgt er ook voor dat hackers geen paden in de bestandsnaam kunnen smokkelen
                 "Content-Disposition" => "inline; filename=\"" . basename($path) . "\"",
             ]);
 
