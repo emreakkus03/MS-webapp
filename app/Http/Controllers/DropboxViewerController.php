@@ -81,84 +81,78 @@ class DropboxViewerController extends Controller
      * De Stream Functie (Haalt de data op)
      * Nu met ondersteuning voor ALLE afbeeldingstypes!
      */
-  public function stream(Request $request)
-    {
-        // 1. Input ophalen
-        $path = $request->input('path');
-        $nsId = $request->input('ns_id');
+ public function stream(Request $request)
+{
+    $path = $request->input('path');
+    $nsId = $request->input('ns_id');
 
-        if (empty($path) || empty($nsId)) {
-            abort(400, 'Parameters ontbreken.');
-        }
-
-        // 🛡️ ROBUUSTE SECURITY CHECK
-        if (str_contains($path, '../') || str_contains($path, '..\\') || str_contains($path, "\0")) {
-            abort(403, 'Ongeldig bestandspad gedetecteerd. Hacking poging geblokkeerd.');
-        }
-
-        try {
-            // 2. Haal de tijdelijke link op bij Dropbox
-            $link = $this->dropbox->getTemporaryLink($nsId, $path);
-            
-            // 🛡️ EXTRA SECURITY: Check of het wel écht een geldige URL structuur is
-            if (!filter_var($link, FILTER_VALIDATE_URL)) {
-                throw new \Exception('Dropbox gaf geen geldige URL terug.');
-            }
-
-            // 👇 START SNYK FIX VOOR SSRF EN PATH TRAVERSAL
-            $parsedUrl = parse_url($link);
-            
-            // Fix voor Path Traversal: Dwing af dat het een HTTPS verbinding is.
-            // Snyk is bang dat 'fopen' een lokaal bestand opent (zoals file:///etc/passwd of /var/www/).
-            // Door expliciet te checken op 'https' sluiten we lokale paden 100% uit.
-            if (($parsedUrl['scheme'] ?? '') !== 'https') {
-                throw new \Exception('Security Beveiliging: Alleen beveiligde HTTPS verbindingen zijn toegestaan.');
-            }
-
-            // Fix voor SSRF: Dwing af dat het domein ALTIJD van Dropbox is.
-            // Snyk is bang dat we stiekem een ander IP-adres of domein openen via fopen.
-            $host = $parsedUrl['host'] ?? '';
-            $isDropboxDomain = str_ends_with($host, '.dropboxusercontent.com') || $host === 'dl.dropboxusercontent.com' || str_ends_with($host, '.dropbox.com');
-
-            if (!$isDropboxDomain) {
-                \Illuminate\Support\Facades\Log::alert('Mogelijke SSRF aanval geblokkeerd!', ['url' => $link]);
-                throw new \Exception('Security Beveiliging: Ongeldig domein. Alleen veilige Dropbox links zijn toegestaan.');
-            }
-            // 👆 EINDE SNYK FIX
-
-            // 3. Bepaal MIME type
-            $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-            $mimeType = match($extension) {
-                'pdf' => 'application/pdf',
-                'jpg', 'jpeg' => 'image/jpeg',
-                'png' => 'image/png',
-                'gif' => 'image/gif',
-                'webp' => 'image/webp',
-                'svg' => 'image/svg+xml',
-                'bmp' => 'image/bmp',
-                'txt' => 'text/plain',
-                default => 'application/octet-stream',
-            };
-
-            // 4. Open de stream veilig
-            // We weten nu 100% zeker dat $link een HTTPS link is (geen lokaal pad) én van Dropbox is.
-            $fileStream = fopen($link, 'r');
-
-            if (!$fileStream) {
-                throw new \Exception('Kon de stream naar Dropbox niet openen.');
-            }
-
-            return response()->stream(function() use ($fileStream) {
-                fpassthru($fileStream);
-                fclose($fileStream);
-            }, 200, [
-                "Content-Type" => $mimeType,
-                "Content-Disposition" => "inline; filename=\"" . basename($path) . "\"",
-            ]);
-
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Dropbox stream error: ' . $e->getMessage());
-            abort(404, 'Bestand niet gevonden of kan niet worden geladen.');
-        }
+    if (empty($path) || empty($nsId)) {
+        abort(400, 'Parameters ontbreken.');
     }
+
+    // 🛡️ Path traversal check
+    if (str_contains($path, '../') || str_contains($path, '..\\') || str_contains($path, "\0")) {
+        abort(403, 'Ongeldig bestandspad gedetecteerd.');
+    }
+
+    try {
+        // Haal tijdelijke Dropbox link op
+        $link = $this->dropbox->getTemporaryLink($nsId, $path);
+
+        // 🛡️ Valideer dat het een echte URL is
+        if (!filter_var($link, FILTER_VALIDATE_URL)) {
+            throw new \Exception('Dropbox gaf geen geldige URL terug.');
+        }
+
+        // 🛡️ Dwing HTTPS af
+        $parsedUrl = parse_url($link);
+        if (($parsedUrl['scheme'] ?? '') !== 'https') {
+            throw new \Exception('Alleen HTTPS verbindingen zijn toegestaan.');
+        }
+
+        // 🛡️ Dwing Dropbox domein af (SSRF preventie)
+        $host = $parsedUrl['host'] ?? '';
+        $isDropboxDomain = str_ends_with($host, '.dropboxusercontent.com')
+            || str_ends_with($host, '.dropbox.com');
+
+        if (!$isDropboxDomain) {
+            \Illuminate\Support\Facades\Log::alert('Mogelijke SSRF aanval geblokkeerd!', ['url' => $link]);
+            throw new \Exception('Ongeldig domein gedetecteerd.');
+        }
+
+        // Bepaal MIME type op basis van extensie
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $mimeType = match($extension) {
+            'pdf'        => 'application/pdf',
+            'jpg','jpeg' => 'image/jpeg',
+            'png'        => 'image/png',
+            'gif'        => 'image/gif',
+            'webp'       => 'image/webp',
+            'svg'        => 'image/svg+xml',
+            'bmp'        => 'image/bmp',
+            'txt'        => 'text/plain',
+            default      => 'application/octet-stream',
+        };
+
+        // ✅ Stream via Guzzle — 8KB per keer, nooit het hele bestand in RAM
+        return response()->stream(function() use ($link) {
+            $client       = new \GuzzleHttp\Client();
+            $guzzleResponse = $client->get($link, ['stream' => true]);
+            $body         = $guzzleResponse->getBody();
+
+            while (!$body->eof()) {
+                echo $body->read(8192);
+                ob_flush();
+                flush();
+            }
+        }, 200, [
+            'Content-Type'        => $mimeType,
+            'Content-Disposition' => 'inline; filename="' . basename($path) . '"',
+        ]);
+
+    } catch (\Exception $e) {
+        \Illuminate\Support\Facades\Log::error('Dropbox stream error: ' . $e->getMessage());
+        abort(404, 'Bestand niet gevonden of kan niet worden geladen.');
+    }
+}
 }
