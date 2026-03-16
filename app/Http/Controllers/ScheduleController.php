@@ -255,7 +255,14 @@ class ScheduleController extends Controller
 
         $teams = Team::orderBy('name')->get();
         $addresses = Address::orderBy('street')->get();
+
+
         $redirect = request('redirect', url()->previous());
+    $parsedUrl = parse_url($redirect);
+
+    if (isset($parsedUrl['host']) && $parsedUrl['host'] !== request()->getHost()) {
+        $redirect = route('schedule.index'); 
+    }
 
         return view('schedule.edit', compact('task', 'teams', 'addresses', 'redirect'));
     }
