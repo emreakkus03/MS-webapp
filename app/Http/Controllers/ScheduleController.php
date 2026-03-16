@@ -315,25 +315,16 @@ class ScheduleController extends Controller
         ]);
 // 👇 HIER IS DE FIX VOOR SNYK (Open Redirect) 👇
         
-        $redirect = $request->input('redirect_to');
-        $defaultRoute = route('schedule.index');
+      // ✅ Nooit een URL uit input, alleen een team_id getal
+$teamId = $request->input('redirect_team_id');
 
-        if ($redirect) {
-            // We ontleden de URL
-            $parsedUrl = parse_url($redirect);
+if ($teamId && is_numeric($teamId)) {
+    return redirect()->route('schedule.index', ['team_id' => (int) $teamId])
+        ->with('success', 'Taak bijgewerkt!');
+}
 
-            // 🛡️ SECURITY CHECK:
-            // Als de link een domeinnaam (host) heeft, moet die GELIJK zijn aan onze eigen site.
-            // Als iemand probeert te redirecten naar 'evil.com', grijpen we in.
-            if (isset($parsedUrl['host']) && $parsedUrl['host'] !== $request->getHost()) {
-                $redirect = $defaultRoute;
-            }
-        } else {
-            // Geen redirect opgegeven? Ga naar standaard.
-            $redirect = $defaultRoute;
-        }
-
-        return redirect($redirect)->with('success', 'Taak bijgewerkt!');
+return redirect()->route('schedule.index')
+    ->with('success', 'Taak bijgewerkt!');
     }
 
 

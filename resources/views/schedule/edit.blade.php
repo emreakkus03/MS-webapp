@@ -7,7 +7,7 @@
         <form action="{{ route('schedule.update', $task) }}" method="POST" class="bg-white shadow rounded-lg p-6 space-y-6">
             @csrf
             @method('PUT')
-            <input type="hidden" name="redirect_to" value="{{ request('redirect') }}">
+            <input type="hidden" name="redirect_team_id" value="{{ $task->team_id }}">
 
             @if(Auth::user()->role === 'admin')
                 <div>
