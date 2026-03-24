@@ -133,8 +133,8 @@ class TaskController extends Controller
 
         $tasks = Task::with(['address', 'team'])
             ->when($status, fn($query) => $query->where('status', $status))
-            ->when($q, function ($query) use ($q) {
-                $query->whereHas('address', function ($sub) use ($q) {
+            ->when($q, function ($query) use ($q): void {
+                $query->whereHas('address', function ($sub) use ($q): void {
                     $sub->where('street', 'like', "%{$q}%")
                         ->orWhere('number', 'like', "%{$q}%")
                         ->orWhere('zipcode', 'like', "%{$q}%")

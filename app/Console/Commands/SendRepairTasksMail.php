@@ -22,10 +22,10 @@ class SendRepairTasksMail extends Command
 
         $tasks = Task::with('address', 'team')
             ->whereNotNull('note')
-            ->where(function ($query) use ($now, $yesterdayAtSix) {
+            ->where(function ($query) use ($now, $yesterdayAtSix): void {
                 $query
                     ->whereDate('time', $now->toDateString())
-                    ->orWhere(function ($q) use ($yesterdayAtSix, $now) {
+                    ->orWhere(function ($q) use ($yesterdayAtSix, $now): void {
                         $q->whereDate('time', $yesterdayAtSix->toDateString())
                             ->where('updated_at', '>=', $yesterdayAtSix)
                             ->where('updated_at', '<', $now);

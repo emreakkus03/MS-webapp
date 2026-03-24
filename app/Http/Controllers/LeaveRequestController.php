@@ -74,7 +74,7 @@ class LeaveRequestController extends Controller
             'start_date' => [
                 'required',
                 'date',
-                function ($attribute, $value, $fail) {
+                function ($attribute, $value, $fail): void {
                     $minDate = Carbon::now()->addDays(14)->startOfDay();
                     $selected = Carbon::parse($value);
                     if ($selected->lt($minDate)) {
@@ -85,7 +85,7 @@ class LeaveRequestController extends Controller
             'end_date' => [
                 'required',
                 'date',
-                function ($attribute, $value, $fail) use ($request) {
+                function ($attribute, $value, $fail) use ($request): void {
                     $startDate = Carbon::parse($request->start_date);
                     $endDate = Carbon::parse($value);
                     $minDate = Carbon::now()->addDays(14)->startOfDay();
@@ -207,7 +207,7 @@ class LeaveRequestController extends Controller
             'start_date' => [
                 'required',
                 'date',
-                function ($attribute, $value, $fail) {
+                function ($attribute, $value, $fail): void {
                     $minDate = Carbon::now()->addDays(14)->startOfDay();
                     if (Carbon::parse($value)->lt($minDate)) {
                         $fail('De startdatum moet minstens 2 weken op voorhand liggen.');

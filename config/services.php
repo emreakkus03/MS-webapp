@@ -40,5 +40,12 @@ return [
         'refresh_token' => env('DROPBOX_REFRESH_TOKEN'),
          'team_member_id' => env('DROPBOX_TEAM_MEMBER_ID'),
     ],
+    'klip' => [
+    'client_id' => env('KLIP_CLIENT_ID'),
+    'client_secret' => env('KLIP_CLIENT_SECRET'),
+    'organisation_id' => env('KLIP_ORGANISATION_ID'),
+    'base_url' => env('KLIP_BASE_URL'),
+    'token_url' => env('KLIP_TOKEN_URL'),
+],
 
 ];

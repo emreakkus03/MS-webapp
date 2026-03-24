@@ -5,11 +5,11 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
-Artisan::command('inspire', function () {
+Artisan::command('inspire', function (): void {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::call(function () {
+Schedule::call(function (): void {
     Log::info('🔁 Keep-alive ping uitgevoerd op ' . now());
     try {
         file_get_contents(config('app.url') . '/ping');

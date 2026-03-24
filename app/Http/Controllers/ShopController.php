@@ -30,7 +30,7 @@ class ShopController extends Controller
 
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function($q) use ($search): void {
                 $q->where('description', 'like', "%$search%")
                   ->orWhere('sap_number', 'like', "%$search%");
             });
@@ -225,7 +225,7 @@ session(['last_shop_category' => $category]);
 
         $orders = Order::where('team_id', $user->id)
             // HIER IS DE MAGIE: Filter orders op basis van de materialen die erin zitten
-            ->whereHas('materials', function ($query) use ($category) {
+            ->whereHas('materials', function ($query) use ($category): void {
                 $query->where('category', $category);
             })
             ->with('materials')

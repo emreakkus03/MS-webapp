@@ -135,7 +135,7 @@ class DropboxViewerController extends Controller
         };
 
         // ✅ Stream via Guzzle — 8KB per keer, nooit het hele bestand in RAM
-        return response()->stream(function() use ($link) {
+        return response()->stream(function() use ($link): void {
             $client       = new \GuzzleHttp\Client();
             $guzzleResponse = $client->get($link, ['stream' => true]);
             $body         = $guzzleResponse->getBody();

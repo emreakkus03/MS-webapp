@@ -17,28 +17,27 @@ use App\Http\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Auth;
 use App\Events\TestEvent;
 use Aws\S3\S3Client;
-use Illuminate\Support\Facades\Log;
+
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\RepairTasksMail;
-use Illuminate\Support\Facades\Response;
+
 use Aws\Credentials\Credentials;
-use App\Http\Controllers\ApplicationController;
-use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\KlipController;
 
 
 use App\Imports\MaterialsImport;
 use Maatwebsite\Excel\Facades\Excel;
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth'])->group(function (): void {
     Route::get('/csrf-token', function () {
         return response()->json(['token' => csrf_token()]);
     })->name('csrf.token');
 });
 
-Route::middleware(['auth'])->group(function () { 
+Route::middleware(['auth'])->group(function (): void { 
     Route::get('/run-import', function () {
         try {
             
@@ -53,7 +52,7 @@ Route::middleware(['auth'])->group(function () {
 });
 
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth'])->group(function (): void {
     Route::post('/r2/presigned-url', function (Request $request) {
         $request->validate([
             'filename' => 'required|string|max:255',
@@ -184,16 +183,16 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
-Route::middleware('guest')->group(function () {
+Route::middleware('guest')->group(function (): void {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
     Route::post('/login', [LoginController::class, 'login'])->middleware('throttle:5,1');
     Route::get('/signin', fn() => view('signin.signin'));
 });
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth'])->group(function (): void {
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 });
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth'])->group(function (): void {
     Route::get('/teams', [TeamController::class, 'index'])->name('teams.index');
     Route::post('/teams', [TeamController::class, 'store']);
     Route::delete('/teams/{team}', [TeamController::class, 'destroy'])->name('teams.destroy');
@@ -203,12 +202,12 @@ Route::middleware(['auth'])->group(function () {
 
 
 //
-Route::middleware('auth')->group(function () {
+Route::middleware('auth')->group(function (): void {
     Route::get('/dashboard/admin', [DashboardController::class, 'admin'])->name('dashboard.admin');
     Route::get('/dashboard/user', [DashboardController::class, 'user'])->name('dashboard.user');
 });
 
-Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function (): void {
     Route::get('/dropbox', [DropboxController::class, 'index'])->name('dropbox.index');
     Route::post('/dropbox/scan', [DropboxController::class, 'scanRoot'])->name('dropbox.scan');
     Route::post('/dropbox/toggle/{id}', [DropboxController::class, 'toggleVisibility'])->name('dropbox.toggle');
@@ -216,18 +215,18 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
     Route::post('/dropbox/sync', [DropboxController::class, 'syncSubfolders'])->name('dropbox.sync');
 });
 
-Route::middleware(['auth'])->prefix('admin/r2')->group(function () {
+Route::middleware(['auth'])->prefix('admin/r2')->group(function (): void {
     Route::get('/', [R2ManagementController::class, 'index'])->name('r2.index');
     Route::post('/retry', [R2ManagementController::class, 'retryAll'])->name('r2.retry');
     Route::post('/clear', [R2ManagementController::class, 'clearBucket'])->name('r2.clear');
 });
 
 
-Route::middleware(['auth', 'can:view-logs'])->group(function () {
+Route::middleware(['auth', 'can:view-logs'])->group(function (): void {
     Route::get('/logs', [ActivityLogController::class, 'index'])->name('admin.activity.index');
 });
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth'])->group(function (): void {
     // 1. Overzicht
     Route::get('/files', [DropboxViewerController::class, 'index'])->name('dossiers.index');
 
@@ -243,7 +242,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/files/{id}', [DropboxViewerController::class, 'show'])->name('dossiers.show');
 });
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth'])->group(function (): void {
     Route::get('/schedule', [ScheduleController::class, 'index'])->name('schedule.index');
     Route::post('/schedule', [ScheduleController::class, 'store'])->name('schedule.store');
     //Route::get('/schedule/tasks', [ScheduleController::class, 'tasks'])->name('schedule.tasks');
@@ -257,7 +256,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/schedule/address-suggest', [ScheduleController::class, 'addressSuggest']);
 });
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth'])->group(function (): void {
     Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
     Route::post('/tasks/{task}/finish', [TaskController::class, 'finish'])->name('tasks.finish');
     Route::patch('/tasks/{task}/reopen', [TaskController::class, 'reopen'])->name('tasks.reopen');
@@ -283,7 +282,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/r2/check-file', [R2Controller::class, 'checkFile'])->name('r2.check');
 });
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth'])->group(function (): void {
     Route::get('/leaves', [LeaveRequestController::class, 'index'])->name('leaves.index');
     Route::get('/leaves/create', [LeaveRequestController::class, 'create'])->name('leaves.create');
     Route::post('/leaves', [LeaveRequestController::class, 'store'])->name('leaves.store');
@@ -294,7 +293,7 @@ Route::middleware(['auth'])->group(function () {
 });
 
 Route::get('/test-mail', function () {
-    Mail::raw('Dit is een testmail vanuit Laravel via Outlook SMTP.', function ($message) {
+    Mail::raw('Dit is een testmail vanuit Laravel via Outlook SMTP.', function ($message): void {
         $message->to('jouwadres@outlook.com')
             ->subject('Testmail via Outlook SMTP');
     });
@@ -315,11 +314,11 @@ Route::get('/test-repair-mail', function () {
 });
 
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth'])->group(function (): void {
     Route::post('/r2/upload', [R2Controller::class, 'uploadFromSW'])->name('r2.upload');
 });
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth'])->group(function (): void {
 
     // --- 1. SPECIFIEKE PAGINA'S (Moeten bovenaan staan!) ---
     
@@ -353,7 +352,7 @@ Route::middleware(['auth'])->group(function () {
 });
 
 // Je kunt hier later 'mid/tasksdleware' => ['auth', 'role:magazijnier'] aan toevoegen
-Route::prefix('warehouse')->middleware(['auth'])->group(function () {
+Route::prefix('warehouse')->middleware(['auth'])->group(function (): void {
 
     // Dashboard: Overzicht van alle bestellingen
     Route::get('/', [WarehouseController::class, 'index'])->name('warehouse.index');
@@ -363,4 +362,9 @@ Route::prefix('warehouse')->middleware(['auth'])->group(function () {
 
     // Actie 2: Klaar melden (Zet status op 'ready')
     Route::post('/orders/{id}/complete', [WarehouseController::class, 'markAsReady'])->name('warehouse.complete');
+});
+
+
+Route::middleware(['auth'])->group(function (): void {
+    Route::get('/klip', [KlipController::class, 'index'])->name('klip.index');
 });
