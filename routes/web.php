@@ -31,12 +31,13 @@ use App\Http\Controllers\KlipController;
 use App\Imports\MaterialsImport;
 use Maatwebsite\Excel\Facades\Excel;
 
+/*
 Route::middleware(['auth'])->group(function (): void {
     Route::get('/debug/indexeddb', function () {
         return view('debug.indexeddb');
     })->name('debug.indexeddb');
 });
-
+*/
 Route::middleware(['auth'])->group(function (): void {
     Route::get('/csrf-token', function () {
         return response()->json(['token' => csrf_token()]);
