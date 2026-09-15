@@ -111,6 +111,70 @@
             return btn;
         }
 
+        function makeDeleteRecordButton(dbName, storeName, key, wrapper) {
+            const btn = document.createElement('button');
+            btn.textContent = '🗑 Verwijder dit record';
+            btn.style.display = 'block';
+            btn.style.margin = '8px 0';
+            btn.style.padding = '6px';
+            btn.style.background = '#fdd';
+            btn.onclick = async () => {
+                if (!confirm('Weet je zeker dat je dit record wilt verwijderen? Dit kan niet ongedaan gemaakt worden.')) return;
+                try {
+                    const db = await new Promise((resolve, reject) => {
+                        const req = indexedDB.open(dbName);
+                        req.onsuccess = () => resolve(req.result);
+                        req.onerror = () => reject(req.error);
+                    });
+                    await new Promise((resolve, reject) => {
+                        const tx = db.transaction(storeName, 'readwrite');
+                        tx.objectStore(storeName).delete(key);
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    });
+                    db.close();
+                    wrapper.style.opacity = '0.4';
+                    wrapper.style.textDecoration = 'line-through';
+                    btn.textContent = '✅ Verwijderd';
+                    btn.disabled = true;
+                } catch (e) {
+                    alert('Fout bij verwijderen: ' + e.message);
+                }
+            };
+            return btn;
+        }
+
+        function makeClearStoreButton(dbName, storeName, container) {
+            const btn = document.createElement('button');
+            btn.textContent = `🗑 Leeg hele store "${storeName}"`;
+            btn.style.display = 'block';
+            btn.style.margin = '12px 0';
+            btn.style.padding = '8px';
+            btn.style.background = '#f88';
+            btn.style.fontWeight = 'bold';
+            btn.onclick = async () => {
+                if (!confirm(`Weet je zeker dat je ALLE records in store "${storeName}" wilt verwijderen? Dit kan niet ongedaan gemaakt worden.`)) return;
+                try {
+                    const db = await new Promise((resolve, reject) => {
+                        const req = indexedDB.open(dbName);
+                        req.onsuccess = () => resolve(req.result);
+                        req.onerror = () => reject(req.error);
+                    });
+                    await new Promise((resolve, reject) => {
+                        const tx = db.transaction(storeName, 'readwrite');
+                        tx.objectStore(storeName).clear();
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    });
+                    db.close();
+                    container.innerHTML = '<em>Store geleegd. Herlaad de pagina om te verversen.</em>';
+                } catch (e) {
+                    alert('Fout bij legen: ' + e.message);
+                }
+            };
+            return btn;
+        }
+
         try {
             const dbs = await indexedDB.databases();
 
@@ -136,13 +200,23 @@
                     output.appendChild(storeHeader);
 
                     const tx = db.transaction(storeName, 'readonly');
+                    const store = tx.objectStore(storeName);
                     const items = await new Promise((resolve, reject) => {
-                        const req = tx.objectStore(storeName).getAll();
+                        const req = store.getAll();
+                        req.onsuccess = () => resolve(req.result);
+                        req.onerror = () => reject(req.error);
+                    });
+                    const keys = await new Promise((resolve, reject) => {
+                        const req = store.getAllKeys();
                         req.onsuccess = () => resolve(req.result);
                         req.onerror = () => reject(req.error);
                     });
 
+                    // Knop om in één keer de hele store leeg te maken
+                    output.appendChild(makeClearStoreButton(dbInfo.name, storeName, output));
+
                     items.forEach((item, index) => {
+                        const recordKey = keys[index];
                         const wrapper = document.createElement('div');
                         wrapper.style.border = '1px solid #ccc';
                         wrapper.style.margin = '8px 0';
@@ -230,6 +304,9 @@
                             pre.textContent = '(kon record niet als JSON tonen: ' + e.message + ')';
                         }
                         wrapper.appendChild(pre);
+
+                        // Verwijderknop voor dit specifieke record
+                        wrapper.appendChild(makeDeleteRecordButton(dbInfo.name, storeName, recordKey, wrapper));
 
                         output.appendChild(wrapper);
                     });
