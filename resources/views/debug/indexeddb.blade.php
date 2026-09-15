@@ -10,27 +10,114 @@
         const output = document.getElementById('output');
         output.innerHTML = '';
 
+        // Duck-typing: alles wat zich als Blob gedraagt (Blob, File, of een object met .size/.type/.arrayBuffer)
         function isBlobLike(val) {
-            return val instanceof Blob || (val && val.constructor && val.constructor.name === 'Blob');
+            if (!val) return false;
+            if (val instanceof Blob) return true;
+            if (val instanceof File) return true;
+            if (typeof val === 'object' &&
+                typeof val.size === 'number' &&
+                typeof val.arrayBuffer === 'function') {
+                return true;
+            }
+            return false;
         }
 
-        // Zoekt recursief naar Blobs/Files in een record (ook in geneste objecten)
-        function findBlobs(value, path = []) {
+        function isArrayBufferLike(val) {
+            return val instanceof ArrayBuffer ||
+                (val && val.buffer instanceof ArrayBuffer) || // TypedArray zoals Uint8Array
+                (val && val.constructor && val.constructor.name === 'ArrayBuffer');
+        }
+
+        function describeType(val) {
+            if (val === null) return 'null';
+            if (val === undefined) return 'undefined';
+            if (isBlobLike(val)) return `Blob-achtig (constructor: ${val.constructor?.name}, size: ${val.size}, type: "${val.type}")`;
+            if (isArrayBufferLike(val)) return `ArrayBuffer-achtig (constructor: ${val.constructor?.name}, byteLength: ${val.byteLength ?? val.buffer?.byteLength})`;
+            if (typeof val === 'string') return `string (lengte ${val.length})`;
+            if (Array.isArray(val)) return `array (${val.length} items)`;
+            if (typeof val === 'object') return `object (constructor: ${val.constructor?.name || 'onbekend'})`;
+            return typeof val;
+        }
+
+        // Zoekt recursief naar Blobs/ArrayBuffers in een record
+        function findBinary(value, path = []) {
             let found = [];
             if (isBlobLike(value)) {
-                found.push({ path, blob: value });
+                found.push({ path, kind: 'blob', data: value });
+            } else if (isArrayBufferLike(value)) {
+                found.push({ path, kind: 'arraybuffer', data: value });
             } else if (Array.isArray(value)) {
-                value.forEach((v, i) => found.push(...findBlobs(v, [...path, i])));
+                value.forEach((v, i) => found.push(...findBinary(v, [...path, i])));
             } else if (value && typeof value === 'object') {
                 for (const key in value) {
-                    found.push(...findBlobs(value[key], [...path, key]));
+                    found.push(...findBinary(value[key], [...path, key]));
                 }
             }
             return found;
         }
 
+        function makeDownloadButton(blob, filename, labelPrefix) {
+            const btn = document.createElement('button');
+            const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
+            btn.textContent = `${labelPrefix} (${blob.type || 'onbekend type'}, ${sizeMB} MB)`;
+            btn.style.display = 'block';
+            btn.style.margin = '4px 0';
+            btn.style.padding = '6px';
+            btn.onclick = () => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+            };
+            return btn;
+        }
+
+        function makeShareButton(blob, filename) {
+            const btn = document.createElement('button');
+            btn.textContent = `Delen / opslaan via Android`;
+            btn.style.display = 'block';
+            btn.style.margin = '4px 0';
+            btn.style.padding = '6px';
+            btn.onclick = async () => {
+                try {
+                    const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        await navigator.share({ files: [file], title: filename });
+                    } else {
+                        alert('Delen van dit bestandstype wordt niet ondersteund. Probeer "Open in tab".');
+                    }
+                } catch (e) {
+                    alert('Fout bij delen: ' + e.message);
+                }
+            };
+            return btn;
+        }
+
+        function makeOpenButton(blob) {
+            const btn = document.createElement('button');
+            btn.textContent = 'Open in nieuw tabblad';
+            btn.style.display = 'block';
+            btn.style.margin = '4px 0';
+            btn.style.padding = '6px';
+            btn.onclick = () => {
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+            };
+            return btn;
+        }
+
         try {
             const dbs = await indexedDB.databases();
+
+            if (!dbs || dbs.length === 0) {
+                output.textContent = 'Geen databases gevonden via indexedDB.databases(). Vul evt. de naam handmatig in de code in.';
+                return;
+            }
 
             for (const dbInfo of dbs) {
                 const db = await new Promise((resolve, reject) => {
@@ -56,8 +143,6 @@
                     });
 
                     items.forEach((item, index) => {
-                        const blobs = findBlobs(item);
-
                         const wrapper = document.createElement('div');
                         wrapper.style.border = '1px solid #ccc';
                         wrapper.style.margin = '8px 0';
@@ -68,47 +153,82 @@
                         label.style.fontWeight = 'bold';
                         wrapper.appendChild(label);
 
-                        if (blobs.length > 0) {
-                            blobs.forEach(({ path, blob }) => {
-                                const btn = document.createElement('button');
-                                const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
-                                const type = blob.type || 'onbekend type';
-                                btn.textContent = `Download bestand (${type}, ${sizeMB} MB) - veld: ${path.join('.') || 'root'}`;
-                                btn.style.display = 'block';
-                                btn.style.margin = '4px 0';
-                                btn.onclick = () => {
-                                    const url = URL.createObjectURL(blob);
-                                    const a = document.createElement('a');
-                                    a.href = url;
-                                    // probeer een zinnige extensie te kiezen op basis van het mimetype
-                                    const ext = (blob.type.split('/')[1] || 'bin').split(';')[0];
-                                    a.download = `${dbInfo.name}_${storeName}_${index}.${ext}`;
-                                    document.body.appendChild(a);
-                                    a.click();
-                                    a.remove();
-                                    setTimeout(() => URL.revokeObjectURL(url), 10000);
-                                };
-                                wrapper.appendChild(btn);
+                        // Debug: toon het type van elk top-level veld
+                        if (item && typeof item === 'object' && !isBlobLike(item)) {
+                            const debugList = document.createElement('ul');
+                            debugList.style.fontSize = '12px';
+                            debugList.style.color = '#555';
+                            for (const key in item) {
+                                const li = document.createElement('li');
+                                li.textContent = `${key}: ${describeType(item[key])}`;
+                                debugList.appendChild(li);
+                            }
+                            wrapper.appendChild(debugList);
+                        } else {
+                            const debugLine = document.createElement('div');
+                            debugLine.style.fontSize = '12px';
+                            debugLine.style.color = '#555';
+                            debugLine.textContent = 'Record zelf is: ' + describeType(item);
+                            wrapper.appendChild(debugLine);
+                        }
 
-                                // Als het een video is: meteen ook een preview tonen
-                                if (blob.type.startsWith('video/')) {
+                        const binaries = findBinary(item);
+
+                        binaries.forEach(({ path, kind, data }) => {
+                            let blob;
+                            let mimeGuess = 'video/quicktime'; // .mov fallback
+
+                            if (kind === 'blob') {
+                                blob = data;
+                            } else if (kind === 'arraybuffer') {
+                                // ArrayBuffer/TypedArray omzetten naar Blob, met gok voor mimetype
+                                const buf = data.buffer instanceof ArrayBuffer ? data.buffer : data;
+                                blob = new Blob([buf], { type: mimeGuess });
+                            }
+
+                            if (blob) {
+                                const ext = (blob.type.split('/')[1] || 'mov').split(';')[0];
+                                const filename = `${dbInfo.name}_${storeName}_${index}_${path.join('-') || 'root'}.${ext}`;
+
+                                const fieldLabel = document.createElement('div');
+                                fieldLabel.style.marginTop = '6px';
+                                fieldLabel.textContent = `Gevonden binair veld: ${path.join('.') || 'root'} (${kind})`;
+                                wrapper.appendChild(fieldLabel);
+
+                                wrapper.appendChild(makeDownloadButton(blob, filename, 'Download bestand'));
+                                wrapper.appendChild(makeShareButton(blob, filename));
+                                wrapper.appendChild(makeOpenButton(blob));
+
+                                if (blob.type.startsWith('video/') || kind === 'arraybuffer') {
                                     const video = document.createElement('video');
                                     video.controls = true;
                                     video.style.maxWidth = '100%';
                                     video.src = URL.createObjectURL(blob);
                                     wrapper.appendChild(video);
                                 }
-                            });
+                            }
+                        });
+
+                        if (binaries.length === 0) {
+                            const noBin = document.createElement('div');
+                            noBin.style.color = 'red';
+                            noBin.textContent = 'Geen binair veld gevonden in dit record (zie types hierboven).';
+                            wrapper.appendChild(noBin);
                         }
 
-                        // Rest van het record (zonder de blobs) als JSON tonen
+                        // Rest van het record als JSON tonen (binaire velden vervangen door placeholder)
                         const pre = document.createElement('pre');
                         pre.style.whiteSpace = 'pre-wrap';
-                        pre.style.fontSize = '12px';
-                        pre.textContent = JSON.stringify(item, (key, val) => {
-                            if (isBlobLike(val)) return '[Blob: zie downloadknop hierboven]';
-                            return val;
-                        }, 2);
+                        pre.style.fontSize = '11px';
+                        try {
+                            pre.textContent = JSON.stringify(item, (key, val) => {
+                                if (isBlobLike(val)) return '[Blob]';
+                                if (isArrayBufferLike(val)) return '[ArrayBuffer]';
+                                return val;
+                            }, 2);
+                        } catch (e) {
+                            pre.textContent = '(kon record niet als JSON tonen: ' + e.message + ')';
+                        }
                         wrapper.appendChild(pre);
 
                         output.appendChild(wrapper);
