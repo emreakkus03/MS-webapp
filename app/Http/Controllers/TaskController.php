@@ -15,6 +15,7 @@ use App\Jobs\MoveToDropboxJob;
 use App\Models\R2PendingUpload;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 
 class TaskController extends Controller
 {
@@ -34,70 +35,92 @@ class TaskController extends Controller
         $request->validate([
             'damage' => 'required|in:none,damage',
             'note'   => 'nullable|string|max:1000',
+            'request_id' => 'required|uuid',
+            'upload_ids' => 'required|array|min:1|max:500',
+            'upload_ids.*' => 'required|uuid|distinct',
         ]);
 
-        // 👉 sanitize note
-        $cleanNote = $request->note ? ucfirst(e(strip_tags($request->note))) : null;
+        return DB::transaction(function () use ($request, $task) {
+            $task = Task::whereKey($task->id)->lockForUpdate()->firstOrFail();
+            $receipt = DB::table('photo_finish_requests')->where('id', $request->request_id)->first();
+            if ($receipt) {
+                abort_unless((int) $receipt->task_id === $task->id, 409, 'Completion ID conflict.');
+                return response()->json(json_decode($receipt->response, true));
+            }
+            $confirmed = R2PendingUpload::where('task_id', $task->id)
+                ->whereIn('upload_id', $request->upload_ids)->whereNotNull('confirmed_at')->count();
+            abort_unless($confirmed === count($request->upload_ids), 409, 'Photos are not all safely received yet.');
+            abort_if(R2PendingUpload::where('task_id', $task->id)->whereNull('confirmed_at')->exists(),
+                409, 'Other photos for this task still need a durable handoff.');
+            $task->expected_photo_count = $confirmed;
 
-        if ($task->status === 'open') {
-            $task->status = 'in behandeling';
-            $task->note   = $request->damage === 'damage' ? $cleanNote : null;
-        } elseif (in_array($task->status, ['in behandeling', 'reopened'])) {
-            if ($request->damage === 'none') {
-                $task->status = 'finished';
-                $task->note   = null;
-            } else {
+            // 👉 sanitize note
+            $cleanNote = $request->note ? ucfirst(e(strip_tags($request->note))) : null;
+
+            if ($task->status === 'open') {
                 $task->status = 'in behandeling';
-                $task->note   = $cleanNote;
-            }
-        }
-
-        $task->save();
-
-        Task::where('address_id', $task->address_id)
-            ->where('id', '!=', $task->id)
-            ->update(['status' => $task->status]);
-
-        $team = Auth::user();
-        $address = $task->address
-            ? "{$task->address->street} {$task->address->number}, {$task->address->zipcode} {$task->address->city}"
-            : "Onbekend adres";
-
-        if ($request->damage === 'damage' && !empty($task->note)) {
-            if ($team->role !== 'admin') {
-                $admins = \App\Models\Team::where('role', 'admin')->get();
-                foreach ($admins as $admin) {
-                    $admin->notify(new \App\Notifications\TaskNoteAddedNotification(
-                        $team->name,
-                        $task->address
-                    ));
+                $task->note   = $request->damage === 'damage' ? $cleanNote : null;
+            } elseif (in_array($task->status, ['in behandeling', 'reopened'])) {
+                if ($request->damage === 'none') {
+                    $task->status = 'finished';
+                    $task->note   = null;
+                } else {
+                    $task->status = 'in behandeling';
+                    $task->note   = $cleanNote;
                 }
             }
-        }
 
-        if (
-            $task->status === 'finished' &&
-            in_array($team->name, ['Herstelploeg 1', 'Herstelploeg 2'])
-        ) {
-            $taskName = $address;
-            if ($team->role !== 'admin') {
-                $admins = \App\Models\Team::where('role', 'admin')->get();
-                foreach ($admins as $admin) {
-                    $admin->notify(new \App\Notifications\TaskCompletedNotification(
-                        $team->name,
-                        $taskName
-                    ));
+            $task->save();
+
+            Task::where('address_id', $task->address_id)
+                ->where('id', '!=', $task->id)
+                ->whereNotIn('id', R2PendingUpload::select('task_id')->whereNull('confirmed_at'))
+                ->update(['status' => $task->status]);
+
+            $team = Auth::user();
+            $address = $task->address
+                ? "{$task->address->street} {$task->address->number}, {$task->address->zipcode} {$task->address->city}"
+                : "Onbekend adres";
+
+            if ($request->damage === 'damage' && !empty($task->note)) {
+                if ($team->role !== 'admin') {
+                    $admins = \App\Models\Team::where('role', 'admin')->get();
+                    foreach ($admins as $admin) {
+                        $admin->notify(new \App\Notifications\TaskNoteAddedNotification(
+                            $team->name,
+                            $task->address
+                        ));
+                    }
                 }
             }
-        }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Taak is afgerond!',
-            'status'  => $task->status,
-            'taskId'  => $task->id,
-            'note'    => $task->note,
-        ]);
+            if (
+                $task->status === 'finished' &&
+                in_array($team->name, ['Herstelploeg 1', 'Herstelploeg 2'])
+            ) {
+                $taskName = $address;
+                if ($team->role !== 'admin') {
+                    $admins = \App\Models\Team::where('role', 'admin')->get();
+                    foreach ($admins as $admin) {
+                        $admin->notify(new \App\Notifications\TaskCompletedNotification(
+                            $team->name,
+                            $taskName
+                        ));
+                    }
+                }
+            }
+
+            $result = [
+                'success' => true,
+                'message' => 'Taak is afgerond!',
+                'status'  => $task->status,
+                'taskId'  => $task->id,
+                'note'    => $task->note,
+            ];
+            DB::table('photo_finish_requests')->insert(['id' => $request->request_id,
+                'task_id' => $task->id, 'response' => json_encode($result), 'created_at' => now(), 'updated_at' => now()]);
+            return response()->json($result);
+        });
     }
 
 
@@ -349,62 +372,15 @@ class TaskController extends Controller
             'photos'       => 'required',
         ]);
 
-        $namespaceId = $request->input('namespace_id');
-        $adresPath   = trim($request->input('path'), '/');
-        $task        = Task::findOrFail($taskId);
-
-        // 🔍 Detecteer perceeltype via namespace_id
-        $isPerceel1 = $namespaceId !== $dropbox->getFluviusNamespaceId();
-
-        // 📁 Bouw basis Dropbox-pad
-        if ($isPerceel1) {
-            $fullDropboxPath = "Fluvius Aansluitingen/PERCEEL 1/Webapp uploads/{$adresPath}";
-        } else {
-            $fullDropboxPath = "Fluvius Aansluitingen/PERCEEL 2/Webapp uploads/{$adresPath}";
+        $paths = (array) $request->input('photos');
+        foreach ($paths as $path) {
+            $registration = Request::create('/r2/register-upload', 'POST', [
+                'task_id' => $taskId, 'r2_path' => $path,
+                'namespace_id' => $request->namespace_id, 'adres_path' => trim($request->input('path'), '/'),
+            ]);
+            app(R2Controller::class)->registerUpload($registration, app(\App\Services\PhotoDelivery::class));
         }
-
-        // 💾 Sla tijdelijk R2-paden op zodat frontend ziet dat upload ok is
-        $photos = $task->photo ? explode(',', $task->photo) : [];
-        foreach ((array)$request->input('photos') as $photoPath) {
-            $photos[] = $photoPath;
-        }
-
-        // 📸 Tijdelijke opslag enkel voor logging (niet in DB)
-        Log::info("📸 Tijdelijke R2 upload ontvangen", [
-            'task_id' => $taskId,
-            'photos'  => $request->input('photos'),
-            'adresPath' => $adresPath,
-            'namespace_id' => $namespaceId,
-        ]);
-
-        foreach ($request->input('photos') as $path) {
-
-    $fullTargetPath = "{$fullDropboxPath}/" . basename($path);
-
-    R2PendingUpload::create([
-        'task_id' => $taskId,
-        'r2_path' => $path,
-        'namespace_id' => $namespaceId,
-        'perceel' => $isPerceel1 ? '1' : '2',
-        'regio_path' => $request->input('path'),
-        'adres_path' => $adresPath,
-        'target_dropbox_path' => $fullTargetPath,
-    ]);
-}
-
-        dispatch(new MoveToDropboxJob(
-            $request->input('photos'),
-            $adresPath,
-            $namespaceId,
-            $taskId
-        ))->onQueue('uploads');
-
-
-        return response()->json([
-            'success' => true,
-            'queued'  => true,
-            'message' => '📦 Foto’s via R2 geüpload en worden op achtergrond verplaatst naar Dropbox.',
-        ]);
+        return response()->json(['success' => true, 'queued' => true]);
     }
 
     public function listTeamMembers(DropboxService $dropbox)
@@ -434,8 +410,12 @@ class TaskController extends Controller
         ]);
 
         try {
-            $namespaceId = $request->get('namespace_id') ?: $dropbox->getFluviusNamespaceId();
-            $link = $dropbox->getTemporaryLink($namespaceId, $request->path);
+            $path = $request->path;
+            $relative = preg_replace('#^/PERCEEL 1(?=/)#i', '', $path);
+            $receipt = R2PendingUpload::whereNotNull('completed_at')
+                ->whereIn('target_dropbox_path', [$path, $relative])->first();
+            $namespaceId = $request->get('namespace_id') ?: ($receipt?->namespace_id ?? $dropbox->getFluviusNamespaceId());
+            $link = $dropbox->getTemporaryLink($namespaceId, $receipt?->target_dropbox_path ?? $path);
 
             return redirect()->away($link);
         } catch (\Exception $e) {

@@ -259,11 +259,11 @@
 --}}
 
 @push('scripts')
+<script src="/js/photo-queue.js?v=8"></script>
 <script>
     // ============================================================
     // 🔹 GLOBALE VARIABELEN (beschikbaar in ALLE scripts)
     // ============================================================
-    let overlay = null;
 
     // 👇 FIX: showToast als globale functie (was dubbel gedefinieerd)
     window.showToast = function(message, duration = 4000) {
@@ -294,116 +294,29 @@
     // 🔹 IndexedDB functies (ZELFDE als in SW — shared logic)
     //    Dit is FIX 1: Main thread schrijft DIRECT naar IndexedDB
     // ============================================================
-    const DB_NAME = "R2UploadDB";
-    const STORE = "pending";
-
-    window.openUploadDB = function() {
-        return new Promise((resolve, reject) => {
-            const req = indexedDB.open(DB_NAME, 2);
-            req.onupgradeneeded = (e) => {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains(STORE)) {
-                    const store = db.createObjectStore(STORE, { keyPath: "id", autoIncrement: true });
-                    store.createIndex("by_task_name", ["task_id", "name", "adres_path"], { unique: false });
-                }
-            };
-            req.onsuccess = (e) => resolve(e.target.result);
-            req.onerror = (e) => reject(e.target.error);
-        });
-    };
-
-    window.addToUploadQueue = async function(data) {
-        const db = await openUploadDB();
-
-        // Deduplicatie check
-        const allItems = await new Promise((resolve) => {
-            const tx = db.transaction(STORE, "readonly");
-            const req = tx.objectStore(STORE).getAll();
-            req.onsuccess = () => resolve(req.result);
-        });
-
-        const exists = allItems.find(item =>
-            item.name === data.name &&
-            item.task_id === data.task_id &&
-            item.adres_path === data.adres_path
-        );
-
-        if (exists) {
-            console.log(`⚠️ Main: Dubbel genegeerd: '${data.name}' voor task ${data.task_id}`);
-            return false;
-        }
-
-        // Blob naar ArrayBuffer converteren voor opslag
-        let blobData;
-        if (data.blob instanceof Blob) {
-            blobData = await data.blob.arrayBuffer();
-        } else {
-            blobData = data.blob;
-        }
-
-        const clean = {
-            name: data.name,
-            fileType: data.fileType,
-            task_id: data.task_id,
-            namespace_id: data.namespace_id,
-            adres_path: data.adres_path,
-            blob: blobData,
-            addedAt: Date.now()
-        };
-
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(STORE, "readwrite");
-            const store = tx.objectStore(STORE);
-            const req = store.add(clean);
-            req.onsuccess = () => {
-                console.log(`✅ Main: '${data.name}' opgeslagen in IndexedDB`);
-                resolve(true);
-            };
-            req.onerror = (e) => {
-                console.error(`❌ Main: Kon '${data.name}' niet opslaan:`, e);
-                reject(e);
-            };
-        });
-    };
-
-    window.getUploadQueueCount = async function() {
-        const db = await openUploadDB();
-        return new Promise((resolve) => {
-            const tx = db.transaction(STORE, "readonly");
-            const req = tx.objectStore(STORE).count();
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => resolve(0);
-        });
-    };
+    window.openUploadDB = PhotoQueue.open;
+    window.addToUploadQueue = PhotoQueue.add;
+    window.getUploadQueueCount = async () => (await PhotoQueue.all()).length;
 
     // ============================================================
     // 🔹 Upload Progress UI
     // ============================================================
+    function uploadNotice(text) {
+        if (!document.body) return;
+        let notice = document.getElementById('photoQueueNotice');
+        if (!notice) {
+            notice = document.createElement('button');
+            notice.id = 'photoQueueNotice';
+            notice.className = 'fixed bottom-5 left-5 bg-white border rounded p-3 shadow z-40 text-sm';
+            notice.onclick = () => window.recoverPhotos?.();
+            document.body.appendChild(notice);
+        }
+        notice.textContent = text;
+    }
     function showGlobalUploadProgress(current, total, filename) {
-        if (!overlay) {
-            overlay = document.createElement("div");
-            overlay.className = "fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center";
-            overlay.innerHTML = `
-                <div class="bg-white p-5 rounded-xl shadow-xl text-center">
-                    <h3 class="text-lg font-bold mb-2">Foto's worden geüpload...</h3>
-                    <p id="uploadStatus" class="text-sm text-gray-600 mb-2"></p>
-                    <div class="w-64 bg-gray-300 rounded h-3">
-                        <div id="uploadBar" class="h-3 bg-green-500 rounded" style="width: 0%"></div>
-                    </div>
-                </div>`;
-            document.body.appendChild(overlay);
-        }
-        const percent = Math.floor((current / total) * 100);
-        document.getElementById("uploadStatus").textContent = `${current}/${total} • ${filename}`;
-        document.getElementById("uploadBar").style.width = percent + "%";
+        uploadNotice(`Foto's veilig overdragen: ${current}/${total} • ${filename}`);
     }
-
-    function hideGlobalUploadProgress() {
-        if (overlay) {
-            overlay.remove();
-            overlay = null;
-        }
-    }
+    function hideGlobalUploadProgress() {}
 
     // ============================================================
     // 🔹 Service Worker berichten ontvangen
@@ -428,9 +341,9 @@
             if (msg.type === "COMPLETE") {
                 hideGlobalUploadProgress();
                 if (msg.remaining > 0) {
-                    showToast(`📦 ${msg.uploaded} geüpload, ${msg.remaining} wachten nog...`, 5000);
+                    uploadNotice(`${msg.remaining} foto’s lokaal bewaard. Klik om opnieuw te proberen; log opnieuw in als je sessie verlopen is.`);
                 } else {
-                    showToast("✅ Alle foto's zijn geüpload!", 5000);
+                    uploadNotice("Foto’s veilig ontvangen door de server. Dropbox wordt op achtergrond verwerkt.");
                 }
             }
         });
@@ -440,7 +353,7 @@
     // 🔹 Service Worker registratie (FIX 5: geen auto-reload)
     // ============================================================
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js')
+        navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
             .then(reg => {
                 console.log("SW geregistreerd:", reg.scope);
 
@@ -459,7 +372,7 @@
                         }
                     });
                 });
-            });
+            }).catch(() => uploadNotice('Service Worker niet beschikbaar; overdracht werkt zolang deze pagina open is.'));
     }
 
     // ============================================================
@@ -477,7 +390,7 @@
         }
 
         // Backup: background sync
-        navigator.serviceWorker.ready.then(reg => {
+        navigator.serviceWorker?.ready.then(reg => {
             if (reg.sync) {
                 reg.sync.register("sync-r2-uploads").catch(console.warn);
             }
@@ -502,7 +415,10 @@
     // Module-scoped code (imports etc.)
     // ============================================================
 
-    import imageCompression from "https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/+esm";
+    let imageCompression = async file => file;
+    // Compression is optional; local persistence must not depend on the CDN.
+    import("https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/+esm")
+        .then(module => { imageCompression = module.default; }).catch(() => {});
 
     // Wake Lock
     if ("wakeLock" in navigator) {
@@ -778,6 +694,11 @@
     function validateForm() {
         clearErrors();
         let isValid = true;
+        const selected = [...document.getElementById('photoUpload').files];
+        if (selected.length > 30 || selected.some(file => file.size > 30 * 1024 * 1024)) {
+            showError('errorPhoto', 'Selecteer maximaal 30 foto’s, elk maximaal 30 MB. Er is niets verwijderd.');
+            isValid = false;
+        }
         if (!document.getElementById("perceelSelect").value) { showError("errorPerceel", "Kies een perceel."); isValid = false; }
         if (!document.getElementById("regioSelect").value) { showError("errorRegio", "Kies een regio."); isValid = false; }
         if (!document.getElementById("adresSelect").value) { showError("errorAdres", "Kies of maak een adresmap."); isValid = false; }
@@ -814,16 +735,116 @@
     let isProcessingPhotos = false;
 
     window.addEventListener("beforeunload", (e) => {
-        if (isProcessingPhotos) {
+        if (isProcessingPhotos || document.getElementById("photoUpload")?.files.length) {
             e.preventDefault();
             e.returnValue = "Foto's worden nog verwerkt. Als je nu herlaadt gaan ze verloren!";
             return e.returnValue;
         }
     });
 
+    const selectedUploadIds = new WeakMap();
+    const persistedUploadIds = new Set();
+    let capturePromise = Promise.resolve();
+    document.getElementById('photoUpload').addEventListener('change', event => {
+        const files = [...event.target.files];
+        const taskId = document.getElementById('finishForm').action.match(/tasks\/(\d+)/)?.[1];
+        capturePromise = (async () => {
+            if (!taskId || files.length > 30 || files.some(file => file.size > 30 * 1024 * 1024)) {
+                throw new Error('Selecteer maximaal 30 foto’s van maximaal 30 MB.');
+            }
+            for (const file of files) {
+                const id = crypto.randomUUID();
+                selectedUploadIds.set(file, id);
+                await PhotoQueue.add({ upload_id: id, name: file.name, blob: file, fileType: file.type,
+                    task_id: taskId, status: 'draft' });
+                persistedUploadIds.add(id);
+            }
+            navigator.storage?.persist?.().catch(() => {});
+        })();
+        capturePromise.catch(() => showToast('Foto’s konden niet allemaal lokaal worden opgeslagen. Bewaar de originelen en probeer opnieuw.', 10000));
+    });
+
+    const intentPrefix = `photo-finish:${window.Laravel.userId}:`;
+    let recovering = false;
+    let recoveryUrls = [];
+    function showLocalCopies(pending) {
+        document.getElementById('localPhotoCopies')?.remove();
+        recoveryUrls.forEach(url => URL.revokeObjectURL(url));
+        recoveryUrls = [];
+        if (!pending.length) return;
+        const details = document.createElement('details');
+        details.id = 'localPhotoCopies';
+        details.className = 'fixed top-5 right-5 bg-white border rounded p-3 shadow z-40 text-sm max-h-64 overflow-y-auto';
+        const summary = document.createElement('summary');
+        summary.textContent = `${pending.length} lokale foto’s bekijken / bewaren`;
+        details.appendChild(summary);
+        for (const photo of pending) {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([photo.blob], { type: photo.fileType }));
+            recoveryUrls.push(link.href);
+            link.download = `${photo.upload_id || photo.id}_${photo.name}`;
+            link.textContent = `Taak ${photo.task_id}: ${photo.name} (${photo.status || 'pending'})`;
+            link.className = 'block underline p-1';
+            link.title = photo.lastError || 'Bewaar een extra lokale kopie';
+            details.appendChild(link);
+        }
+        document.body.appendChild(details);
+    }
+    window.recoverPhotos = async function() {
+        if (recovering) return;
+        recovering = true;
+        try {
+            for (const key of Object.keys(localStorage).filter(key => key.startsWith(intentPrefix))) {
+                const intent = JSON.parse(localStorage.getItem(key));
+                for (const id of intent.upload_ids) await PhotoQueue.prepare(id, {
+                    task_id: intent.task_id, namespace_id: intent.namespace_id, adres_path: intent.adres_path
+                });
+            }
+            // Foreground processing also works without Background Sync or a running SW.
+            await PhotoQueue.process(async msg => {
+                if (msg.type === 'PROGRESS') showGlobalUploadProgress(msg.current, msg.total, msg.name);
+            });
+            const pending = await PhotoQueue.all();
+            showLocalCopies(pending);
+            const keys = Object.keys(localStorage).filter(key => key.startsWith(intentPrefix));
+            for (const key of keys) {
+                const intent = JSON.parse(localStorage.getItem(key));
+                if (!intent || pending.some(photo => intent.upload_ids.includes(photo.upload_id))) continue;
+                try {
+                    const csrf = await PhotoQueue.request('/csrf-token');
+                    const result = await PhotoQueue.request(`/tasks/${intent.task_id}/finish`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf.token },
+                        body: JSON.stringify(intent)
+                    });
+                    if (result.success !== true) throw new Error('Task acknowledgement missing.');
+                    updateTaskStatusRow(intent.task_id, result.status);
+                    localStorage.removeItem(key);
+                } catch (error) {
+                    uploadNotice('Taakstatus wacht op bevestiging. Foto’s blijven bewaard; klik om opnieuw te proberen.');
+                }
+            }
+            const outstanding = Object.keys(localStorage).filter(key => key.startsWith(intentPrefix)).length;
+            if (pending.length || outstanding) {
+                const draftTasks = [...new Set(pending.filter(photo => photo.status === 'draft').map(photo => photo.task_id))];
+                uploadNotice(`${pending.length} foto’s lokaal, ${outstanding} taakbevestigingen wachten.` +
+                    (draftTasks.length ? ` Kies een doelmap via taak ${draftTasks.join(', ')}.` : ' Klik om opnieuw te proberen.'));
+            } else {
+                document.getElementById('photoQueueNotice')?.remove();
+            }
+        } catch (error) {
+            uploadNotice('Foto-opslag of overdracht mislukt. Sluit deze pagina niet voordat je foto’s veilig zijn opgeslagen. Klik om opnieuw te proberen.');
+        } finally { recovering = false; }
+    };
+    window.addEventListener('online', window.recoverPhotos);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') window.recoverPhotos();
+    });
+    setInterval(window.recoverPhotos, 15000);
+    window.recoverPhotos();
+
     document.getElementById("finishForm").addEventListener("submit", async (e) => {
         e.preventDefault();
-        if (!validateForm()) return;
+        if (isProcessingPhotos || !validateForm()) return;
 
         const form = e.target;
         const taskId = form.action.match(/tasks\/(\d+)/)?.[1];
@@ -854,71 +875,47 @@
         document.body.appendChild(loader);
 
         try {
-            if (files.length > 0) {
-                const compressOptions = {
-                    maxSizeMB: 0.45,
-                    maxWidthOrHeight: 1280,
-                    useWebWorker: true,
-                    initialQuality: 0.65
-                };
-
-                const loaderText = document.getElementById("loaderText");
-
-                // Comprimeren
-                if (loaderText) loaderText.textContent = `Foto's comprimeren (0/${files.length})...`;
-                const compressedFiles = await compressInBatches(files, compressOptions, 2);
-
-                // 👇 FIX 1: Schrijf DIRECT naar IndexedDB vanuit main thread
-                let savedCount = 0;
-                for (let i = 0; i < compressedFiles.length; i++) {
-                    if (loaderText) loaderText.textContent = `Opslaan ${i + 1}/${compressedFiles.length}...`;
-
-                    try {
-                        const added = await window.addToUploadQueue({
-                            name: compressedFiles[i].name,
-                            blob: compressedFiles[i],
-                            fileType: compressedFiles[i].type,
-                            task_id: taskId,
-                            namespace_id: namespaceId,
-                            adres_path: adresPath,
-                        });
-                        if (added) savedCount++;
-                    } catch (err) {
-                        console.error(`❌ Kon foto '${compressedFiles[i].name}' niet opslaan:`, err);
-                    }
+            await capturePromise.catch(() => {});
+            const uploadIds = [];
+            // Commit originals first. Compression or CDN failure cannot discard them.
+            for (const file of files) {
+                let id = selectedUploadIds.get(file);
+                if (!id) { id = crypto.randomUUID(); selectedUploadIds.set(file, id); }
+                if (!persistedUploadIds.has(id)) await window.addToUploadQueue({ upload_id: id, name: file.name, blob: file,
+                    fileType: file.type, task_id: taskId, namespace_id: namespaceId, adres_path: adresPath, status: 'draft' });
+                persistedUploadIds.add(id);
+                uploadIds.push(id);
+            }
+            navigator.storage?.persist?.().catch(() => {});
+            const compressed = await compressInBatches(files, {
+                maxSizeMB: 0.45, maxWidthOrHeight: 1280, useWebWorker: true, initialQuality: 0.65
+            }, 2);
+            for (let i = 0; i < compressed.length; i++) {
+                await PhotoQueue.optimize(uploadIds[i], compressed[i]);
+            }
+            // Include older queued/draft photos for this task, not just the latest selection.
+            for (const photo of await PhotoQueue.all()) {
+                if (String(photo.task_id) === String(taskId) && photo.upload_id && !uploadIds.includes(photo.upload_id)) {
+                    uploadIds.push(photo.upload_id);
                 }
-
-                // 👇 Foto's zijn nu veilig in IndexedDB — refresh mag weer
-                isProcessingPhotos = false;
-
-                console.log(`✅ ${savedCount}/${compressedFiles.length} foto's opgeslagen in IndexedDB`);
-
-                // 👇 Vertel de SW dat er werk is (maar data staat al veilig in IDB)
-                window.sendToSW({ type: "PROCESS_QUEUE" });
-
-                if (loaderText) loaderText.textContent = `📦 ${savedCount} foto's in wachtrij!`;
             }
-
-            // ✅ FIX 4: Gebruik fetch i.p.v. sendBeacon voor status update
-            const finishUrl = `/tasks/${taskId}/finish`;
-            const statusData = new FormData();
-            statusData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
-            statusData.append("damage", form.querySelector('input[name="damage"]:checked')?.value || "");
-            statusData.append("note", form.querySelector('textarea[name="note"]').value || "");
-
-            const res = await fetch(finishUrl, {
-                method: "POST",
-                headers: { "Accept": "application/json" },
-                body: statusData
-            });
-
-            if (res.ok) {
-                const json = await res.json();
-                handleFrontendSuccess(taskId, form, loader, json.status);
-            } else {
-                showToast("⚠️ Status update mislukt. Foto's staan wel in wachtrij.", 5000);
-                removeLoader(loader);
+            const requestId = form.dataset.finishRequestId || crypto.randomUUID();
+            form.dataset.finishRequestId = requestId;
+            const intent = { request_id: requestId, task_id: taskId, upload_ids: uploadIds,
+                namespace_id: namespaceId, adres_path: adresPath,
+                damage: form.querySelector('input[name="damage"]:checked')?.value || '',
+                note: form.querySelector('textarea[name="note"]').value || '' };
+            localStorage.setItem(intentPrefix + requestId, JSON.stringify(intent));
+            for (const id of uploadIds) {
+                await PhotoQueue.prepare(id, { task_id: taskId, namespace_id: namespaceId, adres_path: adresPath });
             }
+            // Only the server may change task status, after every UUID is confirmed.
+            isProcessingPhotos = false;
+            closeTaskForm();
+            removeLoader(loader);
+            showToast('Foto’s lokaal bewaard. Taakstatus volgt na veilige overdracht; je kunt verder werken.', 6000);
+            window.sendToSW({ type: 'PROCESS_QUEUE' });
+            window.recoverPhotos();
 
         } catch (err) {
             console.error("Fout in submit flow:", err);
@@ -930,27 +927,6 @@
             finishButton.textContent = "Voltooien";
         }
     });
-
-    function handleFrontendSuccess(taskId, form, loader, serverStatus = null) {
-        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
-        const currentStatus = row?.dataset.status;
-        const damage = form.querySelector('input[name="damage"]:checked')?.value;
-        let newStatus = serverStatus || currentStatus;
-        if (!serverStatus) {
-            if (currentStatus === "open") newStatus = "in behandeling";
-            else if (["in behandeling", "reopened"].includes(currentStatus)) {
-                newStatus = (damage === "none") ? "finished" : "in behandeling";
-            }
-        }
-        updateTaskStatusRow(taskId, newStatus);
-
-        const loaderText = document.getElementById("loaderText");
-        if (loaderText) loaderText.textContent = "✅ Opgeslagen! Upload draait op achtergrond.";
-
-        showToast("📂 Wijzigingen opgeslagen!", 4000);
-        closeTaskForm();
-        setTimeout(() => removeLoader(loader), 1500);
-    }
 
     function removeLoader(loader) {
         if (loader) {
@@ -978,6 +954,7 @@
         const panel = document.getElementById("taskFormPanel");
         const form = document.getElementById("finishForm");
         form.reset();
+        delete form.dataset.finishRequestId;
         document.getElementById("photoPreview").innerHTML = "";
         clearErrors();
         panel.classList.add("hidden");
@@ -990,7 +967,30 @@
     // ============================================================
     // Task form openen
     // ============================================================
-    function openTaskForm(taskId, address, time, status, note) {
+    async function openTaskForm(taskId, address, time, status, note) {
+        if (isProcessingPhotos) return;
+        await capturePromise.catch(() => {});
+        const drafts = (await PhotoQueue.all()).filter(photo => String(photo.task_id) === String(taskId) && photo.status === 'draft');
+        const transfer = new DataTransfer();
+        for (const draft of drafts) {
+            const file = new File([draft.blob], draft.name, { type: draft.fileType });
+            transfer.items.add(file);
+        }
+        const input = document.getElementById('photoUpload');
+        input.files = transfer.files;
+        [...input.files].forEach((file, index) => {
+            selectedUploadIds.set(file, drafts[index].upload_id);
+            persistedUploadIds.add(drafts[index].upload_id);
+        });
+        // Restore without firing change, which would allocate new identities.
+        document.getElementById('photoPreview').innerHTML = '';
+        for (const file of input.files) {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.className = 'h-16 w-16 object-cover rounded cursor-pointer';
+            document.getElementById('photoPreview').appendChild(img);
+        }
+        if (drafts.length) showToast(`${drafts.length} lokaal bewaarde foto’s hersteld. Kies de doelmap en voltooi de taak.`, 6000);
         loadPercelen();
         document.getElementById("adresSelect").innerHTML = "";
         document.getElementById("adresComboInput").value = "";
@@ -1018,7 +1018,7 @@
         noteWrapper.classList.add('hidden');
         noteField.value = '';
 
-        if (status === 'finished') {
+        if (status === 'finished' && !drafts.length) {
             form.action = "";
             finishButton.classList.add('hidden');
             damageNone.disabled = true;

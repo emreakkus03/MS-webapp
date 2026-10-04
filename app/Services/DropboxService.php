@@ -14,9 +14,14 @@ class DropboxService
         $this->accessToken = $this->refreshAccessToken();
     }
 
+    public function renewAccessToken(): void
+    {
+        $this->accessToken = $this->refreshAccessToken();
+    }
+
     private function refreshAccessToken()
     {
-        $response = Http::asForm()->withBasicAuth(
+        $response = Http::asForm()->connectTimeout(10)->timeout(30)->withBasicAuth(
             config('services.dropbox.app_key'),
             config('services.dropbox.app_secret')
         )->post('https://api.dropboxapi.com/oauth2/token', [
@@ -33,7 +38,7 @@ class DropboxService
 
     public function listNamespaces()
     {
-        $response = Http::withToken($this->accessToken)
+        $response = Http::withToken($this->accessToken)->connectTimeout(10)->timeout(30)
             ->withHeaders(['Content-Type' => 'application/json'])
             ->post('https://api.dropboxapi.com/2/team/namespaces/list', (object)[]);
 

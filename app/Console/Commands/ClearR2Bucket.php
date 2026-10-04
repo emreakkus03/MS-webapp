@@ -2,47 +2,41 @@
 
 namespace App\Console\Commands;
 
+use App\Models\R2PendingUpload;
+use App\Services\PhotoDelivery;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Storage;
-use App\Models\R2PendingUpload; // <--- Toevoegen
+use Illuminate\Support\Facades\Cache;
 
 class ClearR2Bucket extends Command
 {
-   protected $signature = 'r2:clear {--force : Forceer verwijdering zonder vraag}';
-    protected $description = 'Verwijdert ALLE bestanden uit R2 én schoont de database op.';
+    protected $signature = 'r2:clear {--force : Skip confirmation (never skip delivery verification)}';
 
-    public function handle()
+    protected $description = 'Clean only R2 photos with a durable Dropbox receipt; retain all recovery metadata.';
+
+    public function handle(PhotoDelivery $delivery): int
     {
-        $this->warn("⚠️  LET OP: Je gaat de volledige R2 bucket leegmaken!");
-        $this->warn("⚠️  Dit verwijdert ook alle 'pending' records uit de database.");
-        
-        if (! $this->option('force')) {
-            if (! $this->confirm('Weet je zeker dat je ALLES wil verwijderen?', true)) {
-                $this->info("❌ Actie geannuleerd.");
-                return 1;
+        if (! $this->option('force') && ! $this->confirm('Clean only confirmed Dropbox deliveries?', false)) {
+            return self::FAILURE;
+        }
+        $failed = false;
+        R2PendingUpload::whereNotNull('completed_at')->whereNull('cleaned_at')->chunkById(100, function ($rows) use ($delivery, &$failed) {
+            foreach ($rows as $row) {
+                $lock = Cache::lock(PhotoDelivery::lockKey($row->r2_path), 600);
+                if (! $lock->get()) {
+                    continue;
+                }
+                try {
+                    $delivery->cleanup($row);
+                } catch (\Throwable $e) {
+                    $failed = true;
+                    $this->warn('Retained upload '.$row->id.'; cleanup could not be confirmed.');
+                } finally {
+                    $lock->release();
+                }
             }
-        }
+        });
+        $this->info('Unconfirmed objects and database receipts have been retained.');
 
-        // 1. Database leegmaken (Truncate)
-        // Dit zorgt dat je command 'retry-all' niet meer probeert te uploaden
-        $this->info("🗄️  Database tabel opschonen...");
-        R2PendingUpload::truncate(); 
-
-        // 2. R2 Bestanden verwijderen
-        $files = Storage::disk('r2')->allFiles();
-
-        if (empty($files)) {
-            $this->info("📭 R2 is al leeg!");
-            return 0;
-        }
-
-        $this->info("🗑️  Verwijderen van " . count($files) . " bestanden uit R2...");
-
-        foreach ($files as $file) {
-            Storage::disk('r2')->delete($file);
-        }
-
-        $this->info("🎉 Alles is schoon! Bucket leeg & Database leeg.");
-        return 0;
+        return $failed ? self::FAILURE : self::SUCCESS;
     }
 }

@@ -2,81 +2,51 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\R2PendingUpload;
+use App\Models\Task;
+use App\Services\PhotoDelivery;
+use Aws\S3\Exception\S3Exception;
 use Aws\S3\S3Client;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Cache;
-use Exception;
+use Illuminate\Support\Str;
 
 class R2Controller extends Controller
 {
-    /**
-     * Register een upload en dispatch MoveToDropboxJob
-     * 
-     * FIX: Betere deduplicatie + altijd een job aanmaken als er nog geen actieve is
-     */
-    public function registerUpload(Request $request)
+    public function registerUpload(Request $request, PhotoDelivery $delivery)
     {
         $data = $request->validate([
-            'task_id'      => 'required|integer',
-            'r2_path'      => 'required|string',
-            'namespace_id' => 'required|string',
-            'adres_path'   => 'required|string',
+            'task_id' => 'required|integer', 'r2_path' => 'required|string|max:255',
+            'namespace_id' => 'required|string|max:255', 'adres_path' => 'required|string|max:255',
         ]);
-
-        // 🛑 Validatie: r2_path mag niet 'undefined' of leeg zijn
-        if (in_array($data['r2_path'], ['undefined', 'null', ''])) {
-            Log::warning("❌ registerUpload: ongeldige r2_path", $data);
-            return response()->json(['success' => false, 'error' => 'Invalid r2_path'], 422);
-        }
-
-        // Deduplicatie: check of exact deze upload al pending/processing is
-        $duplicate = R2PendingUpload::where('task_id', $data['task_id'])
-            ->where('r2_path', $data['r2_path'])
-            ->whereIn('status', ['pending', 'processing'])
-            ->first();
-
-        if ($duplicate) {
-            Log::info("♻️ Upload al in queue: " . $data['r2_path']);
-            return response()->json(['success' => true, 'status' => 'already_queued']);
-        }
-
-        // Check of dit bestand al eerder succesvol is verwerkt (voorkom dubbele Dropbox uploads)
-        $alreadyDone = R2PendingUpload::where('task_id', $data['task_id'])
-            ->where('r2_path', $data['r2_path'])
-            ->where('status', 'done')
-            ->where('created_at', '>', now()->subHour()) // Binnen het afgelopen uur
-            ->first();
-
-        if ($alreadyDone) {
-            Log::info("✅ Upload al verwerkt: " . $data['r2_path']);
-            return response()->json(['success' => true, 'status' => 'already_done']);
-        }
-
+        abort_if(in_array($data['r2_path'], ['undefined', 'null']), 422);
+        $lock = Cache::lock(PhotoDelivery::lockKey($data['r2_path']), 600);
+        abort_unless($lock->get(), 409, 'Upload is being processed; retry.');
         try {
-            $row = R2PendingUpload::create([
-                'task_id'      => $data['task_id'],
-                'r2_path'      => $data['r2_path'],
-                'namespace_id' => $data['namespace_id'],
-                'adres_path'   => $data['adres_path'],
-                'status'       => 'pending',
-            ]);
+            $row = R2PendingUpload::where('r2_path', $data['r2_path'])->where('task_id', $data['task_id'])->first();
+            if (! $row) {
+                Task::findOrFail($data['task_id']);
+                abort_unless(Storage::disk('r2')->exists($data['r2_path']), 409, 'R2 object is not persisted.');
+                $row = R2PendingUpload::create($data + ['status' => 'pending']);
+            }
+            abort_unless($row->namespace_id === $data['namespace_id'] && $row->adres_path === $data['adres_path'], 409, 'Upload destination conflict.');
+            if (! $row->completed_at) {
+                $delivery->confirm($row);
+                $delivery->dispatch($row);
+            }
 
-            dispatch(new \App\Jobs\MoveToDropboxJob(
-                [$row->r2_path],
-                $row->adres_path,
-                $row->namespace_id,
-                $row->task_id
-            ))->onQueue('uploads');
-
-            Log::info("📦 Job dispatched voor: " . $data['r2_path']);
-
-            return response()->json(['success' => true, 'status' => 'queued']);
+            return response()->json(['success' => true, 'persisted' => true, 'path' => $row->r2_path, 'status' => $row->status]);
         } catch (\Throwable $e) {
-            Log::error("❌ registerUpload fout: " . $e->getMessage(), $data);
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+            if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface || $e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
+                throw $e;
+            }
+            Log::warning('PHOTO_REGISTRATION_FAILED', ['task_id' => $data['task_id'], 'r2_key' => $data['r2_path'],
+                'exception' => $e::class, 'message' => PhotoDelivery::errorMessage($e)]);
+            throw new \RuntimeException(PhotoDelivery::errorMessage($e));
+        } finally {
+            $lock->release();
         }
     }
 
@@ -86,110 +56,88 @@ class R2Controller extends Controller
         $path = $request->query('path');
 
         $client = new S3Client([
-            'region'      => 'auto',
-            'version'     => 'latest',
-            'endpoint'    => env('R2_ENDPOINT'),
+            'region' => 'auto',
+            'version' => 'latest',
+            'endpoint' => env('R2_ENDPOINT'),
             'credentials' => [
-                'key'    => env('R2_ACCESS_KEY_ID'),
+                'key' => env('R2_ACCESS_KEY_ID'),
                 'secret' => env('R2_SECRET_ACCESS_KEY'),
             ],
         ]);
 
         try {
             $client->headObject(['Bucket' => env('R2_BUCKET'), 'Key' => $path]);
+
             return response()->json(['exists' => true]);
-        } catch (\Aws\S3\Exception\S3Exception $e) {
+        } catch (S3Exception $e) {
+            if ($e->getStatusCode() !== 404) {
+                throw $e;
+            }
+
             return response()->json(['exists' => false]);
         }
     }
 
-    /**
-     * Upload vanuit Service Worker naar R2
-     * 
-     * FIX: Betere lock handling + geen 429 bij lock (dat stopte de hele SW queue)
-     */
-    public function uploadFromSW(Request $request)
+    public function uploadFromSW(Request $request, PhotoDelivery $delivery)
     {
-        $request->validate([
-            'file'         => 'required|file',
-            'task_id'      => 'required',
-            'namespace_id' => 'required',
-            'adres_path'   => 'required',
-            'unique_id'    => 'nullable',
+        $data = $request->validate([
+            'file' => 'required|file|max:30720', 'task_id' => 'required|integer',
+            'namespace_id' => 'required|string|max:255', 'adres_path' => 'required|string|max:255',
+            'unique_id' => 'nullable|string|max:64|regex:/^[a-zA-Z0-9-]+$/',
         ]);
-
         $file = $request->file('file');
-        $uniqueId = $request->input('unique_id', uniqid());
-
-        $cleanFolder = ltrim($request->adres_path, '/');
-        $filename = $uniqueId . "_" . $file->getClientOriginalName();
-        $fullPath = $cleanFolder . "/" . $filename;
-
-        // Lock op basis van bestandsnaam + adres (voorkom parallelle uploads van hetzelfde bestand)
-        $filenameHash = md5($file->getClientOriginalName() . $request->adres_path . $request->task_id);
-        $lockKey = 'upload_lock_' . $filenameHash;
-
-        // 👇 FIX: Bij een actieve lock, geef een 200 terug met het verwachte pad
-        // De SW kan dan gewoon doorgaan met register-upload
-        if (Cache::has($lockKey)) {
-            Log::info("✋ Lock actief voor: " . $file->getClientOriginalName());
-
-            // Check of het bestand al in R2 staat (vorige upload was succesvol)
-            if (Storage::disk('r2')->exists($fullPath)) {
-                return response()->json(['success' => true, 'path' => $fullPath, 'status' => 'already_exists']);
-            }
-
-            // Bestand nog niet in R2 maar lock is actief → wacht even
-            return response()->json([
-                'success' => false,
-                'error'   => 'Upload in progress',
-                'status'  => 'locked',
-                'retry_after' => 5
-            ], 409); // 409 Conflict i.p.v. 429
-        }
-
-        // Zet lock (60 seconden)
-        Cache::put($lockKey, true, 60);
-
+        $id = $request->input('unique_id') ?: (string) Str::uuid();
+        $uuid = Str::isUuid($id) ? $id : null;
+        // Keep the old integer-key path for old workers; new workers persist UUIDs.
+        $folder = trim($data['adres_path'], '/');
+        $filename = $id.'_'.basename($file->getClientOriginalName());
+        $path = $folder.'/'.$filename;
+        abort_if(strlen($path) > 255 || preg_match('#(^|/)\.\.(/|$)#', $path), 422, 'Invalid upload path.');
+        $sha = hash_file('sha256', $file->getRealPath());
+        $lock = Cache::lock(PhotoDelivery::lockKey($path), 600);
+        abort_unless($lock->get(), 409, 'Upload is being processed; retry.');
         try {
-            // Check of bestand al bestaat
-            if (Storage::disk('r2')->exists($fullPath)) {
-                Cache::forget($lockKey);
-                Log::info("📁 Bestand bestaat al in R2: " . $fullPath);
-                return response()->json(['success' => true, 'path' => $fullPath, 'status' => 'already_exists']);
-            }
-
-            // Upload
-            $uploadedPath = Storage::disk('r2')->putFileAs($cleanFolder, $file, $filename);
-
-            if ($uploadedPath) {
-                // Verificatie
-                $localSize = $file->getSize();
-                $remoteSize = Storage::disk('r2')->size($fullPath);
-
-                if (abs($localSize - $remoteSize) > 1024) { // 1KB tolerance
-                    Storage::disk('r2')->delete($fullPath);
-                    throw new Exception("Size mismatch: local={$localSize}, remote={$remoteSize}");
+            $row = $uuid ? R2PendingUpload::where('upload_id', $uuid)->first() :
+                R2PendingUpload::where('r2_path', $path)->where('task_id', $data['task_id'])->first();
+            if ($row) {
+                abort_unless((int) $row->task_id === (int) $data['task_id'] && $row->r2_path === $path &&
+                    $row->namespace_id === $data['namespace_id'] && $row->adres_path === $data['adres_path'], 409, 'Upload ID conflict.');
+                abort_if($row->content_sha256 && ! hash_equals($row->content_sha256, $sha), 409, 'Upload content conflict.');
+                if ($row->completed_at) {
+                    return response()->json(['success' => true, 'persisted' => true, 'upload_id' => $id, 'path' => $path]);
                 }
-
-                Log::info("✅ R2 upload OK: " . $fullPath);
-                Cache::forget($lockKey);
-
-                return response()->json(['success' => true, 'path' => $fullPath]);
             } else {
-                throw new Exception("putFileAs returned false");
+                Task::findOrFail($data['task_id']);
+                $row = R2PendingUpload::create([
+                    'upload_id' => $uuid, 'task_id' => $data['task_id'], 'r2_path' => $path,
+                    'namespace_id' => $data['namespace_id'], 'adres_path' => $data['adres_path'],
+                    'status' => 'receiving', 'content_sha256' => $sha, 'byte_size' => $file->getSize(),
+                ]);
             }
-
-        } catch (Exception $e) {
-            Cache::forget($lockKey);
-            Log::error("🔥 R2 upload fout: " . $e->getMessage());
-
-            // Rate limit van R2 zelf
-            if (str_contains($e->getMessage(), '429') || str_contains($e->getMessage(), 'SlowDown')) {
-                return response()->json(['error' => 'R2 Rate Limit', 'retry_after' => 10], 429);
+            Log::info('PHOTO_RECEIVED', PhotoDelivery::context($row));
+            $disk = Storage::disk('r2');
+            if (! $disk->exists($path)) {
+                abort_if($row->confirmed_at !== null, 409, 'Acknowledged R2 source missing; recovery required.');
+                if (! $disk->putFileAs($folder, $file, $filename)) {
+                    throw new \RuntimeException('R2 write failed.');
+                }
             }
+            // Existing objects must match this request too (including legacy integer IDs).
+            $row->content_sha256 = $sha;
+            $row->byte_size = $file->getSize();
+            $delivery->confirm($row);
+            $delivery->dispatch($row);
 
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+            return response()->json(['success' => true, 'persisted' => true, 'upload_id' => $id, 'path' => $path]);
+        } catch (\Throwable $e) {
+            Log::warning('PHOTO_RECEIVE_FAILED', ['upload_id' => $id, 'task_id' => $data['task_id'],
+                'r2_key' => $path, 'exception' => $e::class, 'message' => PhotoDelivery::errorMessage($e)]);
+            if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface || $e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
+                throw $e;
+            }
+            throw new \RuntimeException(PhotoDelivery::errorMessage($e));
+        } finally {
+            $lock->release();
         }
     }
 }

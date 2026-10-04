@@ -24,7 +24,7 @@ class R2DownloadAll extends Command
 
         $this->info("➡️ " . count($files) . " bestanden gevonden");
 
-        $zipPath = storage_path('app/r2_backup.zip');
+        $zipPath = storage_path('app/r2_backup_'.now()->format('Ymd_His').'.zip');
 
         // Verwijder oude ZIP indien bestaat
         if (file_exists($zipPath)) {
@@ -39,10 +39,11 @@ class R2DownloadAll extends Command
 
         foreach ($files as $file) {
             $stream = Storage::disk('r2')->get($file);
-            $zip->addFromString(basename($file), $stream);
+            if (!$zip->addFromString($file, $stream)) { throw new \RuntimeException('Backup entry failed: '.$file); }
         }
 
-        $zip->close();
+        if (!$zip->close()) { throw new \RuntimeException('Backup ZIP could not be finalized.'); }
+        if (!copy($zipPath, storage_path('app/r2_backup.zip'))) { throw new \RuntimeException('Could not publish local backup alias.'); }
 
         $this->info("🎉 ZIP aangemaakt: storage/app/r2_backup.zip");
 

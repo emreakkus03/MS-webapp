@@ -14,10 +14,10 @@
                     </button>
                 </form>
 
-                <form action="{{ route('r2.clear') }}" method="POST" onsubmit="return confirm('⚠️ WEET JE HET ZEKER?\n\nDit wist ALLE bestanden in R2 en je wachtrij database!');">
+                <form action="{{ route('r2.clear') }}" method="POST" onsubmit="return confirm('⚠️ WEET JE HET ZEKER?\n\nDit ruimt alleen bevestigde Dropbox uploads op. Onbevestigde foto’s blijven bewaard.');">
                     @csrf
                     <button type="submit" class="bg-[#B51D2D] hover:bg-[#B51D4D] text-white px-4 py-2 rounded shadow flex items-center gap-2">
-                        <span>🗑️ Alles Verwijderen</span>
+                        <span>🗑️ Bevestigde uploads opruimen</span>
                     </button>
                 </form>
             </div>
@@ -83,6 +83,9 @@
                                     {{-- 3. Pad --}}
                                     <td class="p-4 text-gray-700 break-all max-w-xs text-xs font-mono">
                                         {{ $row->adres_path }}
+                                        <div>Upload: {{ $row->upload_id ?? 'legacy-'.$row->id }}</div>
+                                        <div>Pogingen: {{ $row->attempts }}</div>
+                                        @if($row->error_message)<div>{{ $row->error_message }}</div>@endif
                                     </td>
 
                                     {{-- 4. Status --}}

@@ -2,23 +2,22 @@
 
 namespace App\Jobs;
 
+use App\Models\Task;
+use App\Services\DropboxPhotoUploader;
+use App\Services\DropboxService;
+use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Bus\Batchable;
 use Illuminate\Foundation\Bus\Dispatchable;
-
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use App\Models\Task;
-use App\Services\DropboxService;
-use GuzzleHttp\Client as HttpClient;
 
 class UploadToDropboxJob implements ShouldQueue
 {
-   use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, Batchable;
-
+    use Batchable, Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
      * 🔁 Pogingen bij mislukte uploads
@@ -50,14 +49,14 @@ class UploadToDropboxJob implements ShouldQueue
         $dropbox = app(DropboxService::class);
         $task = Task::with('team')->find($this->taskId);
 
-        if (!$task) {
+        if (! $task) {
             Log::warning("❌ Task niet gevonden: {$this->taskId}");
-            return;
+            throw new \RuntimeException('Legacy photo upload cannot proceed; local source retained.');
         }
 
-        if (!Storage::exists($this->path)) {
+        if (! Storage::disk('local')->exists($this->path)) {
             Log::warning("⚠️ Bestand niet gevonden: {$this->path}");
-            return;
+            throw new \RuntimeException('Legacy photo upload cannot proceed; local source retained.');
         }
 
         // ------------------------------------------------------
@@ -67,25 +66,25 @@ class UploadToDropboxJob implements ShouldQueue
         $namespaceId = $this->namespaceId;
 
         // 🔹 Als geen namespace_id is meegegeven → probeer te bepalen
-        if (!$namespaceId) {
+        if (! $namespaceId) {
             $namespaceId = $this->getPerceel1Namespace($dropbox);
         }
 
         // 🔹 Bepaal perceel pas nádat namespaceId bekend is
         $isPerceel1 = $namespaceId && $namespaceId !== $fluviusNamespaceId;
 
-        if (!$namespaceId) {
+        if (! $namespaceId) {
             Log::error("❌ Geen namespace gevonden voor task {$this->taskId}");
-            return;
+            throw new \RuntimeException('Legacy photo upload cannot proceed; local source retained.');
         }
 
         // ------------------------------------------------------
         // 🔹 Uploadpad voorbereiden
         // ------------------------------------------------------
-        $stream = Storage::readStream($this->path);
-        if (!$stream) {
+        $stream = Storage::disk('local')->readStream($this->path);
+        if (! $stream) {
             Log::error("⚠️ Kon geen stream openen voor {$this->path}");
-            return;
+            throw new \RuntimeException('Legacy photo upload cannot proceed; local source retained.');
         }
 
         $filename = basename($this->path);
@@ -102,65 +101,31 @@ class UploadToDropboxJob implements ShouldQueue
         }
 
         Log::info("📂 Upload path resolved → {$uploadPath}");
-        Log::info("🧭 Namespace gebruikt: {$namespaceId} | Perceel: " . ($isPerceel1 ? '1 (Aansluitingen)' : '2 (Graafwerk)'));
+        Log::info("🧭 Namespace gebruikt: {$namespaceId} | Perceel: ".($isPerceel1 ? '1 (Aansluitingen)' : '2 (Graafwerk)'));
 
         // ------------------------------------------------------
         // 🔹 Upload uitvoeren naar Dropbox
         // ------------------------------------------------------
         try {
-            $accessToken = $dropbox->getAccessToken();
-            $http = new HttpClient();
-
-            $headers = [
-                'Authorization' => "Bearer {$accessToken}",
-                'Content-Type'  => 'application/octet-stream',
-                'Dropbox-API-Arg' => json_encode([
-                    'path' => $uploadPath,
-                    'mode' => 'add',
-                    'autorename' => true,
-                    'mute' => false,
-                ]),
-                'Dropbox-API-Path-Root' => json_encode([
-                    '.tag' => 'namespace_id',
-                    'namespace_id' => $namespaceId,
-                ]),
-                'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
-            ];
-
-            $response = $http->post('https://content.dropboxapi.com/2/files/upload', [
-                'headers' => $headers,
-                'body' => $stream,
-                'timeout' => 60, // korte HTTP-timeout per upload
-            ]);
-
+            $metadata = app(DropboxPhotoUploader::class)->upload($dropbox, $namespaceId, $uploadPath, $stream,
+                hash_file('sha256', Storage::disk('local')->path($this->path)), Storage::disk('local')->size($this->path));
+            DB::transaction(function () use ($task, $metadata, $isPerceel1) {
+                $task = Task::whereKey($task->id)->lockForUpdate()->firstOrFail();
+                $dbPath = ($isPerceel1 ? '/PERCEEL 1' : '').$metadata['path_display'];
+                $dbPath = str_replace(['%', ','], ['%25', '%2C'], $dbPath);
+                $existing = $task->photo ? explode(',', $task->photo) : [];
+                $existing[] = $dbPath;
+                $task->photo = implode(',', array_unique($existing));
+                $task->save();
+            });
+            // Positive Dropbox acknowledgement AND committed task reference precede deletion.
+            if (! Storage::disk('local')->delete($this->path)) {
+                throw new \RuntimeException('Legacy local cleanup failed.');
+            }
+        } finally {
             if (is_resource($stream)) {
                 fclose($stream);
             }
-            Storage::delete($this->path);
-
-            if ($response->getStatusCode() === 200) {
-                Log::info("✅ Upload gelukt voor task {$task->id} → {$uploadPath} [namespace: {$namespaceId}]");
-
-                // ✅ Corrigeer pad voor opslag in database
-                if ($isPerceel1 && !str_starts_with($uploadPath, '/PERCEEL 1')) {
-                    $dbPath = '/PERCEEL 1' . $uploadPath;
-                } else {
-                    $dbPath = $uploadPath;
-                }
-
-                $existing = $task->photo ? explode(',', $task->photo) : [];
-                $existing[] = $dbPath;
-                $task->photo = implode(',', $existing);
-                $task->save();
-
-                Log::info("💾 DB-pad opgeslagen → {$dbPath}");
-            } else {
-                Log::error("⚠️ Dropbox upload status: {$response->getStatusCode()} voor {$uploadPath}");
-            }
-
-        } catch (\Throwable $e) {
-            Log::error("❌ Dropbox upload mislukt ({$this->path}): " . $e->getMessage());
-            throw $e; // 👉 gooit opnieuw zodat retry getriggerd wordt
         }
     }
 
@@ -171,13 +136,14 @@ class UploadToDropboxJob implements ShouldQueue
     {
         try {
             $namespaces = $dropbox->listNamespaces();
-            $match = collect($namespaces)->first(fn($ns) =>
-                stripos($ns['name'], 'perceel 1') !== false ||
+            $match = collect($namespaces)->first(fn ($ns) => stripos($ns['name'], 'perceel 1') !== false ||
                 stripos($ns['name'], 'aansluitingen') !== false
             );
+
             return $match['namespace_id'] ?? null;
         } catch (\Throwable $e) {
-            Log::error("⚠️ Kon Perceel 1 namespace niet ophalen: " . $e->getMessage());
+            Log::error('⚠️ Kon Perceel 1 namespace niet ophalen: '.$e->getMessage());
+
             return null;
         }
     }

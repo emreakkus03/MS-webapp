@@ -26,7 +26,7 @@ class R2ManagementController extends Controller
     public function index()
     {
         $this->checkAdminAccess();
-        $uploads = R2PendingUpload::whereIn('status', ['pending', 'failed'])->orderBy('created_at', 'desc')->get();
+        $uploads = R2PendingUpload::whereNull('cleaned_at')->orderBy('created_at', 'desc')->get();
 
         // 2. 👇 DIT IS HET STUK DAT JE MISTE (De Previews genereren)
         // In je foreach loop:
@@ -65,7 +65,7 @@ class R2ManagementController extends Controller
         $this->checkAdminAccess();
         try {
             Artisan::call('r2:clear', ['--force' => true]);
-            return redirect()->back()->with('Waarschuwing', 'Bucket en database zijn leeggemaakt.');
+            return redirect()->back()->with('Waarschuwing', 'Alleen bevestigde Dropbox uploads zijn opgeruimd. Overige foto’s blijven bewaard.');
         } catch (Exception $e) {
             return redirect()->back()->with('error', 'Kon niet legen: ' . $e->getMessage());
         }
