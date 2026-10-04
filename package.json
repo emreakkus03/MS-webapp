@@ -3,14 +3,12 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "test:photos": "node --test tests/js/photo-queue.test.mjs",
         "dev": "vite"
     },
     "devDependencies": {
         "autoprefixer": "^10.4.23",
         "axios": "^1.13.2",
         "concurrently": "^9.0.1",
-        "fake-indexeddb": "^6.2.4",
         "laravel-echo": "^2.2.3",
         "laravel-vite-plugin": "^1.2.0",
         "postcss": "^8.5.6",

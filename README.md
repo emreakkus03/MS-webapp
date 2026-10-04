@@ -121,9 +121,7 @@ Daarna kun je de ZIP downloaden via:
 https://ms-webapp-main-yfswth.laravel.cloud/download-r2-backup  
 
 **php artisan r2:clear**  
-Ruimt uitsluitend R2-bestanden op waarvan Dropbox-levering duurzaam is bevestigd. Hangende foto’s, onbekende objecten en databasebewijzen blijven bewaard, ook met `--force`.
-
-Zie [de upload-audit en deploy-instructies](docs/photo-upload-reliability.md) voor herstelgedrag, queue-instellingen en migratie.
+Gebruik deze command om de R2 bucket leeg te maken (hangende foto’s te verwijderen), maar **alleen na het downloaden van de ZIP**.
 
 ---
 

@@ -2,40 +2,29 @@
 
 namespace App\Jobs;
 
-use App\Models\R2PendingUpload;
-use App\Models\Task;
-use App\Services\DropboxPhotoRetry;
-use App\Services\DropboxPhotoUploader;
-use App\Services\DropboxService;
-use App\Services\PhotoDelivery;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
+use App\Models\Task;
+use App\Services\DropboxService;
+use GuzzleHttp\Client as HttpClient;
 
 class MoveToDropboxJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $tries = 5;
-
-    public $timeout = 300;
+    public $tries = 3;
+    public $timeout = 300; // iets langer, veilig bij grote batches
 
     protected array $photos;
-
     protected string $adresPath;
-
     protected string $namespaceId;
-
     protected ?int $taskId;
 
-    // Preserve serialized old jobs and their constructor signature.
     public function __construct(array $photos, string $adresPath, string $namespaceId, ?int $taskId = null)
     {
         $this->photos = $photos;
@@ -44,110 +33,119 @@ class MoveToDropboxJob implements ShouldQueue
         $this->taskId = $taskId;
     }
 
-    public function backoff(): array
-    {
-        return [30, 120, 300, 900];
-    }
-
     public function handle(): void
     {
-        $delivery = app(PhotoDelivery::class);
-        if (count($this->photos) > 1) {
-            foreach ($this->photos as $photo) {
-                Bus::dispatch(
-                    (new self([$photo], $this->adresPath, $this->namespaceId, $this->taskId))->onQueue('uploads')
-                );
-            }
+        $dropbox = app(DropboxService::class);
+        $task = Task::find($this->taskId);
+        $fluviusNamespaceId = $dropbox->getFluviusNamespaceId();
 
+        if (!$task) {
+            Log::warning("❌ Task niet gevonden: {$this->taskId}");
             return;
         }
-        foreach ($this->photos as $photo) {
-            $lock = Cache::lock(PhotoDelivery::lockKey($photo), 600);
-            if (! $lock->get()) {
-                $this->release(30);
 
-                return;
-            }
-            $row = null;
-            try {
-                $row = R2PendingUpload::where('r2_path', $photo)->where('task_id', $this->taskId)->first();
-                if (! $row) {
-                    // A pre-deployment job may have no receipt. Never silently discard it.
-                    $row = R2PendingUpload::create(['r2_path' => $photo, 'task_id' => $this->taskId,
-                        'adres_path' => $this->adresPath, 'namespace_id' => $this->namespaceId, 'status' => 'pending']);
-                }
-                if (! $row->completed_at) {
-                    $row->increment('attempts');
-                    $row->update(['status' => 'processing']);
-                    Log::info('DROPBOX_UPLOAD_STARTED', PhotoDelivery::context($row));
-                    $delivery->confirm($row);
-                    $row->update(['status' => 'processing']);
-                    $dropbox = app(DropboxService::class);
-                    $isPerceel1 = $row->namespace_id !== $dropbox->getFluviusNamespaceId();
-                    $folder = $this->normalizeAdresPath($row->adres_path, $isPerceel1);
-                    // Legacy keys can collide across tasks/namespaces; allocate a stable suffix.
-                    $filename = $row->upload_id ? basename($photo) :
-                        'legacy-'.substr(hash('sha256', $row->task_id.'|'.$row->namespace_id.'|'.$photo), 0, 24).'_'.basename($photo);
-                    $path = $folder.'/'.$filename;
-                    $source = Storage::disk('r2')->readStream($photo);
-                    if (! is_resource($source)) {
-                        throw new \RuntimeException('Cannot read R2 photo.');
+        $isPerceel1 = $this->namespaceId !== $fluviusNamespaceId;
+        $usedNamespace = $isPerceel1
+            ? $this->namespaceId
+            : $fluviusNamespaceId;
+
+        Log::info('🧭 Namespace gebruikt voor upload', [
+            'frontend_namespace' => $this->namespaceId,
+            'used_namespace'     => $usedNamespace,
+            'fluvius_namespace'  => $fluviusNamespaceId,
+            'is_perceel1'        => $isPerceel1,
+        ]);
+
+        $adresPath = $this->normalizeAdresPath($this->adresPath, $isPerceel1);
+        Log::info('📂 Normalized adresPath', [
+            'raw'        => $this->adresPath,
+            'normalized' => $adresPath
+        ]);
+
+        // 🔹 Verwerk in batches van max. 10 bestanden tegelijk
+        $chunks = array_chunk($this->photos, 10);
+        foreach ($chunks as $batchIndex => $batchPhotos) {
+            Log::info("🚀 Start batch " . ($batchIndex + 1) . "/" . count($chunks));
+
+            foreach ($batchPhotos as $photo) {
+                try {
+                    $r2Stream = Storage::disk('r2')->readStream($photo);
+                    if (!$r2Stream) {
+                        Log::warning("⚠️ Kan R2-bestand niet lezen: {$photo}");
+                        continue;
                     }
-                    try {
-                        $meta = app(DropboxPhotoUploader::class)->upload($dropbox, $row->namespace_id, $path, $source, $row->content_sha256, (int) $row->byte_size);
-                    } finally {
-                        fclose($source);
+
+                    $filename = basename($photo);
+                    $uploadPath = "{$adresPath}/{$filename}";
+
+                    $client = new HttpClient();
+                    $accessToken = $dropbox->getAccessToken();
+
+                    $response = $client->post('https://content.dropboxapi.com/2/files/upload', [
+                        'headers' => [
+                            'Authorization' => "Bearer {$accessToken}",
+                            'Content-Type' => 'application/octet-stream',
+                            'Dropbox-API-Arg' => json_encode([
+                                'path' => $uploadPath,
+                                'mode' => 'add',
+                                'autorename' => true,
+                                'mute' => false,
+                            ]),
+                            'Dropbox-API-Path-Root' => json_encode([
+                                '.tag' => 'namespace_id',
+                                'namespace_id' => $usedNamespace,
+                            ]),
+                            'Dropbox-API-Select-User' => config('services.dropbox.team_member_id'),
+                        ],
+                        'body' => $r2Stream,
+                        'timeout' => 90,
+                    ]);
+
+                    if (is_resource($r2Stream)) {
+                        fclose($r2Stream);
                     }
-                    DB::transaction(function () use ($row, $meta, $isPerceel1) {
-                        $task = Task::whereKey($row->task_id)->lockForUpdate()->first();
-                        if ($task) {
-                            $dbPath = ($isPerceel1 ? '/PERCEEL 1' : '').$meta['path_display'];
-                            // Existing readers split on commas and URL-decode individual paths.
-                            $dbPath = str_replace(['%', ','], ['%25', '%2C'], $dbPath);
-                            $paths = $task->photo ? explode(',', $task->photo) : [];
-                            $paths[] = $dbPath;
-                            $task->photo = implode(',', array_unique($paths));
-                            $task->save();
+
+                    if ($response->getStatusCode() === 200) {
+                        Log::info("✅ Bestand geüpload naar Dropbox", [
+                            'path' => $uploadPath,
+                            'namespace' => $usedNamespace,
+                        ]);
+                        Storage::disk('r2')->delete($photo);
+                         \App\Models\R2PendingUpload::where('r2_path', $photo)->delete();
+
+                        // 📋 DB-pad aanpassen
+                        $dbPath = preg_replace('#^/MS INFRA/Fluvius Aansluitingen#i', '', $uploadPath);
+                        if ($isPerceel1 && !preg_match('#^/PERCEEL\s*1/#i', $dbPath)) {
+                            $dbPath = '/PERCEEL 1' . (str_starts_with($dbPath, '/') ? '' : '/') . $dbPath;
                         }
-                        // Keep duplicate legacy rows in sync, but never delete another task's receipt.
-                        R2PendingUpload::where('r2_path', $row->r2_path)->where('task_id', $row->task_id)
-                            ->where('namespace_id', $row->namespace_id)->where('adres_path', $row->adres_path)
-                            ->update(['status' => 'done', 'completed_at' => now(), 'confirmed_at' => now(),
-                                'target_dropbox_path' => $meta['path_display'], 'error_message' => null]);
-                    });
-                    $row->refresh();
-                    Log::info('DROPBOX_UPLOAD_SUCCEEDED', PhotoDelivery::context($row));
-                }
-                $delivery->cleanup($row);
-            } catch (\Throwable $e) {
-                if ($row) {
-                    // Exception text from HTTP clients can contain signed URLs. Persist only safe messages.
-                    $message = PhotoDelivery::errorMessage($e);
-                    $row->update(['status' => $row->completed_at ? 'done' : 'failed', 'error_message' => mb_substr($message, 0, 1000)]);
-                    Log::warning($row->completed_at ? 'R2_CLEANUP_RETRY' : 'DROPBOX_UPLOAD_RETRY',
-                        PhotoDelivery::context($row) + ['exception' => $e::class, 'message' => $row->error_message]);
-                }
-                if ($e instanceof DropboxPhotoRetry && $this->job) {
-                    $this->release(max(30, $e->retryAfter));
 
-                    return;
-                }
-                throw new \RuntimeException(PhotoDelivery::errorMessage($e));
-            } finally {
-                $lock->release();
-            }
-        }
-    }
+                        $existing = $task->photo ? explode(',', $task->photo) : [];
+                        $existing[] = $dbPath;
+                        $task->photo = implode(',', $existing);
+                        $task->save();
 
-    public function failed(?\Throwable $e): void
-    {
-        foreach ($this->photos as $photo) {
-            $row = R2PendingUpload::where('r2_path', $photo)->where('task_id', $this->taskId)->first();
-            if ($row && ! $row->completed_at) {
-                $row->update(['status' => 'failed', 'error_message' => 'Queue attempts exhausted; retained for scheduled recovery.']);
-                Log::error('DROPBOX_UPLOAD_FAILED', PhotoDelivery::context($row) + ['exception' => $e ? $e::class : null]);
+                        Log::info("💾 Task {$task->id} bijgewerkt met DB-pad: {$dbPath}");
+                    } else {
+                        Log::error("⚠️ Dropbox upload mislukt: status {$response->getStatusCode()} voor {$uploadPath}");
+                    }
+
+                    // 🕐 Kleine pauze (0.4s) om Dropbox te ontlasten
+                    usleep(400000);
+
+                } catch (\Throwable $e) {
+                    Log::error("❌ Fout bij verplaatsen naar Dropbox: {$photo} → " . $e->getMessage());
+                     // 🔴 Mislukt: zet status failed
+    \App\Models\R2PendingUpload::where('r2_path', $photo)
+        ->update(['status' => 'failed']);
+                }
             }
+
+            // ⏸️ 2s rust na elke batch
+            sleep(2);
+            Log::info("✅ Batch " . ($batchIndex + 1) . " afgerond, kleine pauze voor stabiliteit");
         }
+
+        Log::info("🎉 Alle batches succesvol geüpload voor task {$this->taskId}");
     }
 
     private function normalizeAdresPath(string $path, bool $isPerceel1): string
@@ -159,13 +157,12 @@ class MoveToDropboxJob implements ShouldQueue
             if ($isPerceel1) {
                 $path = preg_replace('#^PERCEEL\s*1/#i', '', $path);
             }
-
-            return '/'.ltrim($path, '/');
+            return '/' . ltrim($path, '/');
         }
 
         if (preg_match('#^Webapp uploads#i', $path)) {
             if ($isPerceel1) {
-                return '/'.$path;
+                return '/' . $path;
             } else {
                 return "/PERCEEL 2/{$path}";
             }
@@ -175,6 +172,21 @@ class MoveToDropboxJob implements ShouldQueue
             return "/Webapp uploads/{$path}";
         } else {
             return "/PERCEEL 2/Webapp uploads/{$path}";
+        }
+    }
+
+    private function getPerceel1Namespace(DropboxService $dropbox): ?string
+    {
+        try {
+            $namespaces = $dropbox->listNamespaces();
+            $match = collect($namespaces)->first(fn($ns) =>
+                stripos($ns['name'], 'perceel 1') !== false ||
+                stripos($ns['name'], 'aansluitingen') !== false
+            );
+            return $match['namespace_id'] ?? null;
+        } catch (\Throwable $e) {
+            Log::error("⚠️ Kon Perceel 1 namespace niet ophalen: " . $e->getMessage());
+            return null;
         }
     }
 }

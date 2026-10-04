@@ -27,7 +27,7 @@
             @if(count($photos) > 0)
                 <div class="flex flex-wrap gap-2">
                     @foreach($photos as $photo)
-                        <img src="/dropbox/preview?path={{ urlencode(rawurldecode($photo)) }}"
+                        <img src="/dropbox/preview?path={{ urlencode($photo) }}"
                              onclick="openPhotoModal(this.src)"
                              class="w-16 h-16 object-cover rounded cursor-pointer border">
                     @endforeach
@@ -103,7 +103,7 @@
                     @if(count($photos) > 0)
                         <div class="grid grid-cols-3 gap-2 mt-2">
                             @foreach($photos as $photo)
-                                <img src="/dropbox/preview?path={{ urlencode(rawurldecode($photo)) }}"
+                                <img src="/dropbox/preview?path={{ urlencode($photo) }}"
                                      onclick="openPhotoModal(this.src)"
                                      class="w-full h-20 object-cover rounded cursor-pointer border">
                             @endforeach

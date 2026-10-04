@@ -25,10 +25,10 @@ Schedule::command('mail:repair-tasks')
 
     // Draai de grote sync elk kwartier
 Schedule::command('dropbox:sync-subfolders')
-        ->everyFifteenMinutes() // Of ->everyTenMinutes() of ->everyFiveMinutes()
+        ->everyFifteenMinutes() // Of ->everyTenMinutes() of ->hourly()
         ->runInBackground();
 
 Schedule::command('r2:retry-all')
-        ->everyFiveMinutes()
+        ->hourly()               
         ->withoutOverlapping()   
         ->runInBackground();
