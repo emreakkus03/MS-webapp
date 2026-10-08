@@ -354,14 +354,15 @@
         return new Promise((resolve, reject) => {
             const tx = db.transaction(STORE, "readwrite");
             const store = tx.objectStore(STORE);
-            const req = store.add(clean);
-            req.onsuccess = () => {
+            store.add(clean);
+            tx.oncomplete = () => {
+                db.close();
                 console.log(`✅ Main: '${data.name}' opgeslagen in IndexedDB`);
                 resolve(true);
             };
-            req.onerror = (e) => {
-                console.error(`❌ Main: Kon '${data.name}' niet opslaan:`, e);
-                reject(e);
+            tx.onabort = () => {
+                db.close();
+                reject(tx.error || new Error("Foto opslaan afgebroken"));
             };
         });
     };
@@ -424,6 +425,14 @@
             }
             if (msg.type === "UPLOAD_PARTIAL") {
                 console.warn(`⚠️ Deels geüpload: ${msg.name} — ${msg.reason}`);
+            }
+            if (msg.type === "AUTH_REQUIRED") {
+                hideGlobalUploadProgress();
+                showToast("🔑 Meld je opnieuw aan om de foto's te uploaden. Ze blijven op dit apparaat bewaard.", 10000);
+            }
+            if (msg.type === "QUEUE_ERROR") {
+                hideGlobalUploadProgress();
+                showToast("⚠️ De fotowachtrij is tijdelijk niet beschikbaar. Er wordt later opnieuw geprobeerd.", 8000);
             }
             if (msg.type === "COMPLETE") {
                 hideGlobalUploadProgress();
@@ -894,7 +903,12 @@
                 console.log(`✅ ${savedCount}/${compressedFiles.length} foto's opgeslagen in IndexedDB`);
 
                 // 👇 Vertel de SW dat er werk is (maar data staat al veilig in IDB)
-                window.sendToSW({ type: "PROCESS_QUEUE" });
+                window.sendToSW({ type: "PROCESS_QUEUE" }).catch(console.warn);
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.ready.then(reg => {
+                        if (reg.sync) return reg.sync.register("sync-r2-uploads");
+                    }).catch(console.warn);
+                }
 
                 if (loaderText) loaderText.textContent = `📦 ${savedCount} foto's in wachtrij!`;
             }

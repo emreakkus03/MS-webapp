@@ -1,14 +1,70 @@
-const SW_VERSION = 'v7-reliability-fix';
+const SW_VERSION = 'v8-bounded-upload-retries';
 const API = self.location.origin;
 
 // ==============================================
-// 📌 SERVICE WORKER v7 – Reliability Overhaul
+// 📌 SERVICE WORKER v8 – Bounded upload retries
 // ==============================================
 
 const DB_NAME = "R2UploadDB";
 const STORE = "pending";
 
 let isProcessingQueue = false;
+let retryTimer = null;
+let nextQueueAttemptAt = 0;
+let queueFailures = 0;
+
+const RETRY_BASE_MS = 30000;
+const RETRY_MAX_MS = 300000;
+
+function retryDelay(attempts) {
+    return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * (2 ** Math.min(attempts - 1, 4)));
+}
+
+function scheduleRetry(at) {
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => {
+        retryTimer = null;
+        void processQueue();
+    }, Math.max(5000, at - Date.now()));
+}
+
+// The deadline includes reading/parsing the response body, not only its headers.
+async function fetchJson(url, options = {}, timeoutMs = 30000) {
+    const controller = new AbortController();
+    let timeout;
+    try {
+        return await Promise.race([
+            (async () => {
+                const headers = new Headers(options.headers);
+                headers.set("Accept", "application/json");
+                const response = await fetch(url, {
+                    ...options, headers, signal: controller.signal, credentials: 'include'
+                });
+                const contentType = response.headers.get("content-type") || "";
+                const loginUrl = /\/(login|signin)\/?$/.test(new URL(response.url || url, API).pathname);
+                if (response.redirected || loginUrl || [401, 419].includes(response.status) ||
+                    (response.ok && contentType.includes("text/html"))) {
+                    throw Object.assign(new Error("Opnieuw aanmelden nodig"), { authRequired: true });
+                }
+                if (!response.ok) {
+                    throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
+                }
+                if (!/application\/(?:[\w.-]+\+)?json\b/i.test(contentType)) {
+                    throw new Error("Geen JSON-response ontvangen");
+                }
+                return await response.json();
+            })(),
+            new Promise((_, reject) => {
+                timeout = setTimeout(() => {
+                    reject(new Error("Uploadrequest timeout"));
+                    controller.abort();
+                }, timeoutMs);
+            })
+        ]);
+    } finally {
+        clearTimeout(timeout);
+    }
+}
 
 // --------------------------
 // IndexedDB Helpers
@@ -43,9 +99,28 @@ async function deleteItem(id) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE, "readwrite");
-        const req = tx.objectStore(STORE).delete(id);
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
+        tx.objectStore(STORE).delete(id);
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onabort = () => { db.close(); reject(tx.error || new Error("Delete afgebroken")); };
+    });
+}
+
+// Retry metadata lives on the existing record; failed photos are never removed.
+async function deferItem(id) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, "readwrite");
+        const store = tx.objectStore(STORE);
+        const request = store.get(id);
+        request.onsuccess = () => {
+            const item = request.result;
+            if (!item) return;
+            item.attempts = Math.min((Number(item.attempts) || 0) + 1, 20);
+            item.nextRetryAt = Date.now() + retryDelay(item.attempts);
+            store.put(item);
+        };
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onabort = () => { db.close(); reject(tx.error || new Error("Retry opslaan afgebroken")); };
     });
 }
 
@@ -86,9 +161,9 @@ async function addItem(data) {
     return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE, "readwrite");
         const store = tx.objectStore(STORE);
-        const req = store.add(clean);
-        req.onsuccess = () => resolve(true);
-        req.onerror = (e) => reject(e);
+        store.add(clean);
+        tx.oncomplete = () => { db.close(); resolve(true); };
+        tx.onabort = () => { db.close(); reject(tx.error || new Error("Opslaan afgebroken")); };
     });
 }
 
@@ -101,264 +176,169 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 // --------------------------
 // FRONTEND → SW Messages
 // --------------------------
-self.addEventListener("message", async (event) => {
+self.addEventListener("message", (event) => {
     if (event.origin !== self.location.origin) return;
-
     const data = event.data;
     if (!data || !data.type) return;
 
     switch (data.type) {
         case "FORCE_PROCESS":
-            console.log("⚡ Force Process commando ontvangen");
-            await processQueue();
-            break;
-
-        case "ADD_UPLOAD":
-            // 👇 Dit is nu alleen een backup path — main thread schrijft zelf ook naar IDB
-            const added = await addItem(data);
-            if (added) {
-                triggerSync();
-            }
-            sendToClients({ type: "QUEUED", file: data.name });
-            break;
-
         case "PROCESS_QUEUE":
-            // 👇 Nieuw: main thread vraagt expliciet om queue te verwerken
-            console.log("📬 Process queue gevraagd door main thread");
-            await processQueue();
+            event.waitUntil(processQueue());
             break;
-
+        case "ADD_UPLOAD":
+            event.waitUntil((async () => {
+                if (await addItem(data)) await triggerSync();
+                await sendToClients({ type: "QUEUED", file: data.name });
+            })());
+            break;
         case "SKIP_WAITING":
-            self.skipWaiting();
+            event.waitUntil(self.skipWaiting());
             break;
     }
 });
 
-function triggerSync() {
+async function triggerSync() {
     if ("sync" in self.registration) {
-        self.registration.sync.register("sync-r2-uploads").catch(console.warn);
-    } else {
-        // Fallback: direct verwerken
-        processQueue();
+        try {
+            await self.registration.sync.register("sync-r2-uploads");
+            return;
+        } catch (error) {
+            console.warn("SW: Background Sync niet beschikbaar:", error.message);
+        }
     }
+    return processQueue();
 }
 
 async function sendToClients(msg) {
-    const allClients = await self.clients.matchAll({ includeUncontrolled: true });
-    for (const client of allClients) {
-        client.postMessage(msg);
+    try {
+        const allClients = await self.clients.matchAll({ includeUncontrolled: true });
+        for (const client of allClients) client.postMessage(msg);
+    } catch (error) {
+        console.warn("SW: Statusbericht niet afgeleverd:", error.message);
     }
 }
 
 // --------------------------
 // BACKGROUND SYNC
 // --------------------------
-self.addEventListener("sync", async (event) => {
+self.addEventListener("sync", (event) => {
     if (event.tag === "sync-r2-uploads") {
-        event.waitUntil(processQueue());
+        event.waitUntil(processQueue().then(remaining => {
+            // Let the browser retry unfinished work even if this worker is stopped.
+            if (remaining) throw new Error("Foto's wachten nog op upload");
+        }));
     }
 });
 
-// --------------------------
-// 👇 FIX 3: Haal vers CSRF token op (niet de verlopen token uit IDB)
-// --------------------------
 async function getFreshCsrf() {
-    try {
-        const res = await fetch(`${API}/csrf-token`, {
-            credentials: 'include',
-            cache: 'no-store'
-        });
-        if (res.ok) {
-            const json = await res.json();
-            return json.token;
-        }
-    } catch (e) {
-        console.warn("SW: Kon geen vers CSRF token ophalen:", e.message);
+    const json = await fetchJson(`${API}/csrf-token`, { cache: 'no-store' });
+    if (typeof json?.token !== "string" || !json.token) {
+        throw new Error("Geen CSRF token ontvangen");
     }
-    return null;
+    return json.token;
 }
 
-// --------------------------
-// QUEUE PROCESSOR (Verbeterd)
-// --------------------------
 async function processQueue() {
-    if (isProcessingQueue) {
-        console.log("SW: Queue draait al, skip.");
-        return;
+    if (isProcessingQueue) return true;
+    if (Date.now() < nextQueueAttemptAt) {
+        scheduleRetry(nextQueueAttemptAt);
+        return true;
     }
 
-    const items = await getAll();
-    if (items.length === 0) return;
-
+    // Claim synchronously, before the first await.
     isProcessingQueue = true;
+    clearTimeout(retryTimer);
+    retryTimer = null;
     let done = 0;
-    let consecutiveFailures = 0;
+    let remaining = null;
+    let authRequired = false;
 
-    console.log(`SW: Start verwerking van ${items.length} items...`);
+    try {
+        const items = await getAll();
+        const dueItems = items.filter(item => !item.nextRetryAt || item.nextRetryAt <= Date.now());
+        if (dueItems.length) {
+            if (!self.navigator.onLine) throw new Error("Offline");
+            const freshCsrf = await getFreshCsrf();
+            queueFailures = 0;
+            nextQueueAttemptAt = 0;
 
-    // 👇 FIX 3: Haal 1x een vers CSRF token op voor de hele batch
-    const freshCsrf = await getFreshCsrf();
-    if (!freshCsrf) {
-        console.warn("SW: Geen CSRF token beschikbaar. Wacht op volgende poging.");
-        isProcessingQueue = false;
-        // Probeer over 30 seconden opnieuw
-        setTimeout(() => processQueue(), 30000);
-        return;
-    }
-
-    for (const item of items) {
-        try {
-            if (!self.navigator.onLine) {
-                console.log("SW: Offline, pauze.");
-                break;
-            }
-
-            // Reset consecutive failures bij success
-            sendToClients({
-                type: "PROGRESS",
-                current: done + 1,
-                total: items.length,
-                name: item.name,
-            });
-
-            // --- STAP 1: Upload naar R2 ---
-            const form = new FormData();
-            form.append("file", new Blob([item.blob], { type: item.fileType }), item.name);
-            form.append("task_id", item.task_id);
-            form.append("namespace_id", item.namespace_id);
-            form.append("adres_path", item.adres_path);
-            form.append("_token", freshCsrf); // 👈 Vers token
-            form.append("unique_id", `${item.id}`);
-
-            const uploadUrl = new URL(`${API}/r2/upload`);
-            uploadUrl.searchParams.append("sw_bypass", "true");
-
-            let res;
-            try {
-                res = await fetch(uploadUrl.toString(), {
-                    method: "POST",
-                    headers: { "X-CSRF-TOKEN": freshCsrf },
-                    credentials: 'include',
-                    body: form
-                });
-            } catch (err) {
-                console.warn(`SW: Netwerk fout bij upload '${item.name}':`, err.message);
-                consecutiveFailures++;
-                if (consecutiveFailures >= 3) {
-                    console.warn("SW: 3 opeenvolgende fouten, stoppen.");
-                    break;
-                }
-                continue; // Probeer volgende item
-            }
-
-            if (res.status === 419) {
-                // CSRF verlopen — haal nieuw token en stop deze ronde
-                console.warn("SW: CSRF verlopen (419). Stop en probeer later opnieuw.");
-                break;
-            }
-
-            if (res.status === 429) {
-                console.warn("SW: Rate limit (429). Wacht 5s...");
-                await new Promise(r => setTimeout(r, 5000));
-                consecutiveFailures++;
-                if (consecutiveFailures >= 3) break;
-                continue;
-            }
-
-            if (!res.ok) {
-                console.warn(`SW: Server error ${res.status} bij '${item.name}'`);
-                consecutiveFailures++;
-                if (consecutiveFailures >= 3) break;
-                continue;
-            }
-
-            const json = await res.json();
-            if (!json.path) {
-                console.warn("SW: Geen path in response voor:", item.name);
-                continue;
-            }
-
-            console.log("SW: Upload naar R2 OK:", json.path);
-
-            // --- STAP 2: Registreer bij Laravel (MoveToDropboxJob aanmaken) ---
-            let registerOk = false;
-            for (let attempt = 0; attempt < 3; attempt++) {
+            for (const [index, item] of dueItems.entries()) {
+                if (!self.navigator.onLine) throw new Error("Offline");
+                let uploadedToR2 = false;
                 try {
-                    const reg = await fetch(`${API}/r2/register-upload`, {
+                    void sendToClients({
+                        type: "PROGRESS", current: index + 1,
+                        total: dueItems.length, name: item.name
+                    });
+                    const form = new FormData();
+                    form.append("file", new Blob([item.blob], { type: item.fileType }), item.name);
+                    form.append("task_id", item.task_id);
+                    form.append("namespace_id", item.namespace_id);
+                    form.append("adres_path", item.adres_path);
+                    form.append("_token", freshCsrf);
+                    form.append("unique_id", `${item.id}`);
+
+                    const upload = await fetchJson(`${API}/r2/upload?sw_bypass=true`, {
+                        method: "POST", headers: { "X-CSRF-TOKEN": freshCsrf }, body: form
+                    }, 120000);
+                    if (upload?.success !== true || typeof upload.path !== "string" || !upload.path) {
+                        throw new Error("R2 upload niet bevestigd");
+                    }
+                    uploadedToR2 = true;
+                    const registration = await fetchJson(`${API}/r2/register-upload`, {
                         method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "X-CSRF-TOKEN": freshCsrf
-                        },
-                        credentials: 'include',
+                        headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": freshCsrf },
                         body: JSON.stringify({
-                            task_id: item.task_id,
-                            r2_path: json.path,
-                            namespace_id: item.namespace_id,
-                            adres_path: item.adres_path
+                            task_id: item.task_id, r2_path: upload.path,
+                            namespace_id: item.namespace_id, adres_path: item.adres_path
                         })
                     });
-
-                    if (reg.ok) {
-                        registerOk = true;
-                        break;
-                    } else if (reg.status === 419) {
-                        console.warn("SW: CSRF verlopen bij register. Stop.");
-                        break;
-                    } else {
-                        console.warn(`SW: Register poging ${attempt + 1} mislukt: ${reg.status}`);
-                        await new Promise(r => setTimeout(r, 2000));
+                    if (registration?.success !== true ||
+                        !["queued", "already_queued", "already_done"].includes(registration.status)) {
+                        throw new Error("Registratie niet bevestigd");
                     }
-                } catch (regErr) {
-                    console.warn(`SW: Register netwerk fout poging ${attempt + 1}:`, regErr.message);
-                    await new Promise(r => setTimeout(r, 2000));
+
+                    await deleteItem(item.id);
+                    done++;
+                    void sendToClients({ type: "UPLOADED", name: item.name, done, total: dueItems.length });
+                    await new Promise(resolve => setTimeout(resolve, 800));
+                } catch (error) {
+                    if (error.authRequired) throw error;
+                    console.warn(`SW: Upload '${item.name}' uitgesteld:`, error.message);
+                    await deferItem(item.id);
+                    if (uploadedToR2) {
+                        void sendToClients({ type: "UPLOAD_PARTIAL", name: item.name, reason: error.message });
+                    }
+                    if (error.status === 429) await new Promise(resolve => setTimeout(resolve, 5000));
                 }
             }
-
-            if (!registerOk) {
-                // 👇 CRUCIAAL: Foto staat in R2 maar job is niet aangemaakt
-                // We verwijderen het NIET uit IndexedDB zodat het opnieuw geprobeerd wordt
-                console.error(`SW: ❌ Register FAILED voor '${item.name}'. Blijft in queue.`);
-                sendToClients({
-                    type: "UPLOAD_PARTIAL",
-                    name: item.name,
-                    reason: "In R2 maar register mislukt"
-                });
-                consecutiveFailures++;
-                if (consecutiveFailures >= 3) break;
-                continue;
+        }
+    } catch (error) {
+        authRequired = Boolean(error.authRequired);
+        nextQueueAttemptAt = Date.now() + retryDelay(++queueFailures);
+        console.warn("SW: Queue tijdelijk gepauzeerd:", error.message);
+    } finally {
+        try {
+            remaining = await getAll();
+            if (remaining.length) {
+                const earliest = Math.min(...remaining.map(item => Number(item.nextRetryAt) || 0));
+                scheduleRetry(Math.max(nextQueueAttemptAt, earliest));
             }
-
-            // --- STAP 3: Alles OK → verwijder uit IndexedDB ---
-            await deleteItem(item.id);
-            done++;
-            consecutiveFailures = 0; // Reset bij success
-
-            sendToClients({ type: "UPLOADED", name: item.name, done, total: items.length });
-
-            // Rusttijd tussen uploads
-            await new Promise(r => setTimeout(r, 800));
-
-        } catch (err) {
-            console.error(`SW: Onverwachte fout bij '${item.name}':`, err.message);
-            consecutiveFailures++;
-            if (consecutiveFailures >= 3) {
-                console.warn("SW: Te veel fouten, stoppen.");
-                break;
-            }
+            void sendToClients({
+                type: authRequired ? "AUTH_REQUIRED" : "COMPLETE",
+                uploaded: done, remaining: remaining.length
+            });
+        } catch (error) {
+            nextQueueAttemptAt = Date.now() + retryDelay(++queueFailures);
+            scheduleRetry(nextQueueAttemptAt);
+            void sendToClients({ type: "QUEUE_ERROR" });
+            console.warn("SW: Wachtrij uitlezen mislukt:", error.message);
+        } finally {
+            isProcessingQueue = false;
         }
     }
-
-    isProcessingQueue = false;
-
-    // Check of er nog items over zijn
-    const remaining = await getAll();
-    if (remaining.length > 0 && done > 0) {
-        console.log(`SW: Nog ${remaining.length} items over, herstart queue over 5s...`);
-        setTimeout(() => processQueue(), 5000);
-    }
-
-    sendToClients({ type: "COMPLETE", uploaded: done, remaining: remaining.length });
+    return remaining === null || remaining.length > 0;
 }
 
 // --------------------------
@@ -374,7 +354,11 @@ self.addEventListener("fetch", (event) => {
 
     // Onderschep directe /r2/upload calls en queue ze
     if (url.pathname === '/r2/upload' && event.request.method === "POST") {
-        event.respondWith(saveToQueueAndRespond(event.request));
+        const queued = saveToQueueAndRespond(event.request);
+        event.respondWith(queued);
+        event.waitUntil(queued.then(response => {
+            if (response.ok) return triggerSync();
+        }));
     }
 });
 
@@ -392,8 +376,7 @@ async function saveToQueueAndRespond(request) {
             adres_path: formData.get("adres_path"),
         });
 
-        triggerSync();
-        sendToClients({ type: "QUEUED", file: file.name });
+        await sendToClients({ type: "QUEUED", file: file.name });
 
         return new Response(
             JSON.stringify({ success: true, queued: true, message: "In wachtrij geplaatst" }),
